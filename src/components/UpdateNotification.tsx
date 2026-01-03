@@ -1,70 +1,87 @@
-import { Bell, BellOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { RefreshCw, X } from 'lucide-react';
 
-interface NotificationToggleProps {
-  type: 'delivery' | 'admin';
-  variant?: 'default' | 'ghost' | 'outline';
-  size?: 'default' | 'sm' | 'lg' | 'icon';
-  showLabel?: boolean;
-}
+export const UpdateNotification = () => {
+  const [showBanner, setShowBanner] = useState(false);
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
-export const NotificationToggle = ({ 
-  type, 
-  variant = 'ghost', 
-  size = 'icon',
-  showLabel = false 
-}: NotificationToggleProps) => {
-  const { isSupported, permission, requestPermission } = usePushNotifications({ type });
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      // Listen for new service worker updates
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                setWaitingWorker(newWorker);
+                setShowBanner(true);
+              }
+            });
+          }
+        });
+      });
 
-  if (!isSupported) {
-    return null;
-  }
+      // Check for waiting worker on page load
+      navigator.serviceWorker.getRegistration().then((registration) => {
+        if (registration?.waiting) {
+          setWaitingWorker(registration.waiting);
+          setShowBanner(true);
+        }
+      });
 
-  const isEnabled = permission === 'granted';
-  const isDenied = permission === 'denied';
+      // Listen for controller change and reload
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+    }
+  }, []);
 
-  const handleClick = async () => {
-    if (permission === 'default') {
-      await requestPermission();
+  const handleUpdate = () => {
+    if (waitingWorker) {
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
     }
   };
 
-  if (isDenied) {
-    return (
-      <Button
-        variant={variant}
-        size={size}
-        disabled
-        title="Notificações bloqueadas. Ative nas configurações do navegador."
-        className="text-muted-foreground"
-      >
-        <BellOff className="h-5 w-5" />
-        {showLabel && <span className="ml-2">Bloqueado</span>}
-      </Button>
-    );
-  }
+  const handleDismiss = () => {
+    setShowBanner(false);
+  };
+
+  if (!showBanner) return null;
 
   return (
-    <Button
-      variant={variant}
-      size={size}
-      onClick={handleClick}
-      title={isEnabled ? 'Notificações ativadas' : 'Ativar notificações'}
-      className={isEnabled ? 'text-primary' : ''}
-    >
-      {isEnabled ? (
-        <Bell className="h-5 w-5" />
-      ) : (
-        <BellOff className="h-5 w-5" />
-      )}
-      {showLabel && (
-        <span className="ml-2">
-          {isEnabled ? 'Ativado' : 'Ativar'}
-        </span>
-      )}
-    </Button>
+    <div className="fixed top-0 left-0 right-0 z-50 bg-green-600 text-white py-3 px-4 shadow-lg">
+      <div className="flex items-center justify-between max-w-4xl mx-auto">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-5 w-5" />
+          <span className="text-sm font-medium">Nova versão disponível!</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleUpdate}
+            className="bg-white text-green-700 hover:bg-green-50"
+          >
+            Atualizar
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={handleDismiss}
+            className="text-white hover:bg-green-700 h-8 w-8"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 };
 
-export default NotificationToggle;
+export default UpdateNotification;
