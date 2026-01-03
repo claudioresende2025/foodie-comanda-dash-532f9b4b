@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin, Gift } from "lucide-react";
+import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -46,8 +46,9 @@ export default function DeliveryRestaurant() {
   const [cupomCodigo, setCupomCodigo] = useState("");
   const [cupomAplicado, setCupomAplicado] = useState<any>(null);
   const [aplicandoCupom, setAplicandoCupom] = useState(false);
-  const [usarFidelidade, setUsarFidelidade] = useState(false);
   const [fidelidadeData, setFidelidadeData] = useState<any>(null);
+  const [usarPontosFidelidade, setUsarPontosFidelidade] = useState(false);
+  const [pontosAUtilizar, setPontosAUtilizar] = useState(0);
 
   const [metodoPagamento, setMetodoPagamento] = useState("pix");
   const [notasGerais, setNotasGerais] = useState("");
@@ -68,22 +69,20 @@ export default function DeliveryRestaurant() {
     config?.taxa_entrega || 0,
   );
 
-  // Calcular desconto de cupom
+  // Calcular valor do desconto de pontos de fidelidade
+  const descontoPontos = usarPontosFidelidade && fidelidadeData
+    ? (pontosAUtilizar * (fidelidadeData.reais_por_ponto || 0.01))
+    : 0;
+
+  // Calcular desconto do cupom
   const descontoCupom = cupomAplicado
     ? cupomAplicado.tipo === "percentual"
       ? (subtotal * cupomAplicado.valor) / 100
       : cupomAplicado.valor
     : 0;
 
-  // Calcular desconto de fidelidade
-  const podeUsarFidelidade = fidelidadeData && 
-    fidelidadeData.pontos_atuais >= fidelidadeData.pontos_necessarios;
-  const descontoFidelidade = usarFidelidade && podeUsarFidelidade 
-    ? fidelidadeData.valor_recompensa 
-    : 0;
-
   // Total de descontos
-  const desconto = descontoCupom + descontoFidelidade;
+  const desconto = descontoCupom + descontoPontos;
   const totalComDesconto = Math.max(0, total - desconto);
 
   const checkAuth = useCallback(async () => {
@@ -127,11 +126,11 @@ export default function DeliveryRestaurant() {
             : fidelidade.fidelidade_config;
           
           setFidelidadeData({
-            id: fidelidade.id,
-            pontos_atuais: fidelidade.pontos || 0,
+            pontos_atuais: fidelidade.saldo_pontos || 0,
             pontos_necessarios: config?.pontos_necessarios || 100,
             valor_recompensa: config?.valor_recompensa || 15,
-            percentual: ((fidelidade.pontos || 0) / (config?.pontos_necessarios || 100)) * 100,
+            percentual: ((fidelidade.saldo_pontos || 0) / (config?.pontos_necessarios || 100)) * 100,
+            reais_por_ponto: config?.reais_por_ponto || 0.01,
           });
         }
       }
@@ -327,13 +326,11 @@ export default function DeliveryRestaurant() {
         subtotal: subtotal,
         taxaEntrega: config?.taxa_entrega || 0,
         desconto: desconto || 0,
+        descontoPontos: descontoPontos || 0,
         descontoCupom: descontoCupom || 0,
-        descontoFidelidade: descontoFidelidade || 0,
+        pontosUtilizados: usarPontosFidelidade ? pontosAUtilizar : 0,
         total: totalComDesconto,
         cupomId: cupomAplicado?.id || null,
-        fidelidadeId: usarFidelidade && podeUsarFidelidade ? fidelidadeData?.id : null,
-        pontosUsados: usarFidelidade && podeUsarFidelidade ? fidelidadeData?.pontos_necessarios : null,
-        valorRecompensa: usarFidelidade && podeUsarFidelidade ? fidelidadeData?.valor_recompensa : null,
         notas: notasGerais || null,
         items: cart.map((item) => ({
           produto_id: item.produto.id,
@@ -387,22 +384,29 @@ export default function DeliveryRestaurant() {
           });
         }
 
-        // Registrar uso da fidelidade (decrementar pontos)
-        if (usarFidelidade && podeUsarFidelidade && fidelidadeData) {
-          // Decrementar pontos
-          await supabase
+        // Processar resgate de pontos de fidelidade
+        if (usarPontosFidelidade && pontosAUtilizar > 0) {
+          // Debitar pontos do saldo
+          const { error: pontoErr } = await supabase
             .from("fidelidade_pontos")
-            .update({ 
-              pontos: fidelidadeData.pontos_atuais - fidelidadeData.pontos_necessarios 
+            .update({
+              saldo_pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
+              updated_at: new Date().toISOString(),
             })
-            .eq("id", fidelidadeData.id);
+            .eq("user_id", user.id)
+            .eq("empresa_id", empresaId);
 
-          // Registrar transação
+          if (pontoErr) {
+            console.error("Erro ao debitar pontos:", pontoErr);
+          }
+
+          // Registrar transação de resgate
           await supabase.from("fidelidade_transacoes").insert({
-            fidelidade_id: fidelidadeData.id,
+            user_id: user.id,
+            empresa_id: empresaId,
+            tipo: "resgate",
+            pontos: -pontosAUtilizar,
             pedido_delivery_id: ped.id,
-            pontos: -fidelidadeData.pontos_necessarios,
-            descricao: `Resgate de R$ ${fidelidadeData.valor_recompensa.toFixed(2)} no pedido`,
           });
         }
 
@@ -495,58 +499,90 @@ export default function DeliveryRestaurant() {
             <div className="p-6 space-y-6 pb-20">
               {/* Cartão Fidelidade */}
               {fidelidadeData && fidelidadeData.pontos_atuais > 0 && (
-                <div className={`p-4 rounded-xl space-y-3 ${
-                  usarFidelidade && podeUsarFidelidade
-                    ? 'bg-gradient-to-r from-green-500 to-green-600 text-white'
-                    : 'bg-gradient-to-r from-purple-500 to-purple-700 text-white'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                      <span className="font-semibold">Cartão Fidelidade</span>
-                    </div>
-                    {podeUsarFidelidade && (
-                      <div className="flex items-center gap-2 bg-white/20 px-2 py-1 rounded-full">
-                        <Gift className="h-4 w-4" />
-                        <span className="text-xs font-medium">Resgate disponível!</span>
-                      </div>
-                    )}
+                <div className="bg-gradient-to-r from-purple-500 to-purple-700 text-white p-4 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
+                    <span className="font-semibold">Programa de Fidelidade</span>
                   </div>
-                  
                   <div className="flex justify-between text-sm">
                     <span>{fidelidadeData.pontos_atuais} / {fidelidadeData.pontos_necessarios} pontos</span>
                     <span className="font-semibold">{fidelidadeData.percentual.toFixed(0)}%</span>
                   </div>
-                  <div className="w-full bg-white/30 rounded-full h-2">
+                  <div className="w-full bg-purple-300 rounded-full h-2">
                     <div
                       className="bg-yellow-400 h-2 rounded-full transition-all"
                       style={{ width: `${Math.min(fidelidadeData.percentual, 100)}%` }}
                     />
                   </div>
+                  <p className="text-xs opacity-90">
+                    Faltam {Math.max(0, fidelidadeData.pontos_necessarios - fidelidadeData.pontos_atuais)} pontos para ganhar R$ {fidelidadeData.valor_recompensa.toFixed(2)} 🎁
+                  </p>
+                </div>
+              )}
 
-                  {podeUsarFidelidade ? (
-                    <div className="pt-2 border-t border-white/30">
-                      <label className="flex items-center gap-3 cursor-pointer">
+              {/* Resgatar Pontos de Fidelidade */}
+              {fidelidadeData && fidelidadeData.pontos_atuais > 0 && (
+                <div className="space-y-3">
+                  <Label className="text-sm font-bold text-primary flex items-center gap-2">
+                    <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                    Usar Pontos de Fidelidade
+                  </Label>
+                  <div className="bg-purple-50 border-2 border-purple-200 p-4 rounded-xl space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
                         <Checkbox
-                          checked={usarFidelidade}
-                          onCheckedChange={(checked) => setUsarFidelidade(checked === true)}
-                          className="border-white data-[state=checked]:bg-yellow-400 data-[state=checked]:border-yellow-400"
+                          id="usar-pontos"
+                          checked={usarPontosFidelidade}
+                          onCheckedChange={(checked) => {
+                            setUsarPontosFidelidade(checked as boolean);
+                            if (!checked) {
+                              setPontosAUtilizar(0);
+                            } else {
+                              // Calcular máximo de pontos que podem ser usados
+                              // Total com cupom mas sem pontos ainda
+                              const totalSemPontos = total - descontoCupom;
+                              const maxPontosParaPedido = Math.floor(totalSemPontos / (fidelidadeData.reais_por_ponto || 0.01));
+                              const maxPontos = Math.min(fidelidadeData.pontos_atuais, maxPontosParaPedido);
+                              setPontosAUtilizar(maxPontos);
+                            }
+                          }}
                         />
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm">
-                            Usar R$ {fidelidadeData.valor_recompensa.toFixed(2)} de desconto
-                          </p>
-                          <p className="text-xs opacity-80">
-                            ({fidelidadeData.pontos_necessarios} pontos serão consumidos)
+                        <div>
+                          <label htmlFor="usar-pontos" className="text-sm font-medium cursor-pointer">
+                            Resgatar pontos neste pedido
+                          </label>
+                          <p className="text-xs text-muted-foreground">
+                            Você tem {fidelidadeData.pontos_atuais} pontos disponíveis
                           </p>
                         </div>
-                      </label>
+                      </div>
                     </div>
-                  ) : (
-                    <p className="text-xs opacity-90">
-                      Faltam {Math.max(0, fidelidadeData.pontos_necessarios - fidelidadeData.pontos_atuais)} pontos para ganhar R$ {fidelidadeData.valor_recompensa.toFixed(2)} 🎁
-                    </p>
-                  )}
+                    {usarPontosFidelidade && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Pontos a utilizar:</span>
+                          <span className="font-semibold">{pontosAUtilizar} pontos</span>
+                        </div>
+                        <Input
+                          type="range"
+                          min="0"
+                          max={Math.min(
+                            fidelidadeData.pontos_atuais,
+                            Math.floor((total - descontoCupom) / (fidelidadeData.reais_por_ponto || 0.01))
+                          )}
+                          value={pontosAUtilizar}
+                          onChange={(e) => setPontosAUtilizar(parseInt(e.target.value))}
+                          className="w-full"
+                        />
+                        <div className="bg-white p-2 rounded-lg border">
+                          <p className="text-xs text-muted-foreground">Desconto:</p>
+                          <p className="font-bold text-purple-600">
+                            -R$ {(pontosAUtilizar * (fidelidadeData.reais_por_ponto || 0.01)).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -782,22 +818,22 @@ export default function DeliveryRestaurant() {
                     {config?.taxa_entrega > 0 ? `R$ ${config.taxa_entrega.toFixed(2)}` : "Grátis"}
                   </span>
                 </div>
+                {descontoPontos > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-purple-600 font-medium flex items-center gap-1">
+                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                      Desconto ({pontosAUtilizar} pontos)
+                    </span>
+                    <span className="text-purple-600 font-bold">-R$ {descontoPontos.toFixed(2)}</span>
+                  </div>
+                )}
                 {cupomAplicado && descontoCupom > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-green-600 font-medium flex items-center gap-1">
                       <Ticket className="h-4 w-4" />
-                      Cupom ({cupomAplicado.codigo})
+                      Desconto ({cupomAplicado.codigo})
                     </span>
                     <span className="text-green-600 font-bold">-R$ {descontoCupom.toFixed(2)}</span>
-                  </div>
-                )}
-                {usarFidelidade && descontoFidelidade > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-green-600 font-medium flex items-center gap-1">
-                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                      Cartão Fidelidade
-                    </span>
-                    <span className="text-green-600 font-bold">-R$ {descontoFidelidade.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
