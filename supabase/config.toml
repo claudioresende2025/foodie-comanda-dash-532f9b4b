@@ -1,0 +1,7 @@
+project_id = "zlwpxflqtyhdwanmupgy"
+
+[functions.create-delivery-checkout]
+verify_jwt = false
+
+[functions.verify-delivery-payment]
+verify_jwt = false

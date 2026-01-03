@@ -1,0 +1,197 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 220 20% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 15%;
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 142 50% 95%;
+    --secondary-foreground: 142 76% 25%;
+    --accent: 25 95% 53%;
+    --accent-foreground: 0 0% 100%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 45%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 142 76% 36%;
+    --radius: 0.75rem;
+    --sidebar-background: 142 76% 25%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 142 76% 25%;
+    --sidebar-accent: 142 60% 35%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 142 50% 35%;
+    --sidebar-ring: 25 95% 53%;
+    --fcd-green: 142 76% 36%;
+    --fcd-green-light: 142 50% 95%;
+    --fcd-green-dark: 142 76% 25%;
+    --fcd-orange: 25 95% 53%;
+    --fcd-orange-light: 25 95% 95%;
+    --status-available: 142 76% 36%;
+    --status-available-foreground: 0 0% 100%;
+    --status-occupied: 25 95% 53%;
+    --status-reserved: 45 93% 47%;
+    --status-merged: 220 80% 55%;
+  }
+
+  .dark {
+    --background: 220 20% 10%;
+    --foreground: 0 0% 95%;
+    --card: 220 20% 13%;
+    --card-foreground: 0 0% 95%;
+    --popover: 220 20% 13%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 142 76% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 142 30% 18%;
+    --secondary-foreground: 142 50% 80%;
+    --accent: 25 95% 55%;
+    --accent-foreground: 0 0% 100%;
+    --muted: 220 15% 18%;
+    --muted-foreground: 220 10% 60%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 142 76% 45%;
+    --sidebar-background: 220 20% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 142 76% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 15% 15%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 220 15% 20%;
+    --sidebar-ring: 25 95% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+@layer utilities {
+  .shadow-fcd {
+    box-shadow: 0 4px 20px -2px hsl(var(--primary) / 0.15);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* PWA optimizations */
+  .will-change-transform {
+    will-change: transform;
+  }
+
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+
+  /* Performance optimizations */
+  .contain-layout {
+    contain: layout;
+  }
+
+  .contain-paint {
+    contain: paint;
+  }
+
+  /* Smooth scrolling for iOS */
+  .scroll-smooth-ios {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* PWA Touch states */
+@media (hover: none) and (pointer: coarse) {
+  .touch-manipulation {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Prevent pull-to-refresh on PWA */
+html {
+  overscroll-behavior-y: contain;
+}
+
+/* Improve text rendering */
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
