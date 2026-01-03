@@ -31,7 +31,7 @@ import PedidosDelivery from "@/pages/admin/PedidosDelivery";
 import DeliveryDashboard from "@/pages/admin/DeliveryDashboard";
 import Marketing from "@/pages/admin/Marketing";
 import usePWAManifest from "@/hooks/usePWAManifest";
-import { UpdateNotification } from "@/components/UpdateNotification";
+import UpdateNotification from "@/components/UpdateNotification";
 
 const queryClient = new QueryClient();
 

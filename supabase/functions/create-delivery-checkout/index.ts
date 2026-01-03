@@ -116,8 +116,13 @@ serve(async (req) => {
         subtotal: orderData.subtotal.toString(),
         taxaEntrega: orderData.taxaEntrega.toString(),
         desconto: orderData.desconto?.toString() || "0",
+        descontoCupom: orderData.descontoCupom?.toString() || "0",
+        descontoFidelidade: orderData.descontoFidelidade?.toString() || "0",
         total: validatedTotal.toString(),
         cupomId: orderData.cupomId || "",
+        fidelidadeId: orderData.fidelidadeId || "",
+        pontosUsados: orderData.pontosUsados?.toString() || "",
+        valorRecompensa: orderData.valorRecompensa?.toString() || "",
         notas: orderData.notas || "",
         items: JSON.stringify(orderData.items), // Array de itens
       },

@@ -114,10 +114,48 @@ serve(async (req) => {
         cupom_id: orderData.cupomId,
         user_id: orderData.userId,
         pedido_delivery_id: pedido.id,
-        valor_desconto: parseFloat(orderData.desconto || 0),
+        valor_desconto: parseFloat(orderData.descontoCupom || orderData.desconto || 0),
       });
 
       logStep("Coupon usage registered", { cupomId: orderData.cupomId });
+    }
+
+    // Registrar uso da fidelidade se aplicável
+    if (orderData.fidelidadeId && orderData.pontosUsados) {
+      logStep("Processing loyalty points", { 
+        fidelidadeId: orderData.fidelidadeId, 
+        pontosUsados: orderData.pontosUsados 
+      });
+
+      // Buscar pontos atuais
+      const { data: fidelidade } = await supabase
+        .from("fidelidade_pontos")
+        .select("pontos")
+        .eq("id", orderData.fidelidadeId)
+        .single();
+
+      if (fidelidade) {
+        const novosPontos = (fidelidade.pontos || 0) - parseInt(orderData.pontosUsados);
+        
+        // Decrementar pontos
+        await supabase
+          .from("fidelidade_pontos")
+          .update({ pontos: Math.max(0, novosPontos) })
+          .eq("id", orderData.fidelidadeId);
+
+        // Registrar transação
+        await supabase.from("fidelidade_transacoes").insert({
+          fidelidade_id: orderData.fidelidadeId,
+          pedido_delivery_id: pedido.id,
+          pontos: -parseInt(orderData.pontosUsados),
+          descricao: `Resgate de R$ ${parseFloat(orderData.valorRecompensa || 0).toFixed(2)} no pedido`,
+        });
+
+        logStep("Loyalty points deducted", { 
+          pontosUsados: orderData.pontosUsados,
+          valorRecompensa: orderData.valorRecompensa 
+        });
+      }
     }
 
     logStep("Order completed successfully", { pedidoId: pedido.id });
