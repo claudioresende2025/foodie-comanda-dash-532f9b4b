@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# INSTRUÇÕES: Deploy Manual das Edge Functions
+# ============================================
+
+echo "🚀 COMO FAZER O DEPLOY DAS EDGE FUNCTIONS"
+echo "=========================================="
+echo ""
+echo "O código foi corrigido e sincronizado com o GitHub."
+echo "Agora você precisa fazer o deploy manualmente:"
+echo ""
+echo "OPÇÃO 1 - Via Dashboard Supabase (RECOMENDADO)"
+echo "-----------------------------------------------"
+echo "1. Acesse: https://supabase.com/dashboard/project/zlwpxflqtyhdwanmupgy/functions"
+echo ""
+echo "2. Para cada função abaixo, clique nos ⋮ (três pontinhos) → 'Redeploy'"
+echo "   - create-delivery-checkout"
+echo "   - verify-delivery-payment"
+echo "   - complete-delivery-order"
+echo ""
+echo "3. Aguarde cada deploy completar (leva ~30 segundos cada)"
+echo ""
+echo "OPÇÃO 2 - Via CLI (se tiver o Supabase CLI instalado)"
+echo "------------------------------------------------------"
+echo "supabase login"
+echo "supabase link --project-ref zlwpxflqtyhdwanmupgy"
+echo "supabase functions deploy create-delivery-checkout"
+echo "supabase functions deploy verify-delivery-payment"
+echo "supabase functions deploy complete-delivery-order"
+echo ""
+echo "✅ Após o deploy, teste novamente o pagamento com cartão!"
+echo ""
