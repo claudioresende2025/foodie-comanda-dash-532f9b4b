@@ -232,21 +232,39 @@ export default function DeliveryRestaurant() {
   const fetchData = useCallback(async () => {
     if (!empresaId) return;
     try {
-      const { data: emp } = await supabase.from("empresas").select("*").eq("id", empresaId).maybeSingle();
+      console.log('[DeliveryRestaurant] Fetching data for empresa:', empresaId);
+      
+      const { data: emp, error: empError } = await supabase.from("empresas").select("*").eq("id", empresaId).maybeSingle();
+      if (empError) {
+        console.error('[DeliveryRestaurant] Error fetching empresa:', empError);
+      }
+      console.log('[DeliveryRestaurant] Empresa:', emp);
       setEmpresa(emp);
-      const { data: cfg } = await supabase
+      
+      const { data: cfg, error: cfgError } = await supabase
         .from("config_delivery")
         .select("*")
         .eq("empresa_id", empresaId)
         .maybeSingle();
+      if (cfgError) {
+        console.error('[DeliveryRestaurant] Error fetching config:', cfgError);
+      }
+      console.log('[DeliveryRestaurant] Config:', cfg);
       setConfig(cfg);
-      const { data: prods } = await supabase
+      
+      const { data: prods, error: prodsError } = await supabase
         .from("produtos")
         .select("*")
         .eq("empresa_id", empresaId)
         .eq("ativo", true)
         .order("nome");
+      if (prodsError) {
+        console.error('[DeliveryRestaurant] Error fetching produtos:', prodsError);
+      }
+      console.log('[DeliveryRestaurant] Produtos:', prods?.length || 0);
       setProdutos(prods || []);
+    } catch (err) {
+      console.error('[DeliveryRestaurant] Unexpected error:', err);
     } finally {
       setIsLoading(false);
     }

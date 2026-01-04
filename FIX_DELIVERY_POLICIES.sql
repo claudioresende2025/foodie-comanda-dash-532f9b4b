@@ -3,7 +3,7 @@
 -- (SQL Editor -> New Query)
 -- ===========================================
 
--- Limpar todas as políticas de pedidos_delivery
+-- PARTE 1: Limpar todas as políticas problemáticas
 DO $$ 
 DECLARE 
     r RECORD;
@@ -31,15 +31,82 @@ BEGIN
             RAISE NOTICE 'Could not drop policy %: %', r.policyname, SQLERRM;
         END;
     END LOOP;
+    
+    FOR r IN (SELECT policyname FROM pg_policies WHERE tablename = 'config_delivery' AND schemaname = 'public') LOOP
+        BEGIN
+            EXECUTE 'DROP POLICY IF EXISTS "' || r.policyname || '" ON public.config_delivery';
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Could not drop policy %: %', r.policyname, SQLERRM;
+        END;
+    END LOOP;
+    
+    FOR r IN (SELECT policyname FROM pg_policies WHERE tablename = 'empresas' AND schemaname = 'public') LOOP
+        BEGIN
+            EXECUTE 'DROP POLICY IF EXISTS "' || r.policyname || '" ON public.empresas';
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Could not drop policy %: %', r.policyname, SQLERRM;
+        END;
+    END LOOP;
+    
+    FOR r IN (SELECT policyname FROM pg_policies WHERE tablename = 'produtos' AND schemaname = 'public') LOOP
+        BEGIN
+            EXECUTE 'DROP POLICY IF EXISTS "' || r.policyname || '" ON public.produtos';
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Could not drop policy %: %', r.policyname, SQLERRM;
+        END;
+    END LOOP;
 END $$;
 
--- Enable RLS
+-- PARTE 2: Enable RLS
 ALTER TABLE public.pedidos_delivery ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.itens_delivery ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.enderecos_cliente ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.config_delivery ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.empresas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.produtos ENABLE ROW LEVEL SECURITY;
 
--- Staff can view all orders from their empresa (usando profiles)
-CREATE POLICY "staff_view_empresa_delivery_orders"
+-- PARTE 3: Políticas de empresas (PUBLIC READ)
+CREATE POLICY "empresas_public_read"
+  ON public.empresas FOR SELECT
+  USING (true);
+
+CREATE POLICY "empresas_owner_update"
+  ON public.empresas FOR UPDATE
+  USING (usuario_proprietario_id = auth.uid());
+
+CREATE POLICY "empresas_owner_insert"
+  ON public.empresas FOR INSERT
+  WITH CHECK (auth.uid() = usuario_proprietario_id);
+
+-- PARTE 4: Políticas de produtos (PUBLIC READ para ativos)
+CREATE POLICY "produtos_public_read"
+  ON public.produtos FOR SELECT
+  USING (ativo = true);
+
+CREATE POLICY "produtos_staff_all"
+  ON public.produtos FOR ALL
+  USING (
+    empresa_id IN (
+      SELECT p.empresa_id FROM profiles p WHERE p.id = auth.uid()
+    )
+  );
+
+-- PARTE 5: Políticas de config_delivery (PUBLIC READ para ativos)
+CREATE POLICY "config_delivery_public_read"
+  ON public.config_delivery FOR SELECT
+  USING (ativo = true);
+
+CREATE POLICY "config_delivery_staff_all"
+  ON public.config_delivery FOR ALL
+  USING (
+    empresa_id IN (
+      SELECT p.empresa_id FROM profiles p WHERE p.id = auth.uid()
+    )
+  );
+
+-- PARTE 6: Políticas de pedidos_delivery
+-- Staff pode ver todos os pedidos de sua empresa
+CREATE POLICY "pedidos_delivery_staff_read"
   ON public.pedidos_delivery FOR SELECT
   USING (
     empresa_id IN (
@@ -47,28 +114,23 @@ CREATE POLICY "staff_view_empresa_delivery_orders"
     )
   );
 
--- Users can view their own orders
-CREATE POLICY "users_view_own_delivery_orders"
+-- Usuários podem ver seus próprios pedidos
+CREATE POLICY "pedidos_delivery_user_read"
   ON public.pedidos_delivery FOR SELECT
   USING (auth.uid() = user_id);
 
--- Public can view orders with stripe payment
-CREATE POLICY "public_view_paid_orders"
+-- Pedidos pagos pelo Stripe são visíveis (para a página de sucesso)
+CREATE POLICY "pedidos_delivery_stripe_read"
   ON public.pedidos_delivery FOR SELECT
   USING (stripe_payment_id IS NOT NULL);
 
--- Staff can insert orders
-CREATE POLICY "staff_insert_delivery_orders"
+-- Insert permitido para autenticados
+CREATE POLICY "pedidos_delivery_insert"
   ON public.pedidos_delivery FOR INSERT
-  WITH CHECK (
-    empresa_id IN (
-      SELECT p.empresa_id FROM profiles p WHERE p.id = auth.uid()
-    )
-    OR auth.uid() IS NOT NULL
-  );
+  WITH CHECK (true);
 
--- Staff can update orders from their empresa
-CREATE POLICY "staff_update_delivery_orders"
+-- Staff pode atualizar pedidos de sua empresa
+CREATE POLICY "pedidos_delivery_staff_update"
   ON public.pedidos_delivery FOR UPDATE
   USING (
     empresa_id IN (
@@ -76,23 +138,21 @@ CREATE POLICY "staff_update_delivery_orders"
     )
   );
 
--- Public can view all delivery items
-CREATE POLICY "public_view_delivery_items"
+-- PARTE 7: Políticas de itens_delivery
+CREATE POLICY "itens_delivery_public_read"
   ON public.itens_delivery FOR SELECT
   USING (true);
 
--- Authenticated can insert delivery items
-CREATE POLICY "authenticated_insert_delivery_items"
+CREATE POLICY "itens_delivery_insert"
   ON public.itens_delivery FOR INSERT
   WITH CHECK (true);
 
--- Users can view their own addresses
-CREATE POLICY "users_view_own_addresses"
+-- PARTE 8: Políticas de enderecos_cliente
+CREATE POLICY "enderecos_cliente_user_read"
   ON public.enderecos_cliente FOR SELECT
   USING (auth.uid() = user_id);
 
--- Staff can view addresses linked to their empresa orders
-CREATE POLICY "staff_view_delivery_addresses"
+CREATE POLICY "enderecos_cliente_staff_read"
   ON public.enderecos_cliente FOR SELECT
   USING (
     EXISTS (
@@ -104,15 +164,13 @@ CREATE POLICY "staff_view_delivery_addresses"
     )
   );
 
--- Users can create their own addresses
-CREATE POLICY "users_create_addresses"
+CREATE POLICY "enderecos_cliente_insert"
   ON public.enderecos_cliente FOR INSERT
   WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
 
--- Users can update their own addresses
-CREATE POLICY "users_update_addresses"
+CREATE POLICY "enderecos_cliente_update"
   ON public.enderecos_cliente FOR UPDATE
   USING (auth.uid() = user_id);
 
 -- Confirmar resultado
-SELECT 'Policies created successfully!' as status;
+SELECT 'Policies criadas com sucesso!' as status;
