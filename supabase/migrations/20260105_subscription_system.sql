@@ -154,8 +154,8 @@ VALUES
   (
     'Básico',
     'Ideal para pequenos restaurantes começando no delivery',
-    79.90,
-    799.00,
+    149.90,
+    1499.00,
     '["Até 100 pedidos/mês", "5 mesas", "2 usuários", "Cardápio digital", "Pedidos delivery", "Suporte por email"]'::jsonb,
     100,
     5,
@@ -166,8 +166,8 @@ VALUES
   (
     'Profissional',
     'Para restaurantes em crescimento',
-    149.90,
-    1499.00,
+    229.90,
+    2299.00,
     '["Até 500 pedidos/mês", "20 mesas", "5 usuários", "Cardápio digital", "Pedidos delivery", "Comandas digitais", "Relatórios avançados", "Integração PIX", "Suporte prioritário"]'::jsonb,
     500,
     20,
@@ -178,8 +178,8 @@ VALUES
   (
     'Enterprise',
     'Para redes e grandes operações',
-    299.90,
-    2999.00,
+    529.90,
+    5299.00,
     '["Pedidos ilimitados", "Mesas ilimitadas", "Usuários ilimitados", "Todas as funcionalidades", "API personalizada", "Suporte 24/7", "Gerente de conta dedicado", "Treinamento incluso"]'::jsonb,
     NULL,
     NULL,
