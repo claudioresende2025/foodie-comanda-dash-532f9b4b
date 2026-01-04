@@ -9,6 +9,8 @@ import {
   XCircle, MapPin, Phone, User, Receipt, Store 
 } from 'lucide-react';
 import { Database } from '@/integrations/supabase/types';
+import { DeliveryMap } from '@/components/delivery/DeliveryMap';
+import { useDeliveryTracking } from '@/hooks/useDeliveryTracking';
 
 type DeliveryStatus = Database['public']['Enums']['delivery_status'];
 
@@ -72,6 +74,9 @@ export default function DeliveryTracking() {
   const [empresa, setEmpresa] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Hook para rastreamento em tempo real
+  const { location: deliveryLocation, hasLocation } = useDeliveryTracking(pedidoId);
 
   const fetchPedido = useCallback(async () => {
     if (!pedidoId) return;
@@ -190,6 +195,63 @@ export default function DeliveryTracking() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Map Card - Only show when status is 'saiu_entrega' */}
+        {currentStatus === 'saiu_entrega' && (
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-primary" />
+                Rastreamento em Tempo Real
+              </h3>
+              <DeliveryMap
+                deliveryLocation={
+                  deliveryLocation
+                    ? {
+                        latitude: Number(deliveryLocation.latitude),
+                        longitude: Number(deliveryLocation.longitude),
+                      }
+                    : null
+                }
+                customerLocation={
+                  pedido.endereco?.latitude && pedido.endereco?.longitude
+                    ? {
+                        latitude: Number(pedido.endereco.latitude),
+                        longitude: Number(pedido.endereco.longitude),
+                      }
+                    : null
+                }
+                restaurantLocation={
+                  empresa?.latitude && empresa?.longitude
+                    ? {
+                        latitude: Number(empresa.latitude),
+                        longitude: Number(empresa.longitude),
+                      }
+                    : null
+                }
+                restaurantName={empresa?.nome_fantasia}
+                customerAddress={
+                  pedido.endereco
+                    ? `${pedido.endereco.rua}, ${pedido.endereco.numero} - ${pedido.endereco.bairro}`
+                    : undefined
+                }
+              />
+              {hasLocation && deliveryLocation && (
+                <div className="mt-3 p-3 bg-muted rounded-lg text-sm">
+                  <p className="text-muted-foreground">
+                    <strong>Última atualização:</strong>{' '}
+                    {new Date(deliveryLocation.updated_at).toLocaleTimeString('pt-BR')}
+                  </p>
+                  {deliveryLocation.precisao && (
+                    <p className="text-muted-foreground text-xs mt-1">
+                      Precisão: {Math.round(deliveryLocation.precisao)}m
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Status Card */}
         <Card>
           <CardContent className="p-6">
