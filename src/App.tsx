@@ -29,6 +29,7 @@ import Configuracoes from "@/pages/admin/Configuracoes";
 import Garcom from "@/pages/admin/Garcom";
 import PedidosDelivery from "@/pages/admin/PedidosDelivery";
 import DeliveryDashboard from "@/pages/admin/DeliveryDashboard";
+import EntregadorPanel from "@/pages/admin/EntregadorPanel";
 import Marketing from "@/pages/admin/Marketing";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
@@ -74,6 +75,7 @@ const App = () => (
               <Route path="pedidos" element={<Pedidos />} />
               <Route path="delivery" element={<PedidosDelivery />} />
               <Route path="delivery/dashboard" element={<DeliveryDashboard />} />
+              <Route path="entregador" element={<EntregadorPanel />} />
               <Route path="marketing" element={<Marketing />} />
               <Route path="caixa" element={<Caixa />} />
               <Route path="equipe" element={<Equipe />} />
