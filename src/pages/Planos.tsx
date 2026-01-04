@@ -228,6 +228,14 @@ export default function Planos() {
         </div>
 
         {/* Planos Grid */}
+        {planos.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Nenhum plano disponível no momento.</p>
+            <Button onClick={() => fetchPlanos()} className="mt-4">
+              Tentar novamente
+            </Button>
+          </div>
+        ) : (
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {planos.map((plano) => {
             const Icon = iconMap[plano.nome] || Zap;
