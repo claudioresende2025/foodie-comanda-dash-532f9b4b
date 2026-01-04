@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { 
   Loader2, ArrowLeft, Clock, CheckCircle2, Truck, Package, 
-  XCircle, MapPin, Phone, User, Receipt, Store 
+  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard 
 } from 'lucide-react';
 import { Database } from '@/integrations/supabase/types';
 import { DeliveryMap } from '@/components/delivery/DeliveryMap';
@@ -27,6 +27,13 @@ const statusConfig: Record<DeliveryStatus, {
     bgColor: 'bg-yellow-100',
     icon: Clock,
     message: 'Seu pedido foi recebido e está aguardando confirmação do restaurante.'
+  },
+  pago: { 
+    label: 'Pagamento Confirmado', 
+    color: 'text-emerald-600', 
+    bgColor: 'bg-emerald-100',
+    icon: CreditCard,
+    message: 'Pagamento aprovado! Seu pedido está aguardando confirmação do restaurante.'
   },
   confirmado: { 
     label: 'Confirmado', 
@@ -65,7 +72,7 @@ const statusConfig: Record<DeliveryStatus, {
   },
 };
 
-const statusOrder: DeliveryStatus[] = ['pendente', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
+const statusOrder: DeliveryStatus[] = ['pendente', 'pago', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
 
 export default function DeliveryTracking() {
   const { pedidoId } = useParams<{ pedidoId: string }>();
