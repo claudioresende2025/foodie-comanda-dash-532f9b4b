@@ -200,18 +200,21 @@ export default function Caixa() {
       formasPagamento,
       trocoPara,
       total,
+      mesaId,
     }: {
       comandaId: string;
       formaPagamento: PaymentMethod | 'multiplo';
       formasPagamento?: PagamentoItem[];
       trocoPara?: number;
       total: number;
+      mesaId?: string;
     }) => {
       // Formata as formas de pagamento para salvar no banco
       const formasPagamentoStr = formasPagamento 
         ? formasPagamento.map(p => `${p.metodo}:${p.valor.toFixed(2)}`).join(',')
         : null;
       
+      // 1. Fecha a comanda
       const { error } = await supabase
         .from('comandas')
         .update({
@@ -224,12 +227,27 @@ export default function Caixa() {
         })
         .eq('id', comandaId);
       if (error) throw error;
+      
+      // 2. Atualiza o status da mesa para disponível
+      if (mesaId) {
+        const { error: mesaError } = await supabase
+          .from('mesas')
+          .update({ status: 'disponivel' })
+          .eq('id', mesaId);
+        if (mesaError) {
+          console.error('Erro ao liberar mesa:', mesaError);
+          // Não lança erro aqui para não impedir o fechamento da comanda
+        }
+      }
+      
       return { formaPagamento, formasPagamento, total };
     },
     onSuccess: (result) => {
       // invalida com as mesmas chaves (incluindo empresa_id)
       queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile?.empresa_id, filterStartDate, filterEndDate, filterPaymentMethod] });
+      queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
 
       // Verifica se algum dos pagamentos é PIX
       const temPix = result.formaPagamento === 'pix' || 
@@ -347,6 +365,7 @@ export default function Caixa() {
         formasPagamento: pagamentos.filter(p => p.valor > 0),
         trocoPara: trocoParaNum,
         total,
+        mesaId: selectedComanda.mesa_id,
       });
     } else {
       // Pagamento único
@@ -360,6 +379,7 @@ export default function Caixa() {
         formaPagamento: formaPagamento as PaymentMethod,
         trocoPara: trocoParaNum,
         total,
+        mesaId: selectedComanda.mesa_id,
       });
     }
   };
