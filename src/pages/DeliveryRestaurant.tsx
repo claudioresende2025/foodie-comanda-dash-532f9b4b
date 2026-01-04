@@ -113,26 +113,33 @@ export default function DeliveryRestaurant() {
 
       // Buscar fidelidade
       if (empresaId) {
+        // Buscar pontos do usuário
         const { data: fidelidade } = await supabase
           .from("fidelidade_pontos")
-          .select("*, fidelidade_config:fidelidade_config!inner(*)")
+          .select("*")
           .eq("user_id", session.user.id)
           .eq("empresa_id", empresaId)
           .maybeSingle();
 
         if (fidelidade) {
-          const config = Array.isArray(fidelidade.fidelidade_config) 
-            ? fidelidade.fidelidade_config[0] 
-            : fidelidade.fidelidade_config;
+          // Buscar configuração de fidelidade da empresa
+          const { data: config } = await supabase
+            .from("fidelidade_config")
+            .select("*")
+            .eq("empresa_id", empresaId)
+            .eq("ativo", true)
+            .maybeSingle();
           
-          setFidelidadeData({
-            id: fidelidade.id,
-            pontos_atuais: fidelidade.pontos || 0,
-            pontos_necessarios: config?.pontos_necessarios || 100,
-            valor_recompensa: config?.valor_recompensa || 15,
-            percentual: ((fidelidade.pontos || 0) / (config?.pontos_necessarios || 100)) * 100,
-            reais_por_ponto: config?.reais_por_ponto || 0.01,
-          });
+          if (config) {
+            setFidelidadeData({
+              id: fidelidade.id,
+              pontos_atuais: fidelidade.saldo_pontos || 0,
+              pontos_necessarios: config.pontos_necessarios || 100,
+              valor_recompensa: config.valor_recompensa || 15,
+              percentual: ((fidelidade.saldo_pontos || 0) / (config.pontos_necessarios || 100)) * 100,
+              reais_por_ponto: config.reais_por_ponto || 0.01,
+            });
+          }
         }
       }
     }
