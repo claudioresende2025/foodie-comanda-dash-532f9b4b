@@ -56,7 +56,7 @@ serve(async (req) => {
     logStep("Stripe key verified");
 
     const stripe = new Stripe(stripeKey, {
-      apiVersion: "2025-08-27.basil",
+      apiVersion: "2024-12-18.acacia",
     });
 
     // Criar cliente Supabase com service role
