@@ -59,11 +59,13 @@ export default function Planos() {
 
   const fetchPlanos = async () => {
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('planos')
         .select('*')
         .eq('ativo', true)
         .order('ordem', { ascending: true });
+
+      console.log('Planos data:', data, 'Error:', error);
 
       if (error) throw error;
       
