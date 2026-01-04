@@ -5,3 +5,12 @@ verify_jwt = false
 
 [functions.verify-delivery-payment]
 verify_jwt = false
+
+[functions.create-subscription-checkout]
+verify_jwt = false
+
+[functions.stripe-subscription-webhook]
+verify_jwt = false
+
+[functions.request-refund]
+verify_jwt = true
