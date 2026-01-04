@@ -16,6 +16,7 @@ interface DeliveryTrackingRow {
   status: string;
   latitude: number | null;
   longitude: number | null;
+  precisao: number | null;
   observacao: string | null;
   created_at: string;
 }
@@ -54,6 +55,7 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
           latitude: Number(row.latitude),
           longitude: Number(row.longitude),
           updated_at: row.created_at,
+          precisao: row.precisao ? Number(row.precisao) : undefined,
           status: row.status,
           observacao: row.observacao || undefined,
         });
