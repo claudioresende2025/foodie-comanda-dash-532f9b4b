@@ -120,6 +120,7 @@ export function AdminSidebar() {
     caixa: canAccessCaixa,
     equipe: canAccessEquipe,
     empresa: canAccessEmpresa,
+    assinatura: canAccessEmpresa, // Só proprietário pode gerenciar assinatura
     configuracoes: canAccessConfiguracoes,
   };
 
