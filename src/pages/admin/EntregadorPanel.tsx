@@ -110,7 +110,7 @@ export default function EntregadorPanel() {
 
   // Mutation para atualizar status do pedido
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ pedidoId, newStatus }: { pedidoId: string; newStatus: 'saiu_entrega' | 'entregue' }) => {
+    mutationFn: async ({ pedidoId, newStatus }: { pedidoId: string; newStatus: string }) => {
       const { error } = await supabase
         .from('pedidos_delivery')
         .update({ status: newStatus })
@@ -135,8 +135,7 @@ export default function EntregadorPanel() {
   // Função para enviar localização para o servidor
   const sendLocationToServer = useCallback(async (position: GeolocationPosition, pedidoId: string) => {
     try {
-      // Tabela delivery_tracking existe mas não está nos tipos gerados ainda
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from('delivery_tracking')
         .upsert({
           pedido_delivery_id: pedidoId,
@@ -233,8 +232,7 @@ export default function EntregadorPanel() {
 
     // Atualizar status final da localização
     if (pedidoEmEntrega) {
-      // Tabela delivery_tracking existe mas não está nos tipos gerados ainda
-      await (supabase as any)
+      await supabase
         .from('delivery_tracking')
         .update({ status: 'finalizado' })
         .eq('pedido_delivery_id', pedidoEmEntrega);
