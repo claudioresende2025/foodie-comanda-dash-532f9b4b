@@ -426,9 +426,26 @@ export default function DeliveryRestaurant() {
           },
         });
 
-        if (sErr || !data?.url) {
+        if (sErr) {
           console.error('[DeliveryRestaurant] Erro ao criar checkout:', sErr);
-          throw new Error(sErr?.message || "Erro ao processar cartão.");
+          
+          // Mensagens de erro mais específicas
+          let errorMessage = "Erro ao processar pagamento com cartão.";
+          
+          if (sErr.message?.includes("STRIPE_SECRET_KEY")) {
+            errorMessage = "Sistema de pagamento não configurado. Entre em contato com o restaurante.";
+          } else if (sErr.message?.includes("valor")) {
+            errorMessage = "Erro na validação do valor. Tente atualizar a página.";
+          } else if (sErr.message) {
+            errorMessage = sErr.message;
+          }
+          
+          throw new Error(errorMessage);
+        }
+
+        if (!data?.url) {
+          console.error('[DeliveryRestaurant] URL do checkout não retornada:', data);
+          throw new Error("Não foi possível gerar o link de pagamento. Tente novamente.");
         }
 
         console.log('[DeliveryRestaurant] Checkout session criado, redirecionando para:', data.url);

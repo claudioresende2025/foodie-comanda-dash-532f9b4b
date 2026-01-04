@@ -27,12 +27,30 @@ serve(async (req) => {
 
     if (!stripeKey) {
       logStep("ERROR: STRIPE_SECRET_KEY not found");
-      throw new Error("Configuração da chave Stripe não encontrada.");
+      return new Response(
+        JSON.stringify({ 
+          error: "Sistema de pagamento não configurado. Por favor, entre em contato com o restaurante.",
+          details: "STRIPE_SECRET_KEY não encontrada"
+        }), 
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 503,
+        }
+      );
     }
 
     if (!supabaseUrl || !supabaseServiceKey) {
       logStep("ERROR: Supabase credentials not found");
-      throw new Error("Configuração do Supabase não encontrada.");
+      return new Response(
+        JSON.stringify({ 
+          error: "Erro de configuração do servidor.",
+          details: "Credenciais do Supabase não encontradas"
+        }), 
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 503,
+        }
+      );
     }
 
     logStep("Stripe key verified");
