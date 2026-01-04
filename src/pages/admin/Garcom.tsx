@@ -122,7 +122,7 @@ export default function Garcom() {
       if (!profile?.empresa_id) return [];
       const { data, error } = await supabase
         .from('chamadas_garcom')
-        .select(\`*, mesa:mesas(id, numero_mesa)\`)
+        .select(`*, mesa:mesas(id, numero_mesa)`)
         .eq('empresa_id', profile.empresa_id)
         .eq('status', 'pendente')
         .order('created_at', { ascending: true });
@@ -141,7 +141,7 @@ export default function Garcom() {
       if (!profile?.empresa_id) return [];
       const { data, error } = await supabase
         .from('pedidos')
-        .select(\`
+        .select(`
           *,
           produto:produtos(nome, preco),
           comanda:comandas!inner(
@@ -150,7 +150,7 @@ export default function Garcom() {
             empresa_id,
             mesa:mesas(numero_mesa)
           )
-        \`)
+        `)
         .eq('comanda.empresa_id', profile.empresa_id)
         .order('created_at', { ascending: true });
       if (error) throw error;
@@ -180,18 +180,18 @@ export default function Garcom() {
   // ========== HELPERS ==========
 
   const getMesaDisplayName = (mesa: Mesa): string => {
-    const baseName = (mesa.nome && mesa.nome.trim().length > 0) ? mesa.nome.trim() : \`Mesa \${mesa.numero_mesa}\`;
+    const baseName = (mesa.nome && mesa.nome.trim().length > 0) ? mesa.nome.trim() : `Mesa ${mesa.numero_mesa}`;
     const mergedChildren = mesas.filter(m => m.mesa_juncao_id === mesa.id);
     if (mergedChildren.length > 0) {
       const numbers = [mesa.numero_mesa, ...mergedChildren.map(m => m.numero_mesa)].sort((a, b) => a - b);
-      return \`Mesa \${numbers.join(' + ')}\`;
+      return `Mesa ${numbers.join(' + ')}`;
     }
     if (mesa.mesa_juncao_id) {
       const masterMesa = mesas.find(m => m.id === mesa.mesa_juncao_id);
       if (masterMesa) {
         const allMerged = mesas.filter(m => m.mesa_juncao_id === mesa.mesa_juncao_id);
         const numbers = [masterMesa.numero_mesa, ...allMerged.map(m => m.numero_mesa)].sort((a, b) => a - b);
-        return \`Mesa \${numbers.join(' + ')}\`;
+        return `Mesa ${numbers.join(' + ')}`;
       }
     }
     return baseName;
@@ -254,11 +254,11 @@ export default function Garcom() {
       .channel('garcom-chamadas')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'chamadas_garcom', filter: \`empresa_id=eq.\${profile.empresa_id}\` },
+        { event: '*', schema: 'public', table: 'chamadas_garcom', filter: `empresa_id=eq.${profile.empresa_id}` },
         async (payload) => {
           if (payload.eventType === 'INSERT') {
             if (soundEnabled) playNotificationSound();
-            toast.info(\`Nova chamada recebida!\`, { duration: 5000 });
+            toast.info(`Nova chamada recebida!`, { duration: 5000 });
           }
           queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
         }
@@ -269,7 +269,7 @@ export default function Garcom() {
       .channel('garcom-mesas')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'mesas', filter: \`empresa_id=eq.\${profile.empresa_id}\` },
+        { event: '*', schema: 'public', table: 'mesas', filter: `empresa_id=eq.${profile.empresa_id}` },
         () => {
           queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
         }
@@ -376,7 +376,7 @@ export default function Garcom() {
                     variant="destructive"
                     className="h-20 flex flex-col gap-1"
                     onClick={() => handleAtenderChamada(chamada.id)}
-                    title={\`Atender \${displayName}\`}
+                    title={`Atender ${displayName}`}
                   >
                     <span className="text-lg font-bold">{displayName}</span>
                     <span className="text-xs flex items-center gap-1">
@@ -396,7 +396,7 @@ export default function Garcom() {
           .filter(([key]) => key !== 'juncao')
           .map(([key, label]) => (
             <div key={key} className="flex items-center gap-2">
-              <div className={\`w-4 h-4 rounded border-2 \${mesaStatusColors[key as keyof typeof mesaStatusColors].split(' ').slice(0, 2).join(' ')}\`} />
+              <div className={`w-4 h-4 rounded border-2 ${mesaStatusColors[key as keyof typeof mesaStatusColors].split(' ').slice(0, 2).join(' ')}`} />
               <span className="text-sm text-muted-foreground">{label}</span>
             </div>
           ))}
@@ -415,7 +415,7 @@ export default function Garcom() {
           return (
             <Card
               key={mesa.id}
-              className={\`transition-all hover:scale-105 cursor-pointer border-2 \${mesaStatusColors[mesa.status]} min-w-[100px]\`}
+              className={`transition-all hover:scale-105 cursor-pointer border-2 ${mesaStatusColors[mesa.status]} min-w-[100px]`}
               title={displayName}
             >
               <CardContent className="p-3 text-center">
@@ -500,7 +500,7 @@ export default function Garcom() {
                   return (
                     <Card key={pedido.id} className="relative overflow-hidden">
                       <div
-                        className={\`absolute top-0 left-0 right-0 h-1 \${statusConfig[pedido.status_cozinha as PedidoStatus].color}\`}
+                        className={`absolute top-0 left-0 right-0 h-1 ${statusConfig[pedido.status_cozinha as PedidoStatus].color}`}
                       />
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
