@@ -16,6 +16,8 @@ import DeliveryOrders from "@/pages/DeliveryOrders";
 import DeliveryProfile from "@/pages/DeliveryProfile";
 import Install from "@/pages/Install";
 import Index from "@/pages/Index";
+import Planos from "@/pages/Planos";
+import SuperAdmin from "@/pages/SuperAdmin";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import Dashboard from "@/pages/admin/Dashboard";
 import Onboarding from "@/pages/admin/Onboarding";
