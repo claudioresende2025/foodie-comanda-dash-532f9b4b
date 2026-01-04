@@ -30,6 +30,7 @@ import {
   Truck,
   Loader2,
   Megaphone,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -47,7 +48,8 @@ type MenuItemKey =
   | 'caixa' 
   | 'equipe' 
   | 'empresa' 
-  | 'configuracoes';
+  | 'configuracoes'
+  | 'assinatura';
 
 interface MenuItem {
   key: MenuItemKey;
@@ -68,6 +70,7 @@ const allMenuItems: MenuItem[] = [
   { key: 'caixa', title: 'Caixa', url: '/admin/caixa', icon: Wallet },
   { key: 'equipe', title: 'Equipe', url: '/admin/equipe', icon: Users },
   { key: 'empresa', title: 'Empresa', url: '/admin/empresa', icon: Building2 },
+  { key: 'assinatura', title: 'Assinatura', url: '/admin/assinatura', icon: CreditCard },
   { key: 'configuracoes', title: 'Configurações', url: '/admin/configuracoes', icon: Settings },
 ];
 
