@@ -97,6 +97,7 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
                 latitude: Number(newData.latitude),
                 longitude: Number(newData.longitude),
                 updated_at: newData.created_at,
+                precisao: newData.precisao ? Number(newData.precisao) : undefined,
                 status: newData.status,
                 observacao: newData.observacao || undefined,
               });
