@@ -105,7 +105,7 @@ const Index = () => {
       {/* Footer */}
       <div className="mt-12 text-center">
         <p className="text-green-200 text-sm">
-          © 2024 Food Comanda Pro
+          © 2026 Food Comanda Pro
         </p>
         <div className="flex items-center justify-center gap-2 mt-2 text-green-100/70 text-xs">
           <Users className="w-3 h-3" />
