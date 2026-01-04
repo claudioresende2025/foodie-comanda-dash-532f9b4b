@@ -202,57 +202,87 @@ export default function DeliveryTracking() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Map Card - Only show when status is 'saiu_entrega' */}
+        {/* Map Card - Show when status is 'saiu_entrega' */}
         {currentStatus === 'saiu_entrega' && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-primary" />
-                Rastreamento em Tempo Real
-              </h3>
-              <DeliveryMap
-                deliveryLocation={
-                  deliveryLocation
-                    ? {
-                        latitude: Number(deliveryLocation.latitude),
-                        longitude: Number(deliveryLocation.longitude),
-                      }
-                    : null
-                }
-                customerLocation={
-                  pedido.endereco?.latitude && pedido.endereco?.longitude
-                    ? {
-                        latitude: Number(pedido.endereco.latitude),
-                        longitude: Number(pedido.endereco.longitude),
-                      }
-                    : null
-                }
-                restaurantLocation={
-                  empresa?.latitude && empresa?.longitude
-                    ? {
-                        latitude: Number(empresa.latitude),
-                        longitude: Number(empresa.longitude),
-                      }
-                    : null
-                }
-                restaurantName={empresa?.nome_fantasia}
-                customerAddress={
-                  pedido.endereco
-                    ? `${pedido.endereco.rua}, ${pedido.endereco.numero} - ${pedido.endereco.bairro}`
-                    : undefined
-                }
-              />
-              {hasLocation && deliveryLocation && (
-                <div className="mt-3 p-3 bg-muted rounded-lg text-sm">
-                  <p className="text-muted-foreground">
-                    <strong>Última atualização:</strong>{' '}
-                    {new Date(deliveryLocation.updated_at).toLocaleTimeString('pt-BR')}
-                  </p>
-                  {deliveryLocation.precisao && (
-                    <p className="text-muted-foreground text-xs mt-1">
-                      Precisão: {Math.round(deliveryLocation.precisao)}m
-                    </p>
+          <Card className="overflow-hidden">
+            <CardContent className="p-0">
+              {/* Header do mapa */}
+              <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                      <Truck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">Entrega em Andamento</h3>
+                      <p className="text-sm text-white/80">
+                        {hasLocation ? 'Acompanhe em tempo real' : 'Aguardando localização'}
+                      </p>
+                    </div>
+                  </div>
+                  {hasLocation && (
+                    <div className="flex items-center gap-1 bg-green-500 px-3 py-1 rounded-full text-xs font-bold">
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                      AO VIVO
+                    </div>
                   )}
+                </div>
+              </div>
+              
+              {/* Mapa */}
+              <div className="p-4">
+                <DeliveryMap
+                  deliveryLocation={
+                    deliveryLocation
+                      ? {
+                          latitude: Number(deliveryLocation.latitude),
+                          longitude: Number(deliveryLocation.longitude),
+                        }
+                      : null
+                  }
+                  customerLocation={
+                    pedido.endereco?.latitude && pedido.endereco?.longitude
+                      ? {
+                          latitude: Number(pedido.endereco.latitude),
+                          longitude: Number(pedido.endereco.longitude),
+                        }
+                      : null
+                  }
+                  restaurantLocation={
+                    empresa?.latitude && empresa?.longitude
+                      ? {
+                          latitude: Number(empresa.latitude),
+                          longitude: Number(empresa.longitude),
+                        }
+                      : null
+                  }
+                  restaurantName={empresa?.nome_fantasia}
+                  customerAddress={
+                    pedido.endereco
+                      ? `${pedido.endereco.rua}, ${pedido.endereco.numero} - ${pedido.endereco.bairro}`
+                      : undefined
+                  }
+                  showRoute={true}
+                />
+              </div>
+              
+              {/* Info de atualização */}
+              {hasLocation && deliveryLocation && (
+                <div className="px-4 pb-4">
+                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg text-sm">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Última atualização:</span>
+                      <span className="font-medium">
+                        {new Date(deliveryLocation.updated_at).toLocaleTimeString('pt-BR')}
+                      </span>
+                    </div>
+                    {deliveryLocation.precisao && (
+                      <span className="text-xs text-muted-foreground">
+                        ±{Math.round(deliveryLocation.precisao)}m
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </CardContent>

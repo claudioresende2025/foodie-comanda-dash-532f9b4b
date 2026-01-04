@@ -62,7 +62,7 @@ export default function EntregadorPanel() {
   
   // Ref para o watch do GPS
   const watchIdRef = useRef<number | null>(null);
-  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Buscar pedidos para entrega (status: saiu_entrega ou em_preparo pronto para sair)
   const { data: pedidos = [], isLoading, refetch } = useQuery({
