@@ -93,7 +93,10 @@ export const UpdateNotification = () => {
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-green-600 text-white shadow-lg animate-in slide-in-from-top duration-300">
+    <div 
+      className="fixed top-0 left-0 right-0 bg-green-600 text-white shadow-lg animate-in slide-in-from-top duration-300"
+      style={{ zIndex: 9999 }}
+    >
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">

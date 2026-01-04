@@ -175,6 +175,10 @@ export default function Menu() {
 		};
 		
 		checkPendingCall();
+		
+		// Re-check periodically in case realtime misses an update
+		const interval = setInterval(checkPendingCall, 10000);
+		return () => clearInterval(interval);
 	}, [empresaId, mesaId]);
 
 	// Realtime subscription for order status updates

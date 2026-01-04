@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Bell, Printer, QrCode, Palette, Shield, Download, Eye, EyeOff } from "lucide-react";
+import { Bell, Printer, QrCode, Palette, Shield, Download, Eye, EyeOff, Music, Percent } from "lucide-react";
 import DeliveryConfigSection from "@/components/admin/DeliveryConfigSection";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -21,6 +21,12 @@ type ConfigSettings = {
   clientOrdering: boolean;
   darkTheme: boolean;
   compactMenu: boolean;
+  // Taxa de serviço
+  taxaServicoAtiva: boolean;
+  taxaServicoPercentual: number;
+  // Couver musical
+  couverAtivo: boolean;
+  couverValor: number;
 };
 
 export default function Configuracoes() {
@@ -34,6 +40,12 @@ export default function Configuracoes() {
     clientOrdering: true,
     darkTheme: false,
     compactMenu: false,
+    // Taxa de serviço
+    taxaServicoAtiva: true,
+    taxaServicoPercentual: 10,
+    // Couver musical
+    couverAtivo: false,
+    couverValor: 0,
   });
 
   const [passwordDialog, setPasswordDialog] = useState(false);
@@ -59,6 +71,14 @@ export default function Configuracoes() {
 
   // Save settings to localStorage
   const updateSetting = (key: keyof ConfigSettings, value: boolean) => {
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
+    localStorage.setItem("fcd-settings", JSON.stringify(newSettings));
+    toast.success("Configuração atualizada!");
+  };
+
+  // Save numeric settings to localStorage
+  const updateNumericSetting = (key: keyof ConfigSettings, value: number) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     localStorage.setItem("fcd-settings", JSON.stringify(newSettings));
@@ -155,6 +175,71 @@ export default function Configuracoes() {
       <div className="grid gap-6">
         {/* Delivery - Componente autocontido */}
         <DeliveryConfigSection />
+
+        {/* Taxa de Serviço e Couver */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Percent className="w-5 h-5 text-primary" />
+              <CardTitle className="text-lg">Taxa de Serviço e Couver</CardTitle>
+            </div>
+            <CardDescription>Configure taxas adicionais para o caixa</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Taxa de Serviço</Label>
+                <p className="text-sm text-muted-foreground">Habilitar taxa de serviço (garçom) no fechamento</p>
+              </div>
+              <Switch 
+                checked={settings.taxaServicoAtiva} 
+                onCheckedChange={(v) => updateSetting("taxaServicoAtiva", v)} 
+              />
+            </div>
+            {settings.taxaServicoAtiva && (
+              <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                <Label>Percentual da Taxa (%)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={settings.taxaServicoPercentual}
+                  onChange={(e) => updateNumericSetting("taxaServicoPercentual", parseFloat(e.target.value) || 0)}
+                  className="w-32"
+                />
+              </div>
+            )}
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="flex items-center gap-2">
+                  <Music className="w-4 h-4" />
+                  Couver Musical
+                </Label>
+                <p className="text-sm text-muted-foreground">Habilitar cobrança de couver artístico</p>
+              </div>
+              <Switch 
+                checked={settings.couverAtivo} 
+                onCheckedChange={(v) => updateSetting("couverAtivo", v)} 
+              />
+            </div>
+            {settings.couverAtivo && (
+              <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                <Label>Valor do Couver (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={settings.couverValor}
+                  onChange={(e) => updateNumericSetting("couverValor", parseFloat(e.target.value) || 0)}
+                  className="w-32"
+                  placeholder="Ex: 25.00"
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Notificações */}
         <Card>

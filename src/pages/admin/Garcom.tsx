@@ -42,7 +42,7 @@ const statusLabels = {
   juncao: 'Junção',
 };
 
-// Som de notificação
+// Som de notificação mais alto e persistente
 const playNotificationSound = () => {
   try {
     const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -51,21 +51,25 @@ const playNotificationSound = () => {
     const audioContext = new AudioContextClass();
     if (audioContext.state === 'suspended') audioContext.resume();
 
-    const beep = (freq: number, durMs: number) => {
+    const beep = (freq: number, durMs: number, delay: number = 0) => {
       const osc = audioContext.createOscillator();
       const gain = audioContext.createGain();
       osc.connect(gain);
       gain.connect(audioContext.destination);
       osc.frequency.value = freq;
       osc.type = 'sine';
-      gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + durMs / 1000);
-      osc.start(audioContext.currentTime);
-      osc.stop(audioContext.currentTime + durMs / 1000);
+      const startTime = audioContext.currentTime + delay;
+      gain.gain.setValueAtTime(0.5, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + durMs / 1000);
+      osc.start(startTime);
+      osc.stop(startTime + durMs / 1000);
     };
 
-    beep(800, 300);
-    setTimeout(() => beep(1000, 300), 150);
+    // Sequência de beeps mais chamativa
+    beep(800, 200, 0);
+    beep(1000, 200, 0.25);
+    beep(800, 200, 0.5);
+    beep(1000, 300, 0.75);
   } catch (e) {
     console.log('Audio error:', e);
   }
@@ -75,6 +79,7 @@ export default function Garcom() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundIntervalRef, setSoundIntervalRef] = useState<NodeJS.Timeout | null>(null);
 
   /** MESAS */
   const { data: mesas = [], isLoading: isLoadingMesas } = useQuery({
@@ -147,6 +152,38 @@ export default function Garcom() {
     const mesa = mesas.find(m => m.id === mesaId);
     return mesa ? getMesaDisplayName(mesa) : 'Mesa ?';
   };
+
+  /** Som contínuo enquanto houver chamadas pendentes */
+  useEffect(() => {
+    // Limpa intervalo anterior se existir
+    if (soundIntervalRef) {
+      clearInterval(soundIntervalRef);
+      setSoundIntervalRef(null);
+    }
+
+    // Se há chamadas pendentes e som está ativado, toca continuamente
+    if (chamadas.length > 0 && soundEnabled) {
+      // Toca imediatamente
+      playNotificationSound();
+      
+      // Configura intervalo para tocar a cada 5 segundos
+      const interval = setInterval(() => {
+        playNotificationSound();
+      }, 5000);
+      
+      setSoundIntervalRef(interval);
+      
+      return () => {
+        clearInterval(interval);
+      };
+    }
+    
+    return () => {
+      if (soundIntervalRef) {
+        clearInterval(soundIntervalRef);
+      }
+    };
+  }, [chamadas.length, soundEnabled]);
 
   /** Realtime subscriptions */
   useEffect(() => {
@@ -305,13 +342,13 @@ export default function Garcom() {
           return (
             <Card
               key={mesa.id}
-              className={`transition-all hover:scale-105 cursor-pointer border-2 ${statusColors[mesa.status]}`}
+              className={`transition-all hover:scale-105 cursor-pointer border-2 ${statusColors[mesa.status]} min-w-[100px]`}
               title={displayName}
             >
               <CardContent className="p-3 text-center">
                 <div className="flex flex-col items-center gap-1">
                   <UtensilsCrossed className="w-6 h-6 opacity-70" />
-                  <span className="text-lg font-bold">
+                  <span className="text-sm md:text-lg font-bold whitespace-nowrap">
                     {/* Mostrar sempre o nome completo (incluindo "Mesa X" ou junções) */}
                     {displayName}
                   </span>

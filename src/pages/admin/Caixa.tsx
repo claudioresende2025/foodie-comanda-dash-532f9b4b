@@ -25,8 +25,10 @@ import {
   Truck,
   Filter,
   RefreshCw,
+  Music,
 } from 'lucide-react';
 import { PixQRCode } from '@/components/pix/PixQRCode';
+import { Switch } from '@/components/ui/switch';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
 type CaixaTab = 'mesas' | 'delivery';
@@ -35,13 +37,33 @@ export default function Caixa() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
 
+  // Carrega configurações do localStorage
+  const getSettings = () => {
+    const saved = localStorage.getItem('fcd-settings');
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    return {
+      taxaServicoAtiva: true,
+      taxaServicoPercentual: 10,
+      couverAtivo: false,
+      couverValor: 0,
+    };
+  };
+
+  const savedSettings = getSettings();
+
   // UI states
   const [activeTab, setActiveTab] = useState<CaixaTab>('mesas');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedComanda, setSelectedComanda] = useState<any>(null);
   const [discountPercent, setDiscountPercent] = useState(0);
-  const [serviceCharge, setServiceCharge] = useState(10);
-  const [includeService, setIncludeService] = useState(true);
+  const [serviceCharge, setServiceCharge] = useState(savedSettings.taxaServicoPercentual || 10);
+  const [includeService, setIncludeService] = useState(savedSettings.taxaServicoAtiva !== false);
+  const [includeCouver, setIncludeCouver] = useState(false);
+  const [couverQuantidade, setCouverQuantidade] = useState(1);
+  const [couverValorConfig] = useState(savedSettings.couverValor || 0);
+  const [couverAtivo] = useState(savedSettings.couverAtivo || false);
   const [formaPagamento, setFormaPagamento] = useState<PaymentMethod | ''>('');
   const [trocoPara, setTrocoPara] = useState('');
 
@@ -212,12 +234,18 @@ export default function Caixa() {
   const calcularSubtotal = (comanda: any) =>
     comanda.pedidos?.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0) || 0;
 
+  const calcularCouverTotal = () => {
+    if (!includeCouver || !couverAtivo) return 0;
+    return couverValorConfig * couverQuantidade;
+  };
+
   const calcularTotal = (comanda: any) => {
     const subtotal = calcularSubtotal(comanda);
     const desconto = subtotal * (discountPercent / 100);
     const subtotalComDesconto = subtotal - desconto;
     const taxaServico = includeService ? subtotalComDesconto * (serviceCharge / 100) : 0;
-    return subtotalComDesconto + taxaServico;
+    const couverTotal = calcularCouverTotal();
+    return subtotalComDesconto + taxaServico + couverTotal;
   };
 
   const filteredComandas =
@@ -231,7 +259,9 @@ export default function Caixa() {
   const handleSelectComanda = (comanda: any) => {
     setSelectedComanda(comanda);
     setDiscountPercent(0);
-    setIncludeService(true);
+    setIncludeService(savedSettings.taxaServicoAtiva !== false);
+    setIncludeCouver(false);
+    setCouverQuantidade(1);
     setFormaPagamento('');
     setTrocoPara('');
   };
@@ -424,6 +454,84 @@ export default function Caixa() {
 
                     <Separator />
 
+                    {/* Taxa de Serviço e Couver */}
+                    <div className="space-y-4">
+                      <h3 className="font-medium flex items-center gap-2">
+                        <Percent className="w-4 h-4" />
+                        Taxas Adicionais
+                      </h3>
+                      
+                      {/* Taxa de Serviço */}
+                      <div className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Switch
+                            checked={includeService}
+                            onCheckedChange={setIncludeService}
+                          />
+                          <div>
+                            <p className="font-medium">Taxa de Serviço</p>
+                            <p className="text-sm text-muted-foreground">Gorjeta do garçom</p>
+                          </div>
+                        </div>
+                        {includeService && (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={serviceCharge}
+                              onChange={(e) => setServiceCharge(parseFloat(e.target.value) || 0)}
+                              className="w-20 text-center"
+                            />
+                            <span className="text-sm text-muted-foreground">%</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Couver Musical */}
+                      {couverAtivo && couverValorConfig > 0 && (
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Switch
+                              checked={includeCouver}
+                              onCheckedChange={setIncludeCouver}
+                            />
+                            <div>
+                              <p className="font-medium flex items-center gap-2">
+                                <Music className="w-4 h-4" />
+                                Couver Musical
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                R$ {couverValorConfig.toFixed(2)} por pessoa
+                              </p>
+                            </div>
+                          </div>
+                          {includeCouver && (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCouverQuantidade(Math.max(1, couverQuantidade - 1))}
+                              >
+                                -
+                              </Button>
+                              <span className="w-8 text-center font-medium">{couverQuantidade}</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCouverQuantidade(couverQuantidade + 1)}
+                              >
+                                +
+                              </Button>
+                              <span className="text-sm text-muted-foreground ml-2">pessoas</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <Separator />
+
                     {/* Forma de Pagamento */}
                     <div className="space-y-4">
                       <Label>Forma de Pagamento</Label>
@@ -501,6 +609,14 @@ export default function Caixa() {
                                 serviceCharge /
                                 100
                               ).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+                        {includeCouver && couverAtivo && (
+                          <div className="flex justify-between text-sm text-blue-600">
+                            <span>Couver Musical ({couverQuantidade}x)</span>
+                            <span>
+                              + R$ {calcularCouverTotal().toFixed(2)}
                             </span>
                           </div>
                         )}
