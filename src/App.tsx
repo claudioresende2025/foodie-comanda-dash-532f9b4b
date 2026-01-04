@@ -33,6 +33,7 @@ import PedidosDelivery from "@/pages/admin/PedidosDelivery";
 import DeliveryDashboard from "@/pages/admin/DeliveryDashboard";
 import EntregadorPanel from "@/pages/admin/EntregadorPanel";
 import Marketing from "@/pages/admin/Marketing";
+import Assinatura from "@/pages/admin/Assinatura";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
 
@@ -90,6 +91,7 @@ const App = () => (
               
               {/* 🛑 A ROTA FALTANDO ESTÁ AQUI: */}
               <Route path="garcom" element={<Garcom />} /> 
+              <Route path="assinatura" element={<Assinatura />} /> 
               
             </Route>
             <Route path="*" element={<NotFound />} />
