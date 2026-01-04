@@ -47,6 +47,12 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Status colors para mesas
+        "status-available": "hsl(var(--status-available))",
+        "status-available-foreground": "hsl(var(--status-available-foreground))",
+        "status-occupied": "hsl(var(--status-occupied))",
+        "status-reserved": "hsl(var(--status-reserved))",
+        "status-merged": "hsl(var(--status-merged))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

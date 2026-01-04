@@ -1,13 +1,20 @@
 
-import { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Users, Bell, BellRing, Check, Loader2, UtensilsCrossed, RefreshCw } from 'lucide-react';
+import { 
+  Users, Bell, BellRing, Check, Loader2, UtensilsCrossed, RefreshCw, 
+  Clock, ChefHat, CheckCircle, Truck, XCircle 
+} from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
+
+type PedidoStatus = Database['public']['Enums']['pedido_status'];
 
 type Mesa = {
   id: string;
@@ -15,7 +22,6 @@ type Mesa = {
   status: 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
   capacidade: number;
   mesa_juncao_id: string | null;
-  // opcional: se existir no banco, será utilizado
   nome?: string | null;
 };
 
@@ -24,25 +30,34 @@ type ChamadaGarcom = {
   mesa_id: string;
   status: string;
   created_at: string;
-  // ampliado para tentar trazer nome, se existir
   mesa?: { id?: string; numero_mesa: number; nome?: string | null };
 };
 
-const statusColors = {
-  disponivel: 'bg-status-available border-status-available text-status-available-foreground',
-  ocupada: 'bg-status-occupied border-status-occupied text-white',
-  reservada: 'bg-status-reserved border-status-reserved text-white',
-  juncao: 'bg-status-merged border-status-merged text-white',
+// Cores de status para mesas
+const mesaStatusColors = {
+  disponivel: 'bg-green-100 border-green-500 text-green-700',
+  ocupada: 'bg-orange-100 border-orange-500 text-orange-700',
+  reservada: 'bg-yellow-100 border-yellow-500 text-yellow-700',
+  juncao: 'bg-blue-100 border-blue-500 text-blue-700',
 };
 
-const statusLabels = {
+const mesaStatusLabels = {
   disponivel: 'Disponível',
   ocupada: 'Ocupada',
   reservada: 'Reservada',
   juncao: 'Junção',
 };
 
-// Som de notificação mais alto e persistente
+// Config de status para pedidos (igual ao KDS)
+const statusConfig: Record<PedidoStatus, { label: string; color: string; icon: React.ElementType }> = {
+  pendente: { label: 'Pendente', color: 'bg-yellow-500', icon: Clock },
+  preparando: { label: 'Preparando', color: 'bg-blue-500', icon: ChefHat },
+  pronto: { label: 'Pronto', color: 'bg-green-500', icon: CheckCircle },
+  entregue: { label: 'Entregue', color: 'bg-gray-500', icon: Truck },
+  cancelado: { label: 'Cancelado', color: 'bg-red-500', icon: XCircle },
+};
+
+// Som de notificação
 const playNotificationSound = () => {
   try {
     const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -65,7 +80,6 @@ const playNotificationSound = () => {
       osc.stop(startTime + durMs / 1000);
     };
 
-    // Sequência de beeps mais chamativa
     beep(800, 200, 0);
     beep(1000, 200, 0.25);
     beep(800, 200, 0.5);
@@ -80,15 +94,18 @@ export default function Garcom() {
   const queryClient = useQueryClient();
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundIntervalRef, setSoundIntervalRef] = useState<NodeJS.Timeout | null>(null);
+  const [activeTab, setActiveTab] = useState<PedidoStatus>('pendente');
 
-  /** MESAS */
+  // ========== QUERIES ==========
+
+  // Mesas
   const { data: mesas = [], isLoading: isLoadingMesas } = useQuery({
     queryKey: ['mesas-garcom', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
       const { data, error } = await supabase
         .from('mesas')
-        .select('*') // se existir 'nome' no schema, virá aqui
+        .select('*')
         .eq('empresa_id', profile.empresa_id)
         .order('numero_mesa', { ascending: true });
       if (error) throw error;
@@ -98,21 +115,17 @@ export default function Garcom() {
     staleTime: 30000,
   });
 
-  /** CHAMADAS (com info da mesa numa única consulta) */
+  // Chamadas de garçom
   const { data: chamadas = [], refetch: refetchChamadas } = useQuery({
     queryKey: ['chamadas-garcom', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
       const { data, error } = await supabase
         .from('chamadas_garcom')
-        .select(`
-          *,
-          mesa:mesas(id, numero_mesa)
-        `)
+        .select(\`*, mesa:mesas(id, numero_mesa)\`)
         .eq('empresa_id', profile.empresa_id)
         .eq('status', 'pendente')
         .order('created_at', { ascending: true });
-
       if (error) throw error;
       return (data ?? []) as unknown as ChamadaGarcom[];
     },
@@ -121,71 +134,119 @@ export default function Garcom() {
     refetchInterval: 10000,
   });
 
-  /** Helper: nome exibível de uma mesa (considera junções e nome customizado) */
-  const getMesaDisplayName = (mesa: Mesa): string => {
-    // nome explícito se existir
-    const baseName = (mesa.nome && mesa.nome.trim().length > 0) ? mesa.nome!.trim() : `Mesa ${mesa.numero_mesa}`;
+  // Pedidos (para ver status de todos os pedidos)
+  const { data: pedidos = [], refetch: refetchPedidos } = useQuery({
+    queryKey: ['pedidos-garcom', profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return [];
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select(\`
+          *,
+          produto:produtos(nome, preco),
+          comanda:comandas!inner(
+            id,
+            nome_cliente,
+            empresa_id,
+            mesa:mesas(numero_mesa)
+          )
+        \`)
+        .eq('comanda.empresa_id', profile.empresa_id)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.empresa_id,
+    staleTime: 3000,
+    refetchInterval: 8000,
+  });
 
-    // se esta mesa é a "mãe" da junção (ou seja, outras apontam para ela)
+  // ========== MUTATIONS ==========
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: PedidoStatus }) => {
+      const { error } = await supabase.from('pedidos').update({ status_cozinha: status }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pedidos-garcom', profile?.empresa_id] });
+      toast.success('Status atualizado!');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar status');
+    },
+  });
+
+  // ========== HELPERS ==========
+
+  const getMesaDisplayName = (mesa: Mesa): string => {
+    const baseName = (mesa.nome && mesa.nome.trim().length > 0) ? mesa.nome.trim() : \`Mesa \${mesa.numero_mesa}\`;
     const mergedChildren = mesas.filter(m => m.mesa_juncao_id === mesa.id);
     if (mergedChildren.length > 0) {
       const numbers = [mesa.numero_mesa, ...mergedChildren.map(m => m.numero_mesa)].sort((a, b) => a - b);
-      return `Mesa ${numbers.join(' + ')}`;
+      return \`Mesa \${numbers.join(' + ')}\`;
     }
-
-    // se esta mesa é filha de uma junção
     if (mesa.mesa_juncao_id) {
       const masterMesa = mesas.find(m => m.id === mesa.mesa_juncao_id);
       if (masterMesa) {
         const allMerged = mesas.filter(m => m.mesa_juncao_id === mesa.mesa_juncao_id);
         const numbers = [masterMesa.numero_mesa, ...allMerged.map(m => m.numero_mesa)].sort((a, b) => a - b);
-        return `Mesa ${numbers.join(' + ')}`;
+        return \`Mesa \${numbers.join(' + ')}\`;
       }
     }
-
     return baseName;
   };
 
-  /** Helper: obter display name pelo id (usado nas chamadas e toasts) */
   const getMesaDisplayNameById = (mesaId?: string) => {
     if (!mesaId) return 'Mesa ?';
     const mesa = mesas.find(m => m.id === mesaId);
     return mesa ? getMesaDisplayName(mesa) : 'Mesa ?';
   };
 
-  /** Som contínuo enquanto houver chamadas pendentes */
+  const getNextStatus = (current: PedidoStatus): PedidoStatus | null => {
+    const flow: Record<PedidoStatus, PedidoStatus | null> = {
+      pendente: 'preparando',
+      preparando: 'pronto',
+      pronto: 'entregue',
+      entregue: null,
+      cancelado: null,
+    };
+    return flow[current];
+  };
+
+  const filteredPedidos = useMemo(() => {
+    return pedidos?.filter((p) => p.status_cozinha === activeTab) || [];
+  }, [pedidos, activeTab]);
+
+  const countByStatus = (status: PedidoStatus) => pedidos?.filter((p) => p.status_cozinha === status).length || 0;
+
+  // Mesas visíveis (oculta as marcadas como 'juncao')
+  const visibleMesas = mesas.filter(mesa => mesa.status !== 'juncao');
+
+  // ========== EFFECTS ==========
+
+  // Som contínuo enquanto houver chamadas pendentes
   useEffect(() => {
-    // Limpa intervalo anterior se existir
     if (soundIntervalRef) {
       clearInterval(soundIntervalRef);
       setSoundIntervalRef(null);
     }
 
-    // Se há chamadas pendentes e som está ativado, toca continuamente
     if (chamadas.length > 0 && soundEnabled) {
-      // Toca imediatamente
       playNotificationSound();
-      
-      // Configura intervalo para tocar a cada 5 segundos
       const interval = setInterval(() => {
         playNotificationSound();
       }, 5000);
-      
       setSoundIntervalRef(interval);
-      
-      return () => {
-        clearInterval(interval);
-      };
+      return () => clearInterval(interval);
     }
-    
+
     return () => {
-      if (soundIntervalRef) {
-        clearInterval(soundIntervalRef);
-      }
+      if (soundIntervalRef) clearInterval(soundIntervalRef);
     };
   }, [chamadas.length, soundEnabled]);
 
-  /** Realtime subscriptions */
+  // Realtime subscriptions
   useEffect(() => {
     if (!profile?.empresa_id) return;
 
@@ -193,11 +254,11 @@ export default function Garcom() {
       .channel('garcom-chamadas')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'chamadas_garcom', filter: `empresa_id=eq.${profile.empresa_id}` },
+        { event: '*', schema: 'public', table: 'chamadas_garcom', filter: \`empresa_id=eq.\${profile.empresa_id}\` },
         async (payload) => {
           if (payload.eventType === 'INSERT') {
             if (soundEnabled) playNotificationSound();
-            toast.info(`Nova chamada recebida!`, { duration: 5000 });
+            toast.info(\`Nova chamada recebida!\`, { duration: 5000 });
           }
           queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
         }
@@ -208,9 +269,27 @@ export default function Garcom() {
       .channel('garcom-mesas')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'mesas', filter: `empresa_id=eq.${profile.empresa_id}` },
+        { event: '*', schema: 'public', table: 'mesas', filter: \`empresa_id=eq.\${profile.empresa_id}\` },
         () => {
           queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+        }
+      )
+      .subscribe();
+
+    const channelPedidos = supabase
+      .channel('garcom-pedidos')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedidos' },
+        (payload) => {
+          queryClient.invalidateQueries({ queryKey: ['pedidos-garcom', profile.empresa_id] });
+          if (payload.eventType === 'UPDATE') {
+            const newStatus = (payload.new as any).status_cozinha;
+            if (newStatus === 'pronto' && soundEnabled) {
+              playNotificationSound();
+              toast.success('🔔 Pedido pronto para entregar!', { duration: 5000 });
+            }
+          }
         }
       )
       .subscribe();
@@ -218,11 +297,12 @@ export default function Garcom() {
     return () => {
       supabase.removeChannel(channelChamadas);
       supabase.removeChannel(channelMesas);
+      supabase.removeChannel(channelPedidos);
     };
-    // Removido 'mesas' das dependências para evitar re-subscriptions desnecessárias
   }, [profile?.empresa_id, soundEnabled, queryClient]);
 
-  /** Atender chamada */
+  // ========== HANDLERS ==========
+
   const handleAtenderChamada = async (chamadaId: string) => {
     const { error } = await supabase
       .from('chamadas_garcom')
@@ -233,15 +313,18 @@ export default function Garcom() {
       toast.error('Erro ao atender chamada');
     } else {
       toast.success('Chamada atendida!');
-      // invalidar com chave correta
       queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
-      // opcional: refetch imediato
       refetchChamadas();
     }
   };
 
-  // Mesas visíveis (oculta as marcadas como 'juncao')
-  const visibleMesas = mesas.filter(mesa => mesa.status !== 'juncao');
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+    queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
+    queryClient.invalidateQueries({ queryKey: ['pedidos-garcom', profile?.empresa_id] });
+  };
+
+  // ========== RENDER ==========
 
   if (isLoadingMesas) {
     return (
@@ -260,13 +343,7 @@ export default function Garcom() {
           <p className="text-muted-foreground">Visão otimizada para tablet</p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
-              queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
-            }}
-          >
+          <Button variant="outline" onClick={handleRefresh}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Atualizar
           </Button>
@@ -282,9 +359,9 @@ export default function Garcom() {
 
       {/* Chamadas Pendentes */}
       {chamadas.length > 0 && (
-        <Card className="border-2 border-status-occupied bg-status-occupied/5 animate-pulse">
+        <Card className="border-2 border-orange-500 bg-orange-50 animate-pulse">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-status-occupied">
+            <CardTitle className="flex items-center gap-2 text-orange-600">
               <BellRing className="w-5 h-5" />
               Chamadas Pendentes ({chamadas.length})
             </CardTitle>
@@ -292,18 +369,14 @@ export default function Garcom() {
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {chamadas.map((chamada) => {
-                // nome da mesa preferindo o helper (considera junções e nome customizado)
-                const displayName =
-                  getMesaDisplayNameById(chamada.mesa_id) ||
-                  (chamada.mesa?.nome ? chamada.mesa.nome : `Mesa ${chamada.mesa?.numero_mesa ?? '?'}`);
-
+                const displayName = getMesaDisplayNameById(chamada.mesa_id);
                 return (
                   <Button
                     key={chamada.id}
                     variant="destructive"
                     className="h-20 flex flex-col gap-1"
                     onClick={() => handleAtenderChamada(chamada.id)}
-                    title={`Atender ${displayName}`}
+                    title={\`Atender \${displayName}\`}
                   >
                     <span className="text-lg font-bold">{displayName}</span>
                     <span className="text-xs flex items-center gap-1">
@@ -317,18 +390,18 @@ export default function Garcom() {
         </Card>
       )}
 
-      {/* Legenda de status */}
+      {/* Legenda de status das mesas */}
       <div className="flex flex-wrap gap-3">
-        {Object.entries(statusLabels)
+        {Object.entries(mesaStatusLabels)
           .filter(([key]) => key !== 'juncao')
           .map(([key, label]) => (
             <div key={key} className="flex items-center gap-2">
-              <div className={`w-4 h-4 rounded ${statusColors[key as keyof typeof statusColors].split(' ')[0]}`} />
+              <div className={\`w-4 h-4 rounded border-2 \${mesaStatusColors[key as keyof typeof mesaStatusColors].split(' ').slice(0, 2).join(' ')}\`} />
               <span className="text-sm text-muted-foreground">{label}</span>
             </div>
           ))}
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-status-merged" />
+          <div className="w-4 h-4 rounded border-2 bg-blue-100 border-blue-500" />
           <span className="text-sm text-muted-foreground">Mesas Juntas</span>
         </div>
       </div>
@@ -336,20 +409,19 @@ export default function Garcom() {
       {/* Grid de Mesas */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
         {visibleMesas.map((mesa) => {
-          const displayName = getMesaDisplayName(mesa); // SEM remover "Mesa "
+          const displayName = getMesaDisplayName(mesa);
           const hasMergedChildren = mesas.some(m => m.mesa_juncao_id === mesa.id);
 
           return (
             <Card
               key={mesa.id}
-              className={`transition-all hover:scale-105 cursor-pointer border-2 ${statusColors[mesa.status]} min-w-[100px]`}
+              className={\`transition-all hover:scale-105 cursor-pointer border-2 \${mesaStatusColors[mesa.status]} min-w-[100px]\`}
               title={displayName}
             >
               <CardContent className="p-3 text-center">
                 <div className="flex flex-col items-center gap-1">
                   <UtensilsCrossed className="w-6 h-6 opacity-70" />
                   <span className="text-sm md:text-lg font-bold whitespace-nowrap">
-                    {/* Mostrar sempre o nome completo (incluindo "Mesa X" ou junções) */}
                     {displayName}
                   </span>
                   <span className="text-xs opacity-80">
@@ -357,9 +429,9 @@ export default function Garcom() {
                   </span>
                   <Badge
                     variant="secondary"
-                    className="text-[10px] px-1 py-0 mt-1 bg-background/30"
+                    className="text-[10px] px-1 py-0 mt-1"
                   >
-                    {hasMergedChildren ? 'Juntas' : statusLabels[mesa.status]}
+                    {hasMergedChildren ? 'Juntas' : mesaStatusLabels[mesa.status]}
                   </Badge>
                 </div>
               </CardContent>
@@ -376,7 +448,124 @@ export default function Garcom() {
           </CardContent>
         </Card>
       )}
+
+      {/* Separador */}
+      <div className="border-t pt-6">
+        <h2 className="text-xl font-bold text-foreground mb-4">Acompanhamento de Pedidos</h2>
+      </div>
+
+      {/* Tabs de Pedidos (igual ao KDS) */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PedidoStatus)}>
+        <TabsList className="grid w-full grid-cols-4 h-auto">
+          {(['pendente', 'preparando', 'pronto', 'entregue'] as PedidoStatus[]).map((status) => {
+            const config = statusConfig[status];
+            const count = countByStatus(status);
+            return (
+              <TabsTrigger
+                key={status}
+                value={status}
+                className="relative flex flex-col sm:flex-row items-center gap-1 py-2 px-1 sm:px-3 text-xs sm:text-sm"
+              >
+                <config.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{config.label}</span>
+                {count > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="absolute -top-1 -right-1 sm:relative sm:top-0 sm:right-0 sm:ml-1 h-5 w-5 flex items-center justify-center text-[10px] sm:text-xs"
+                  >
+                    {count}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+
+        {(['pendente', 'preparando', 'pronto', 'entregue'] as PedidoStatus[]).map((status) => (
+          <TabsContent key={status} value={status} className="mt-6">
+            {filteredPedidos.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <p className="text-muted-foreground">
+                    Nenhum pedido {statusConfig[status].label.toLowerCase()}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredPedidos.map((pedido) => {
+                  const StatusIcon = statusConfig[pedido.status_cozinha as PedidoStatus].icon;
+                  const nextStatus = getNextStatus(pedido.status_cozinha as PedidoStatus);
+
+                  return (
+                    <Card key={pedido.id} className="relative overflow-hidden">
+                      <div
+                        className={\`absolute top-0 left-0 right-0 h-1 \${statusConfig[pedido.status_cozinha as PedidoStatus].color}\`}
+                      />
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg">Mesa {pedido.comanda?.mesa?.numero_mesa || '-'}</CardTitle>
+                          <Badge variant="outline" className="text-xs">
+                            <StatusIcon className="w-3 h-3 mr-1" />
+                            {statusConfig[pedido.status_cozinha as PedidoStatus].label}
+                          </Badge>
+                        </div>
+                        {pedido.comanda?.nome_cliente && (
+                          <p className="text-sm text-muted-foreground">{pedido.comanda.nome_cliente}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(pedido.created_at).toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{pedido.produto?.nome || 'Produto não encontrado'}</span>
+                            <Badge variant="secondary">x{pedido.quantidade}</Badge>
+                          </div>
+                          {pedido.notas_cliente && (
+                            <p className="text-sm text-muted-foreground bg-muted p-2 rounded">
+                              📝 {pedido.notas_cliente}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2">
+                          {nextStatus && (
+                            <Button
+                              className="flex-1"
+                              onClick={() => updateStatusMutation.mutate({ id: pedido.id, status: nextStatus })}
+                              disabled={updateStatusMutation.isPending}
+                            >
+                              {updateStatusMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                              ) : null}
+                              {statusConfig[nextStatus].label}
+                            </Button>
+                          )}
+                          {pedido.status_cozinha !== 'cancelado' && pedido.status_cozinha !== 'entregue' && (
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              onClick={() => updateStatusMutation.mutate({ id: pedido.id, status: 'cancelado' })}
+                              disabled={updateStatusMutation.isPending}
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }
-``
