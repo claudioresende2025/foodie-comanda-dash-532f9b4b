@@ -61,6 +61,10 @@ const App = () => (
             <Route path="/menu/:empresaId/:mesaId" element={<Menu />} />
             {/* PWA Install page */}
             <Route path="/install" element={<Install />} />
+            {/* Planos e Assinatura */}
+            <Route path="/planos" element={<Planos />} />
+            {/* Super Admin (Desenvolvedor) */}
+            <Route path="/super-admin" element={<SuperAdmin />} />
             {/* Delivery marketplace */}
             <Route path="/delivery" element={<Delivery />} />
             <Route path="/delivery/auth" element={<DeliveryAuth />} />
