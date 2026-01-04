@@ -8,36 +8,51 @@ interface DeliveryLocation {
   precisao?: number;
 }
 
+interface DeliveryLocationRow {
+  id: string;
+  pedido_delivery_id: string;
+  latitude: number;
+  longitude: number;
+  precisao: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export function useDeliveryTracking(pedidoId: string | undefined) {
   const [location, setLocation] = useState<DeliveryLocation | null>(null);
   const [hasLocation, setHasLocation] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchLocation = useCallback(async () => {
-    if (!pedidoId) return;
+    if (!pedidoId) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      // Buscar localização do motoboy para este pedido
-      const { data, error } = await supabase
-        .from('delivery_locations')
+      // Buscar localização do motoboy usando query direta com cast
+      const { data, error } = await (supabase
+        .from('delivery_locations' as any)
         .select('*')
         .eq('pedido_delivery_id', pedidoId)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle() as any);
 
       if (error) {
-        console.log('Tabela delivery_locations não existe ou erro:', error.message);
+        console.log('Tabela delivery_locations não disponível:', error.message);
         setHasLocation(false);
+        setIsLoading(false);
         return;
       }
 
       if (data) {
+        const row = data as DeliveryLocationRow;
         setLocation({
-          latitude: data.latitude,
-          longitude: data.longitude,
-          updated_at: data.updated_at,
-          precisao: data.precisao,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          updated_at: row.updated_at,
+          precisao: row.precisao || undefined,
         });
         setHasLocation(true);
       } else {
@@ -71,12 +86,12 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
         },
         (payload) => {
           if (payload.new && typeof payload.new === 'object') {
-            const newData = payload.new as any;
+            const newData = payload.new as DeliveryLocationRow;
             setLocation({
               latitude: newData.latitude,
               longitude: newData.longitude,
               updated_at: newData.updated_at,
-              precisao: newData.precisao,
+              precisao: newData.precisao || undefined,
             });
             setHasLocation(true);
           }

@@ -513,6 +513,44 @@ export type Database = {
           },
         ]
       }
+      delivery_locations: {
+        Row: {
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          pedido_delivery_id: string
+          precisao: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          pedido_delivery_id: string
+          precisao?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          pedido_delivery_id?: string
+          precisao?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_locations_pedido_delivery_id_fkey"
+            columns: ["pedido_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos_delivery"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           chave_pix: string | null
