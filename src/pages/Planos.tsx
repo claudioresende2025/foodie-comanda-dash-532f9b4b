@@ -335,6 +335,7 @@ export default function Planos() {
             );
           })}
         </div>
+        )}
 
         {/* Features Section */}
         <div className="mt-20 text-center">
