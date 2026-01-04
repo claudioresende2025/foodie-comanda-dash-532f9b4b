@@ -59,7 +59,31 @@ serve(async (req) => {
       throw new Error("Metadados do pedido não encontrados.");
     }
 
-    logStep("Payment confirmed, creating order in database", orderData);
+    logStep("Payment confirmed, checking for existing order", orderData);
+
+    // Verificar se o pedido já foi criado para esta sessão (evitar duplicatas)
+    const { data: existingOrder } = await supabase
+      .from("pedidos_delivery")
+      .select("id")
+      .eq("stripe_payment_id", sessionId)
+      .maybeSingle();
+
+    if (existingOrder) {
+      logStep("Order already exists", { pedidoId: existingOrder.id });
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          orderId: existingOrder.id,
+          message: "Pedido já existe!" 
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
+    }
+
+    logStep("Creating new order in database", orderData);
 
     // Criar pedido no banco de dados
     const { data: pedido, error: pedidoError } = await supabase
@@ -83,8 +107,14 @@ serve(async (req) => {
       .single();
 
     if (pedidoError) {
-      logStep("ERROR: Failed to create order", pedidoError);
-      throw new Error("Erro ao criar pedido no banco de dados.");
+      logStep("ERROR: Failed to create order", { 
+        error: pedidoError,
+        code: pedidoError.code,
+        message: pedidoError.message,
+        details: pedidoError.details,
+        hint: pedidoError.hint
+      });
+      throw new Error(`Erro ao criar pedido no banco de dados: ${pedidoError.message}`);
     }
 
     logStep("Order created successfully", { pedidoId: pedido.id });
