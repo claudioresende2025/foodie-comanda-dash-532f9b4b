@@ -126,10 +126,11 @@ export default function DeliveryRestaurant() {
             : fidelidade.fidelidade_config;
           
           setFidelidadeData({
-            pontos_atuais: fidelidade.saldo_pontos || 0,
+            id: fidelidade.id,
+            pontos_atuais: fidelidade.pontos || 0,
             pontos_necessarios: config?.pontos_necessarios || 100,
             valor_recompensa: config?.valor_recompensa || 15,
-            percentual: ((fidelidade.saldo_pontos || 0) / (config?.pontos_necessarios || 100)) * 100,
+            percentual: ((fidelidade.pontos || 0) / (config?.pontos_necessarios || 100)) * 100,
             reais_por_ponto: config?.reais_por_ponto || 0.01,
           });
         }
@@ -385,16 +386,15 @@ export default function DeliveryRestaurant() {
         }
 
         // Processar resgate de pontos de fidelidade
-        if (usarPontosFidelidade && pontosAUtilizar > 0) {
+        if (usarPontosFidelidade && pontosAUtilizar > 0 && fidelidadeData?.id) {
           // Debitar pontos do saldo
           const { error: pontoErr } = await supabase
             .from("fidelidade_pontos")
             .update({
-              saldo_pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
+              pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
               updated_at: new Date().toISOString(),
             })
-            .eq("user_id", user.id)
-            .eq("empresa_id", empresaId);
+            .eq("id", fidelidadeData.id);
 
           if (pontoErr) {
             console.error("Erro ao debitar pontos:", pontoErr);
@@ -402,10 +402,9 @@ export default function DeliveryRestaurant() {
 
           // Registrar transação de resgate
           await supabase.from("fidelidade_transacoes").insert({
-            user_id: user.id,
-            empresa_id: empresaId,
-            tipo: "resgate",
+            fidelidade_id: fidelidadeData.id,
             pontos: -pontosAUtilizar,
+            descricao: "Resgate em pedido",
             pedido_delivery_id: ped.id,
           });
         }
