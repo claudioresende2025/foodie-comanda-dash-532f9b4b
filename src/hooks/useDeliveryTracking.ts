@@ -6,16 +6,18 @@ interface DeliveryLocation {
   longitude: number;
   updated_at: string;
   precisao?: number;
+  status?: string;
+  observacao?: string;
 }
 
-interface DeliveryLocationRow {
+interface DeliveryTrackingRow {
   id: string;
   pedido_delivery_id: string;
-  latitude: number;
-  longitude: number;
-  precisao: number | null;
+  status: string;
+  latitude: number | null;
+  longitude: number | null;
+  observacao: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 export function useDeliveryTracking(pedidoId: string | undefined) {
@@ -30,29 +32,30 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
     }
 
     try {
-      // Buscar localização do motoboy usando query direta com cast
-      const { data, error } = await (supabase
-        .from('delivery_locations' as any)
+      // Buscar localização usando a tabela delivery_tracking
+      const { data, error } = await supabase
+        .from('delivery_tracking')
         .select('*')
         .eq('pedido_delivery_id', pedidoId)
-        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle() as any);
+        .maybeSingle();
 
       if (error) {
-        console.log('Tabela delivery_locations não disponível:', error.message);
+        console.log('Erro ao buscar tracking:', error.message);
         setHasLocation(false);
         setIsLoading(false);
         return;
       }
 
-      if (data) {
-        const row = data as DeliveryLocationRow;
+      if (data && data.latitude && data.longitude) {
+        const row = data as DeliveryTrackingRow;
         setLocation({
-          latitude: row.latitude,
-          longitude: row.longitude,
-          updated_at: row.updated_at,
-          precisao: row.precisao || undefined,
+          latitude: Number(row.latitude),
+          longitude: Number(row.longitude),
+          updated_at: row.created_at,
+          status: row.status,
+          observacao: row.observacao || undefined,
         });
         setHasLocation(true);
       } else {
@@ -75,25 +78,28 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
     if (!pedidoId) return;
 
     const channel = supabase
-      .channel(`delivery-location-${pedidoId}`)
+      .channel(`delivery-tracking-${pedidoId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'delivery_locations',
+          table: 'delivery_tracking',
           filter: `pedido_delivery_id=eq.${pedidoId}`,
         },
         (payload) => {
           if (payload.new && typeof payload.new === 'object') {
-            const newData = payload.new as DeliveryLocationRow;
-            setLocation({
-              latitude: newData.latitude,
-              longitude: newData.longitude,
-              updated_at: newData.updated_at,
-              precisao: newData.precisao || undefined,
-            });
-            setHasLocation(true);
+            const newData = payload.new as DeliveryTrackingRow;
+            if (newData.latitude && newData.longitude) {
+              setLocation({
+                latitude: Number(newData.latitude),
+                longitude: Number(newData.longitude),
+                updated_at: newData.created_at,
+                status: newData.status,
+                observacao: newData.observacao || undefined,
+              });
+              setHasLocation(true);
+            }
           }
         }
       )
