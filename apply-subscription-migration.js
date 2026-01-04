@@ -1,12 +1,19 @@
 // Script para aplicar migration de assinatura no Supabase
 // Execute com: node apply-subscription-migration.js
 
-const fs = require('fs');
-const https = require('https');
-const path = require('path');
+import fs from 'fs';
+import https from 'https';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Lê as variáveis de ambiente ou usa valores do .env
-require('dotenv').config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Tenta carregar dotenv se disponível
+try {
+  const dotenv = await import('dotenv');
+  dotenv.config();
+} catch (e) {}
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://zlwpxflqtyhdwanmupgy.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
