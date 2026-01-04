@@ -141,7 +141,7 @@ serve(async (req) => {
         },
       ],
       subscription_data: {
-        trial_period_days: 7, // 7 dias de trial
+        trial_period_days: 3, // 3 dias de trial
         metadata: {
           empresa_id: empresaId,
           plano_id: planoId,

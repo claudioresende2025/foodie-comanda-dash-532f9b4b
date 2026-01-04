@@ -55,13 +55,14 @@ interface Assinatura {
   current_period_end: string;
   cancel_at_period_end: boolean;
   canceled_at: string | null;
+  plano_id: string | null;
   plano: {
     id: string;
     nome: string;
     preco_mensal: number;
     preco_anual: number;
     recursos: string[];
-  };
+  } | null;
 }
 
 interface Pagamento {
@@ -95,7 +96,7 @@ export default function Assinatura() {
 
   const fetchData = async () => {
     try {
-      // Buscar assinatura
+      // Buscar assinatura com plano
       const { data: assinaturaData, error: assinaturaError } = await (supabase as any)
         .from('assinaturas')
         .select('*, plano:planos(*)')
@@ -103,14 +104,29 @@ export default function Assinatura() {
         .single();
 
       if (!assinaturaError && assinaturaData) {
+        let planoData = assinaturaData.plano;
+        
+        // Se não tem plano vinculado (trial inicial), buscar plano básico como referência
+        if (!planoData && assinaturaData.status === 'trialing') {
+          const { data: planoBasico } = await (supabase as any)
+            .from('planos')
+            .select('*')
+            .eq('ativo', true)
+            .order('ordem', { ascending: true })
+            .limit(1)
+            .single();
+          
+          planoData = planoBasico;
+        }
+
         setAssinatura({
           ...assinaturaData,
-          plano: {
-            ...assinaturaData.plano,
-            recursos: typeof assinaturaData.plano?.recursos === 'string' 
-              ? JSON.parse(assinaturaData.plano.recursos) 
-              : assinaturaData.plano?.recursos || [],
-          },
+          plano: planoData ? {
+            ...planoData,
+            recursos: typeof planoData.recursos === 'string' 
+              ? JSON.parse(planoData.recursos) 
+              : planoData.recursos || [],
+          } : null,
         });
       }
 
@@ -259,26 +275,31 @@ export default function Assinatura() {
                     </div>
                     <div>
                       <CardTitle className="flex items-center gap-2">
-                        Plano {assinatura.plano?.nome}
+                        {assinatura.plano?.nome ? `Plano ${assinatura.plano.nome}` : 'Período de Teste'}
                         <Badge className={statusConfig?.color}>{statusConfig?.label}</Badge>
                       </CardTitle>
                       <CardDescription>
-                        {assinatura.periodo === 'anual' ? 'Cobrança anual' : 'Cobrança mensal'}
+                        {assinatura.status === 'trialing' && !assinatura.plano_id
+                          ? 'Escolha um plano antes do fim do trial'
+                          : assinatura.periodo === 'anual' ? 'Cobrança anual' : 'Cobrança mensal'
+                        }
                       </CardDescription>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold">
-                      {formatCurrency(
-                        assinatura.periodo === 'anual' 
-                          ? assinatura.plano?.preco_anual 
-                          : assinatura.plano?.preco_mensal
-                      )}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      /{assinatura.periodo === 'anual' ? 'ano' : 'mês'}
-                    </p>
-                  </div>
+                  {assinatura.plano && (
+                    <div className="text-right">
+                      <p className="text-2xl font-bold">
+                        {formatCurrency(
+                          assinatura.periodo === 'anual' 
+                            ? assinatura.plano?.preco_anual 
+                            : assinatura.plano?.preco_mensal
+                        )}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        /{assinatura.periodo === 'anual' ? 'ano' : 'mês'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardHeader>
 
@@ -292,7 +313,7 @@ export default function Assinatura() {
                         {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia' : 'dias'} restantes
                       </span>
                     </div>
-                    <Progress value={(7 - trialDaysRemaining) / 7 * 100} className="h-2" />
+                    <Progress value={(3 - trialDaysRemaining) / 3 * 100} className="h-2" />
                     <p className="text-xs text-blue-600 mt-2">
                       Seu cartão será cobrado em {format(new Date(assinatura.trial_end), 'dd/MM/yyyy', { locale: ptBR })}
                     </p>
@@ -334,9 +355,9 @@ export default function Assinatura() {
               <CardFooter className="flex gap-2">
                 <Button variant="outline" onClick={() => navigate('/planos')}>
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Trocar Plano
+                  {assinatura.plano_id ? 'Trocar Plano' : 'Escolher Plano'}
                 </Button>
-                {!assinatura.cancel_at_period_end && assinatura.status !== 'canceled' && (
+                {!assinatura.cancel_at_period_end && assinatura.status !== 'canceled' && assinatura.plano_id && (
                   <Button variant="outline" onClick={() => setCancelDialogOpen(true)}>
                     Cancelar Assinatura
                   </Button>
@@ -350,21 +371,23 @@ export default function Assinatura() {
             </Card>
 
             {/* Recursos do Plano */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recursos do seu plano</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {assinatura.plano?.recursos?.map((recurso, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                      <span className="text-sm">{recurso}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            {assinatura.plano?.recursos && assinatura.plano.recursos.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recursos {assinatura.plano_id ? 'do seu plano' : 'inclusos no trial'}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    {assinatura.plano.recursos.map((recurso, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        <span className="text-sm">{recurso}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Histórico de Pagamentos */}
             <Card>

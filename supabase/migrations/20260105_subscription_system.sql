@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS public.assinaturas (
   stripe_subscription_id VARCHAR(255),
   periodo VARCHAR(20) DEFAULT 'mensal', -- mensal ou anual
   trial_start TIMESTAMPTZ DEFAULT NOW(),
-  trial_end TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days'),
+  trial_end TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '3 days'),
   current_period_start TIMESTAMPTZ,
   current_period_end TIMESTAMPTZ,
   cancel_at_period_end BOOLEAN DEFAULT false,
@@ -198,7 +198,7 @@ VALUES
   ('stripe_public_key', '', 'string', 'Chave pública do Stripe', 'stripe'),
   ('stripe_secret_key', '', 'string', 'Chave secreta do Stripe (armazenada em secrets)', 'stripe'),
   ('stripe_webhook_secret', '', 'string', 'Secret do Webhook Stripe', 'stripe'),
-  ('trial_days', '7', 'number', 'Dias de trial gratuito', 'geral'),
+  ('trial_days', '3', 'number', 'Dias de trial gratuito', 'geral'),
   ('pix_chave', '', 'string', 'Chave PIX para recebimentos', 'pix'),
   ('pix_tipo', 'cpf', 'string', 'Tipo da chave PIX (cpf, cnpj, email, telefone, aleatoria)', 'pix'),
   ('pix_nome', '', 'string', 'Nome do recebedor PIX', 'pix'),
@@ -218,7 +218,7 @@ ON CONFLICT (chave) DO NOTHING;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'empresas' AND column_name = 'trial_ends_at') THEN
-    ALTER TABLE public.empresas ADD COLUMN trial_ends_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days');
+    ALTER TABLE public.empresas ADD COLUMN trial_ends_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '3 days');
   END IF;
   
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'empresas' AND column_name = 'subscription_status') THEN
@@ -430,7 +430,7 @@ RETURNS TRIGGER AS $$
 BEGIN
   -- Criar assinatura de trial automaticamente quando empresa é criada
   INSERT INTO public.assinaturas (empresa_id, status, trial_start, trial_end)
-  VALUES (NEW.id, 'trialing', NOW(), NOW() + INTERVAL '7 days')
+  VALUES (NEW.id, 'trialing', NOW(), NOW() + INTERVAL '3 days')
   ON CONFLICT (empresa_id) DO NOTHING;
   
   RETURN NEW;
