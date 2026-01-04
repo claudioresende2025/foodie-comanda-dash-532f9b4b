@@ -1,39 +1,77 @@
-# CORREÇÃO: Edge Function - Erro de Status Non-2xx
+# CORREÇÃO: Edge Function - Erro de Pagamento com Cartão
 
-## 🔴 Problema Identificado
+## 🔴 Problema
 
-O erro "Edge Function returned a non-2xx status code" ocorre quando:
-1. A chave do Stripe não está configurada nas Edge Functions
-2. Há um erro de validação nos dados do pedido
-3. Problema de CORS ou configuração da função
+Erro "Edge Function returned a non-2xx status code" ao clicar em "Pagar com Cartão de Crédito"
 
-## ✅ Solução
+**Causa:** A chave do Stripe não está configurada nas Edge Functions do Supabase
 
-### Passo 1: Configurar Secrets no Supabase
+## ✅ Solução Rápida (3 Passos)
 
-Você precisa adicionar os segredos (secrets) no painel do Supabase:
-
-1. Acesse: https://supabase.com/dashboard/project/zlwpxflqtyhdwanmupgy/settings/functions
-2. Na seção "Secrets", adicione:
-   - **STRIPE_SECRET_KEY**: sua chave secreta do Stripe (começa com `sk_`)
-   - **SUPABASE_SERVICE_ROLE_KEY**: já deve estar configurada automaticamente
-
-### Passo 2: Obter Chave do Stripe
+### 1️⃣ Obter Chave do Stripe
 
 1. Acesse: https://dashboard.stripe.com/test/apikeys
-2. Copie a "Secret key" (começa com `sk_test_`)
-3. Cole no campo STRIPE_SECRET_KEY no Supabase
+2. Copie a **Secret key** (começa com `sk_test_...` para modo teste)
+3. ⚠️ Nunca compartilhe esta chave!
 
-### Passo 3: Verificar Configuração
+### 2️⃣ Configurar no Supabase
 
-Após adicionar os secrets, as Edge Functions serão reiniciadas automaticamente.
+1. Acesse o painel de funções:
+   👉 https://supabase.com/dashboard/project/zlwpxflqtyhdwanmupgy/settings/functions
 
-## 🔧 Correção Alternativa (Tratamento de Erro Melhorado)
+2. Role até a seção **"Secrets"** (Segredos)
 
-Vou melhorar o tratamento de erro no código para dar uma mensagem mais clara ao usuário.
+3. Clique em **"Add new secret"**
 
-## 📝 Notas
+4. Adicione:
+   - **Name:** `STRIPE_SECRET_KEY`
+   - **Value:** cole a chave do Stripe (`sk_test_...`)
 
-- As Edge Functions precisam de secrets configurados no painel do Supabase
-- Os secrets não ficam no código por questões de segurança
-- Após configurar, teste novamente o pagamento com cartão
+5. Clique em **"Add secret"**
+
+### 3️⃣ Fazer Deploy das Correções
+
+**Opção A - Via Terminal (Recomendado):**
+```bash
+./deploy-functions.sh
+```
+
+**Opção B - Manual via Dashboard:**
+1. Acesse: https://supabase.com/dashboard/project/zlwpxflqtyhdwanmupgy/functions
+2. Para cada função (create-delivery-checkout, verify-delivery-payment, complete-delivery-order):
+   - Clique na função
+   - Clique em "Deploy"
+   - Aguarde o deploy
+
+## ✅ O que foi Corrigido no Código
+
+✔️ Melhor tratamento de erros
+✔️ Mensagens mais claras para o usuário
+✔️ Validação de configuração do Stripe
+✔️ Logs detalhados para debug
+
+## 🧪 Como Testar
+
+1. Acesse o delivery do restaurante
+2. Adicione produtos ao carrinho
+3. Clique em "Finalizar Pedido"
+4. Escolha "Cartão de Crédito"
+5. Preencha o endereço
+6. Clique em "Pagar"
+
+**Resultado esperado:** Você será redirecionado para a página de pagamento do Stripe
+
+## 📝 Notas Importantes
+
+- ⚠️ Use `sk_test_...` para testes (não cobra de verdade)
+- ⚠️ Use `sk_live_...` apenas em produção (cobra de verdade)
+- ⚠️ Nunca commite as chaves secretas no código
+- ✅ As chaves ficam seguras nos Secrets do Supabase
+
+## 🆘 Precisa de Ajuda?
+
+Se o erro persistir:
+1. Verifique se a chave do Stripe está correta
+2. Confirme que salvou o secret com o nome exato: `STRIPE_SECRET_KEY`
+3. Aguarde 1-2 minutos após adicionar o secret
+4. Limpe o cache do navegador e teste novamente
