@@ -184,7 +184,7 @@ export default function Planos() {
             <div>
               <h1 className="text-2xl font-bold">Escolha seu Plano</h1>
               <p className="text-muted-foreground text-sm">
-                Comece grátis por 7 dias, cancele quando quiser
+                Comece grátis por 3 dias, cancele quando quiser
               </p>
             </div>
           </div>
@@ -196,7 +196,7 @@ export default function Planos() {
         <div className="mb-12 text-center">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-6">
             <Clock className="w-4 h-4" />
-            <span className="font-medium">7 dias grátis em qualquer plano</span>
+            <span className="font-medium">3 dias grátis em qualquer plano</span>
           </div>
           
           <h2 className="text-4xl font-bold mb-4">
@@ -354,7 +354,7 @@ export default function Planos() {
               <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Clock className="w-6 h-6 text-primary" />
               </div>
-              <h4 className="font-semibold mb-2">7 Dias Grátis</h4>
+              <h4 className="font-semibold mb-2">3 Dias Grátis</h4>
               <p className="text-sm text-muted-foreground">Teste todas as funcionalidades sem compromisso</p>
             </div>
             
@@ -384,7 +384,7 @@ export default function Planos() {
             <div className="bg-card rounded-lg p-6 border">
               <h4 className="font-semibold mb-2">Como funciona o período de teste?</h4>
               <p className="text-muted-foreground text-sm">
-                Você tem 7 dias para testar todas as funcionalidades do plano escolhido gratuitamente. 
+                Você tem 3 dias para testar todas as funcionalidades do plano escolhido gratuitamente. 
                 Não cobramos nada durante esse período e você pode cancelar a qualquer momento.
               </p>
             </div>
