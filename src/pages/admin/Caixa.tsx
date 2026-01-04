@@ -29,9 +29,15 @@ import {
 } from 'lucide-react';
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
 type CaixaTab = 'mesas' | 'delivery';
+
+type PagamentoItem = {
+  metodo: PaymentMethod;
+  valor: number;
+};
 
 export default function Caixa() {
   const { profile } = useAuth();
@@ -66,6 +72,11 @@ export default function Caixa() {
   const [couverAtivo] = useState(savedSettings.couverAtivo || false);
   const [formaPagamento, setFormaPagamento] = useState<PaymentMethod | ''>('');
   const [trocoPara, setTrocoPara] = useState('');
+  
+  // Pagamento múltiplo
+  const [pagamentoMultiplo, setPagamentoMultiplo] = useState(false);
+  const [pagamentos, setPagamentos] = useState<PagamentoItem[]>([]);
+  const [metodosAtivos, setMetodosAtivos] = useState<PaymentMethod[]>([]);
 
   // PIX modal
   const [showPixModal, setShowPixModal] = useState(false);
@@ -186,34 +197,49 @@ export default function Caixa() {
     mutationFn: async ({
       comandaId,
       formaPagamento,
+      formasPagamento,
       trocoPara,
       total,
     }: {
       comandaId: string;
-      formaPagamento: PaymentMethod;
+      formaPagamento: PaymentMethod | 'multiplo';
+      formasPagamento?: PagamentoItem[];
       trocoPara?: number;
       total: number;
     }) => {
+      // Formata as formas de pagamento para salvar no banco
+      const formasPagamentoStr = formasPagamento 
+        ? formasPagamento.map(p => `${p.metodo}:${p.valor.toFixed(2)}`).join(',')
+        : null;
+      
       const { error } = await supabase
         .from('comandas')
         .update({
           status: 'fechada',
           forma_pagamento: formaPagamento,
+          formas_pagamento: formasPagamentoStr,
           troco_para: trocoPara || null,
           total,
           data_fechamento: new Date().toISOString(),
         })
         .eq('id', comandaId);
       if (error) throw error;
-      return { formaPagamento, total };
+      return { formaPagamento, formasPagamento, total };
     },
     onSuccess: (result) => {
       // invalida com as mesmas chaves (incluindo empresa_id)
       queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile?.empresa_id, filterStartDate, filterEndDate, filterPaymentMethod] });
 
-      if (result.formaPagamento === 'pix') {
-        setPixValue(result.total);
+      // Verifica se algum dos pagamentos é PIX
+      const temPix = result.formaPagamento === 'pix' || 
+        result.formasPagamento?.some(p => p.metodo === 'pix');
+      
+      if (temPix) {
+        const valorPix = result.formasPagamento 
+          ? result.formasPagamento.find(p => p.metodo === 'pix')?.valor || 0
+          : result.total;
+        setPixValue(valorPix);
         setShowPixModal(true);
         toast.success('Comanda fechada! Exibindo QR Code PIX.');
       } else {
@@ -264,21 +290,78 @@ export default function Caixa() {
     setCouverQuantidade(1);
     setFormaPagamento('');
     setTrocoPara('');
+    // Reset pagamento múltiplo
+    setPagamentoMultiplo(false);
+    setPagamentos([]);
+    setMetodosAtivos([]);
+  };
+
+  // Funções para pagamento múltiplo
+  const toggleMetodoPagamento = (metodo: PaymentMethod) => {
+    if (metodosAtivos.includes(metodo)) {
+      setMetodosAtivos(metodosAtivos.filter(m => m !== metodo));
+      setPagamentos(pagamentos.filter(p => p.metodo !== metodo));
+    } else {
+      setMetodosAtivos([...metodosAtivos, metodo]);
+      setPagamentos([...pagamentos, { metodo, valor: 0 }]);
+    }
+  };
+
+  const atualizarValorPagamento = (metodo: PaymentMethod, valor: number) => {
+    setPagamentos(pagamentos.map(p => 
+      p.metodo === metodo ? { ...p, valor } : p
+    ));
+  };
+
+  const getTotalPagamentos = () => {
+    return pagamentos.reduce((acc, p) => acc + p.valor, 0);
+  };
+
+  const getValorRestante = () => {
+    if (!selectedComanda) return 0;
+    return calcularTotal(selectedComanda) - getTotalPagamentos();
   };
 
   const handleFinalizarPagamento = () => {
     if (!selectedComanda) return;
-    if (!formaPagamento) {
-      toast.error('Selecione a forma de pagamento');
-      return;
+    
+    const total = calcularTotal(selectedComanda);
+    
+    if (pagamentoMultiplo) {
+      // Validação para pagamento múltiplo
+      if (metodosAtivos.length < 2) {
+        toast.error('Selecione pelo menos 2 formas de pagamento');
+        return;
+      }
+      
+      const totalPagamentos = getTotalPagamentos();
+      if (Math.abs(totalPagamentos - total) > 0.01) {
+        toast.error(`A soma dos pagamentos (R$ ${totalPagamentos.toFixed(2)}) deve ser igual ao total (R$ ${total.toFixed(2)})`);
+        return;
+      }
+      
+      const trocoParaNum = trocoPara ? parseFloat(trocoPara) : undefined;
+      closeComandaMutation.mutate({
+        comandaId: selectedComanda.id,
+        formaPagamento: 'multiplo',
+        formasPagamento: pagamentos.filter(p => p.valor > 0),
+        trocoPara: trocoParaNum,
+        total,
+      });
+    } else {
+      // Pagamento único
+      if (!formaPagamento) {
+        toast.error('Selecione a forma de pagamento');
+        return;
+      }
+      const trocoParaNum = trocoPara ? parseFloat(trocoPara) : undefined;
+      closeComandaMutation.mutate({
+        comandaId: selectedComanda.id,
+        formaPagamento: formaPagamento as PaymentMethod,
+        trocoPara: trocoParaNum,
+        total,
+      });
     }
-    const trocoParaNum = trocoPara ? parseFloat(trocoPara) : undefined;
-    closeComandaMutation.mutate({
-      comandaId: selectedComanda.id,
-      formaPagamento: formaPagamento as PaymentMethod,
-      trocoPara: trocoParaNum,
-      total: calcularTotal(selectedComanda),
-    });
   };
 
   const handlePrint = () => {
@@ -291,6 +374,9 @@ export default function Caixa() {
     setSelectedComanda(null);
     setFormaPagamento('');
     setTrocoPara('');
+    setPagamentoMultiplo(false);
+    setPagamentos([]);
+    setMetodosAtivos([]);
   };
 
   const handleApplyFilters = () => {
@@ -534,50 +620,178 @@ export default function Caixa() {
 
                     {/* Forma de Pagamento */}
                     <div className="space-y-4">
-                      <Label>Forma de Pagamento</Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { value: 'dinheiro', label: 'Dinheiro', icon: DollarSign },
-                          { value: 'pix', label: 'PIX', icon: QrCode },
-                          { value: 'cartao_credito', label: 'Crédito', icon: Receipt },
-                          { value: 'cartao_debito', label: 'Débito', icon: Receipt },
-                        ].map((method) => (
-                          <Button
-                            key={method.value}
-                            variant={formaPagamento === method.value ? 'default' : 'outline'}
-                            onClick={() => setFormaPagamento(method.value as PaymentMethod)}
-                            className="h-12"
-                          >
-                            <method.icon className="w-4 h-4 mr-2" />
-                            {method.label}
-                          </Button>
-                        ))}
-                      </div>
-
-                      {formaPagamento === 'dinheiro' && (
-                        <div className="space-y-2">
-                          <Label>Troco para (R$)</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="Valor recebido"
-                            value={trocoPara}
-                            onChange={(e) => setTrocoPara(e.target.value)}
+                      <div className="flex items-center justify-between">
+                        <Label>Forma de Pagamento</Label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Pagamento múltiplo</span>
+                          <Switch
+                            checked={pagamentoMultiplo}
+                            onCheckedChange={(checked) => {
+                              setPagamentoMultiplo(checked);
+                              if (!checked) {
+                                setPagamentos([]);
+                                setMetodosAtivos([]);
+                              } else {
+                                setFormaPagamento('');
+                              }
+                            }}
                           />
-                          {trocoPara && parseFloat(trocoPara) >= calcularTotal(selectedComanda) && (
-                            <p className="text-sm text-green-600">
-                              Troco: R${' '}
-                              {(parseFloat(trocoPara) - calcularTotal(selectedComanda)).toFixed(2)}
+                        </div>
+                      </div>
+                      
+                      {!pagamentoMultiplo ? (
+                        // Pagamento único
+                        <>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { value: 'dinheiro', label: 'Dinheiro', icon: DollarSign },
+                              { value: 'pix', label: 'PIX', icon: QrCode },
+                              { value: 'cartao_credito', label: 'Crédito', icon: Receipt },
+                              { value: 'cartao_debito', label: 'Débito', icon: Receipt },
+                            ].map((method) => (
+                              <Button
+                                key={method.value}
+                                variant={formaPagamento === method.value ? 'default' : 'outline'}
+                                onClick={() => setFormaPagamento(method.value as PaymentMethod)}
+                                className="h-12"
+                              >
+                                <method.icon className="w-4 h-4 mr-2" />
+                                {method.label}
+                              </Button>
+                            ))}
+                          </div>
+
+                          {formaPagamento === 'dinheiro' && (
+                            <div className="space-y-2">
+                              <Label>Troco para (R$)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Valor recebido"
+                                value={trocoPara}
+                                onChange={(e) => setTrocoPara(e.target.value)}
+                              />
+                              {trocoPara && parseFloat(trocoPara) >= calcularTotal(selectedComanda) && (
+                                <p className="text-sm text-green-600">
+                                  Troco: R${' '}
+                                  {(parseFloat(trocoPara) - calcularTotal(selectedComanda)).toFixed(2)}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {formaPagamento === 'pix' && !empresa?.chave_pix && (
+                            <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                              ⚠️ Chave PIX não cadastrada. Configure em Configurações {'>'} Empresa.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        // Pagamento múltiplo
+                        <div className="space-y-4">
+                          <p className="text-sm text-muted-foreground">
+                            Selecione as formas de pagamento e informe os valores
+                          </p>
+                          
+                          <div className="space-y-3">
+                            {[
+                              { value: 'dinheiro' as PaymentMethod, label: 'Dinheiro', icon: DollarSign },
+                              { value: 'pix' as PaymentMethod, label: 'PIX', icon: QrCode },
+                              { value: 'cartao_credito' as PaymentMethod, label: 'Crédito', icon: Receipt },
+                              { value: 'cartao_debito' as PaymentMethod, label: 'Débito', icon: Receipt },
+                            ].map((method) => {
+                              const isActive = metodosAtivos.includes(method.value);
+                              const pagamento = pagamentos.find(p => p.metodo === method.value);
+                              
+                              return (
+                                <div key={method.value} className="space-y-2">
+                                  <div 
+                                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
+                                      isActive ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                                    }`}
+                                    onClick={() => toggleMetodoPagamento(method.value)}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Checkbox 
+                                        checked={isActive}
+                                        onCheckedChange={() => toggleMetodoPagamento(method.value)}
+                                      />
+                                      <method.icon className="w-4 h-4" />
+                                      <span className="font-medium">{method.label}</span>
+                                    </div>
+                                  </div>
+                                  
+                                  {isActive && (
+                                    <div className="ml-8 flex items-center gap-2">
+                                      <Label className="text-sm">Valor:</Label>
+                                      <div className="relative flex-1">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">R$</span>
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={pagamento?.valor || ''}
+                                          onChange={(e) => atualizarValorPagamento(method.value, parseFloat(e.target.value) || 0)}
+                                          className="pl-10"
+                                          placeholder="0.00"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          
+                          {/* Resumo do pagamento múltiplo */}
+                          {metodosAtivos.length > 0 && (
+                            <div className="p-3 bg-muted rounded-lg space-y-1">
+                              <div className="flex justify-between text-sm">
+                                <span>Total da conta:</span>
+                                <span className="font-medium">R$ {calcularTotal(selectedComanda).toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span>Soma dos pagamentos:</span>
+                                <span className={`font-medium ${Math.abs(getValorRestante()) < 0.01 ? 'text-green-600' : 'text-amber-600'}`}>
+                                  R$ {getTotalPagamentos().toFixed(2)}
+                                </span>
+                              </div>
+                              {Math.abs(getValorRestante()) > 0.01 && (
+                                <div className="flex justify-between text-sm text-amber-600">
+                                  <span>{getValorRestante() > 0 ? 'Falta:' : 'Excesso:'}</span>
+                                  <span className="font-medium">R$ {Math.abs(getValorRestante()).toFixed(2)}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {metodosAtivos.includes('dinheiro') && (
+                            <div className="space-y-2">
+                              <Label>Troco para (R$)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="Valor recebido em dinheiro"
+                                value={trocoPara}
+                                onChange={(e) => setTrocoPara(e.target.value)}
+                              />
+                              {trocoPara && pagamentos.find(p => p.metodo === 'dinheiro') && (
+                                <p className="text-sm text-green-600">
+                                  Troco: R${' '}
+                                  {(parseFloat(trocoPara) - (pagamentos.find(p => p.metodo === 'dinheiro')?.valor || 0)).toFixed(2)}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          
+                          {metodosAtivos.includes('pix') && !empresa?.chave_pix && (
+                            <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                              ⚠️ Chave PIX não cadastrada. Configure em Configurações {'>'} Empresa.
                             </p>
                           )}
                         </div>
-                      )}
-
-                      {formaPagamento === 'pix' && !empresa?.chave_pix && (
-                        <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
-                          ⚠️ Chave PIX não cadastrada. Configure em Configurações {'>'} Empresa.
-                        </p>
                       )}
                     </div>
 
