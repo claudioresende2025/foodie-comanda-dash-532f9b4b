@@ -1375,6 +1375,7 @@ export type Database = {
       comanda_status: "aberta" | "fechada" | "cancelada"
       delivery_status:
         | "pendente"
+        | "pago"
         | "confirmado"
         | "em_preparo"
         | "saiu_entrega"
@@ -1519,6 +1520,7 @@ export const Constants = {
       comanda_status: ["aberta", "fechada", "cancelada"],
       delivery_status: [
         "pendente",
+        "pago",
         "confirmado",
         "em_preparo",
         "saiu_entrega",
