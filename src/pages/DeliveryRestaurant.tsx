@@ -398,7 +398,7 @@ export default function DeliveryRestaurant() {
           const { error: pontoErr } = await supabase
             .from("fidelidade_pontos")
             .update({
-              pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
+              saldo_pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
               updated_at: new Date().toISOString(),
             })
             .eq("id", fidelidadeData.id);
