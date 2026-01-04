@@ -130,17 +130,17 @@ serve(async (req) => {
       // Buscar pontos atuais
       const { data: fidelidade } = await supabase
         .from("fidelidade_pontos")
-        .select("pontos")
+        .select("saldo_pontos")
         .eq("id", orderData.fidelidadeId)
         .single();
 
       if (fidelidade) {
-        const novosPontos = (fidelidade.pontos || 0) - parseInt(orderData.pontosUsados);
+        const novosPontos = (fidelidade.saldo_pontos || 0) - parseInt(orderData.pontosUsados);
         
         // Decrementar pontos
         await supabase
           .from("fidelidade_pontos")
-          .update({ pontos: Math.max(0, novosPontos) })
+          .update({ saldo_pontos: Math.max(0, novosPontos) })
           .eq("id", orderData.fidelidadeId);
 
         // Registrar transação
