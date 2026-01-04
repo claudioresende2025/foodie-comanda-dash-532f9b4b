@@ -51,16 +51,32 @@ Se você configurou GitHub Actions:
 ### 🎯 Opção 3: Deploy via CLI Supabase
 
 ```bash
-# Instalar CLI (se não tiver)
-npm install -g supabase
+# 1. Instalar Supabase CLI (escolha um método):
 
-# Login
+# Método A - Via NPX (recomendado, não precisa instalar):
+npx supabase login
+npx supabase link --project-ref zlwpxflqtyhdwanmupgy
+npx supabase functions deploy create-delivery-checkout
+npx supabase functions deploy verify-delivery-payment
+npx supabase functions deploy complete-delivery-order
+
+# OU
+
+# Método B - Via Script (Linux/macOS):
+curl -fsSL https://raw.githubusercontent.com/supabase/cli/main/install.sh | sh
+# Depois adicione ao PATH e execute:
 supabase login
-
-# Link ao projeto
 supabase link --project-ref zlwpxflqtyhdwanmupgy
+supabase functions deploy create-delivery-checkout
+supabase functions deploy verify-delivery-payment
+supabase functions deploy complete-delivery-order
 
-# Deploy das funções
+# OU
+
+# Método C - Via Homebrew (macOS/Linux):
+brew install supabase/tap/supabase
+supabase login
+supabase link --project-ref zlwpxflqtyhdwanmupgy
 supabase functions deploy create-delivery-checkout
 supabase functions deploy verify-delivery-payment
 supabase functions deploy complete-delivery-order
