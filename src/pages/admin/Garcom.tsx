@@ -35,10 +35,10 @@ type ChamadaGarcom = {
 
 // Cores de status para mesas
 const mesaStatusColors = {
-  disponivel: 'bg-green-100 border-green-500 text-foreground',
-  ocupada: 'bg-orange-100 border-orange-500 text-foreground',
-  reservada: 'bg-yellow-100 border-yellow-500 text-foreground',
-  juncao: 'bg-blue-100 border-blue-500 text-foreground',
+  disponivel: 'bg-card border-green-500 text-foreground',
+  ocupada: 'bg-card border-orange-500 text-foreground',
+  reservada: 'bg-card border-yellow-500 text-foreground',
+  juncao: 'bg-card border-blue-500 text-foreground',
 };
 
 const mesaStatusLabels = {
