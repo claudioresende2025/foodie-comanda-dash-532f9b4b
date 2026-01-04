@@ -37,10 +37,10 @@ export const UpdateNotification = () => {
             }
           });
 
-          // Verifica atualizações periodicamente (a cada hora)
+          // Verifica atualizações a cada 15 segundos
           const interval = setInterval(() => {
             registration.update();
-          }, 60 * 60 * 1000);
+          }, 15 * 1000);
 
           return () => clearInterval(interval);
         }
