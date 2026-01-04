@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Package, Clock, CheckCircle, Truck, ChefHat, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Loader2, Package, Clock, CheckCircle, Truck, ChefHat, ArrowLeft, RefreshCw, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,10 +9,11 @@ import { BottomNavigation } from '@/components/delivery/BottomNavigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-type DeliveryStatus = 'pendente' | 'confirmado' | 'em_preparo' | 'saiu_entrega' | 'entregue' | 'cancelado';
+type DeliveryStatus = 'pendente' | 'pago' | 'confirmado' | 'em_preparo' | 'saiu_entrega' | 'entregue' | 'cancelado';
 
 const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon: any }> = {
   pendente: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+  pago: { label: 'Pago', color: 'bg-emerald-100 text-emerald-800', icon: CreditCard },
   confirmado: { label: 'Confirmado', color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
   em_preparo: { label: 'Em Preparo', color: 'bg-orange-100 text-orange-800', icon: ChefHat },
   saiu_entrega: { label: 'Saiu para Entrega', color: 'bg-purple-100 text-purple-800', icon: Truck },
