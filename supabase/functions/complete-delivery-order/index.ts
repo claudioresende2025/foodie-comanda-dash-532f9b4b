@@ -76,7 +76,8 @@ serve(async (req) => {
         cupom_id: orderData.cupomId || null,
         notas: orderData.notas || null,
         user_id: orderData.userId,
-        stripe_session_id: sessionId,
+        stripe_payment_id: sessionId,
+        stripe_payment_status: "paid",
       })
       .select()
       .single();
