@@ -75,9 +75,21 @@ export function MesaQRCodeDialog({
     }
   };
 
-  const handleOpenMenu = () => {
-    window.open(menuUrl, '_blank');
-  };
+	const handleOpenMenu = async () => {
+		// Atualiza status da mesa para 'ocupada' ao visualizar o cardápio
+		if (mesaId && empresaId) {
+			try {
+				await fetch('/api/mesa-ocupar', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ mesaId, empresaId })
+				});
+			} catch (e) {
+				// Silencia erro, pois o cardápio deve abrir mesmo assim
+			}
+		}
+		window.open(menuUrl, '_blank');
+	};
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
