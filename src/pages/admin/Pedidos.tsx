@@ -29,22 +29,36 @@ const statusMap = {
   cancelado: "cancelado",
 };
 
-// Som de notificação
+// Som de notificação mais chamativo (múltiplos beeps)
 const playNotificationSound = () => {
   try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    oscillator.frequency.value = 800;
-    oscillator.type = "sine";
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.3);
+    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const audioContext = new AudioContextClass();
+    if (audioContext.state === 'suspended') audioContext.resume();
+
+    const beep = (freq: number, durMs: number, delay: number = 0) => {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      const startTime = audioContext.currentTime + delay;
+      gain.gain.setValueAtTime(0.5, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + durMs / 1000);
+      osc.start(startTime);
+      osc.stop(startTime + durMs / 1000);
+    };
+
+    // Sequência de beeps para chamar atenção
+    beep(880, 150, 0);
+    beep(1100, 150, 0.2);
+    beep(880, 150, 0.4);
+    beep(1100, 200, 0.6);
   } catch (e) {
-    console.log("Audio not supported");
+    console.log("Audio not supported:", e);
   }
 };
 
