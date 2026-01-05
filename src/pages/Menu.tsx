@@ -125,21 +125,31 @@ export default function Menu() {
 		// Atualiza status da mesa para 'ocupada' ao acessar o cardápio
 		useEffect(() => {
 			if (!empresaId || !mesaId) return;
+			let isMounted = true;
 			const ocuparMesa = async () => {
-				// Busca status atual
-				const { data: mesaData, error } = await supabase
-					.from('mesas')
-					.select('status')
-					.eq('id', mesaId)
-					.maybeSingle();
-				if (!mesaData || mesaData.status === 'ocupada') return;
-				// Atualiza para ocupada
-				await supabase
-					.from('mesas')
-					.update({ status: 'ocupada' })
-					.eq('id', mesaId);
+				try {
+					const { data: mesaData, error } = await supabase
+						.from('mesas')
+						.select('status')
+						.eq('id', mesaId)
+						.maybeSingle();
+					if (error) {
+						console.error('Erro ao buscar mesa:', error.message);
+						return;
+					}
+					if (!mesaData) return;
+					if (mesaData.status !== 'ocupada') {
+						await supabase
+							.from('mesas')
+							.update({ status: 'ocupada' })
+							.eq('id', mesaId);
+					}
+				} catch (err) {
+					console.error('Erro ao atualizar status da mesa:', err);
+				}
 			};
 			ocuparMesa();
+			return () => { isMounted = false; };
 		}, [empresaId, mesaId]);
 	const { empresaId, mesaId } = useParams<{ empresaId: string; mesaId: string }>();
 	const [empresa, setEmpresa] = useState<Empresa | null>(null);
