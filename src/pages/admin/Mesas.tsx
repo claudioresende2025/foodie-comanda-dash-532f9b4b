@@ -27,10 +27,10 @@ type Mesa = {
 };
 
 const statusColors = {
-  disponivel: 'bg-status-available/10 border-status-available/30 text-status-available',
-  ocupada: 'bg-status-occupied/10 border-status-occupied/30 text-status-occupied',
-  reservada: 'bg-status-reserved/10 border-status-reserved/30 text-status-reserved',
-  juncao: 'bg-status-merged/10 border-status-merged/30 text-status-merged',
+  disponivel: 'bg-white border-green-500 text-foreground',
+  ocupada: 'bg-white border-orange-500 text-foreground',
+  reservada: 'bg-white border-yellow-500 text-foreground',
+  juncao: 'bg-white border-blue-500 text-foreground',
 };
 
 const statusLabels = {

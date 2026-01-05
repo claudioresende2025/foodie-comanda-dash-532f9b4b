@@ -228,19 +228,46 @@ export default function Caixa() {
         .eq('id', comandaId);
       if (error) throw error;
       
-      // 2. Atualiza o status da mesa para disponível
+      // 2. Atualiza o status da mesa para disponível e separa mesas juntas
       if (mesaId) {
-        const { error: mesaError } = await supabase
+        // Busca informações da mesa
+        const { data: mesaData } = await supabase
           .from('mesas')
-          .update({ status: 'disponivel' })
-          .eq('id', mesaId);
-        if (mesaError) {
-          console.error('Erro ao liberar mesa:', mesaError);
-          // Não lança erro aqui para não impedir o fechamento da comanda
+          .select('id, mesa_juncao_id')
+          .eq('id', mesaId)
+          .single();
+        
+        // Se a mesa é uma mesa junta (tem mesa_juncao_id), separa as mesas
+        if (mesaData?.mesa_juncao_id) {
+          // Mesa filha - remove a junção e libera
+          await supabase
+            .from('mesas')
+            .update({ status: 'disponivel', mesa_juncao_id: null })
+            .eq('id', mesaId);
+        } else {
+          // Mesa principal - verifica se tem mesas filhas
+          const { data: mesasFilhas } = await supabase
+            .from('mesas')
+            .select('id')
+            .eq('mesa_juncao_id', mesaId);
+          
+          if (mesasFilhas && mesasFilhas.length > 0) {
+            // Separa todas as mesas filhas e libera
+            await supabase
+              .from('mesas')
+              .update({ status: 'disponivel', mesa_juncao_id: null })
+              .in('id', mesasFilhas.map(m => m.id));
+          }
+          
+          // Libera a mesa principal
+          await supabase
+            .from('mesas')
+            .update({ status: 'disponivel' })
+            .eq('id', mesaId);
         }
       }
       
-      return { formaPagamento, formasPagamento, total };
+      return { formaPagamento, formasPagamento, total, mesaId };
     },
     onSuccess: (result) => {
       // invalida com as mesmas chaves (incluindo empresa_id)
