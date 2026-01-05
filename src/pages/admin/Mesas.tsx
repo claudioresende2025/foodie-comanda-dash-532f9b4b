@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -14,35 +16,32 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw } from 'lucide-react';
+import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { MesaQRCodeDialog } from '@/components/admin/MesaQRCodeDialog';
+
+type MesaStatus = 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
 
 type Mesa = {
   id: string;
   numero_mesa: number;
-  status: 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
+  status: MesaStatus;
   capacidade: number;
   mesa_juncao_id: string | null;
 };
 
-const statusColors = {
-  disponivel: 'bg-white border-green-500 text-foreground',
-  ocupada: 'bg-white border-orange-500 text-foreground',
-  reservada: 'bg-white border-yellow-500 text-foreground',
-  juncao: 'bg-white border-blue-500 text-foreground',
-};
-
-const statusLabels = {
-  disponivel: 'Disponível',
-  ocupada: 'Ocupada',
-  reservada: 'Reservada',
-  juncao: 'Junção',
+// Config de status para tabs (igual ao KDS)
+const statusConfig: Record<MesaStatus, { label: string; color: string; borderColor: string; icon: React.ElementType }> = {
+  disponivel: { label: 'Disponível', color: 'bg-green-500', borderColor: 'border-green-500', icon: CheckCircle },
+  ocupada: { label: 'Ocupada', color: 'bg-orange-500', borderColor: 'border-orange-500', icon: Clock },
+  reservada: { label: 'Reservada', color: 'bg-yellow-500', borderColor: 'border-yellow-500', icon: CalendarCheck },
+  juncao: { label: 'Junção', color: 'bg-blue-500', borderColor: 'border-blue-500', icon: Link2 },
 };
 
 export default function Mesas() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<MesaStatus | 'todas'>('todas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [newMesa, setNewMesa] = useState({ numero_mesa: '', capacidade: '4' });
@@ -75,7 +74,7 @@ export default function Mesas() {
     staleTime: 30000,
   });
 
-  // Realtime subscription for comandas to auto-update mesa status
+  // Realtime subscription
   useEffect(() => {
     if (!empresaId) return;
 
@@ -120,7 +119,6 @@ export default function Mesas() {
       )
       .subscribe();
 
-    // Also subscribe to direct mesa changes
     const mesasChannel = supabase
       .channel('mesas-changes')
       .on(
@@ -143,6 +141,17 @@ export default function Mesas() {
     };
   }, [empresaId, queryClient]);
 
+  // Contadores e filtros
+  const countByStatus = (status: MesaStatus) => mesas.filter(m => m.status === status).length;
+  
+  const filteredMesas = useMemo(() => {
+    if (activeTab === 'todas') return mesas;
+    return mesas.filter(m => m.status === activeTab);
+  }, [mesas, activeTab]);
+
+  const availableMesas = mesas.filter(m => m.status === 'disponivel');
+
+  // Handlers
   const handleCreateMesa = async () => {
     if (!empresaId) {
       toast.error('Configure sua empresa primeiro');
@@ -234,13 +243,13 @@ export default function Mesas() {
     }
   };
 
-  const handleOpenQRCode = (mesa: Mesa) => {
+  const handleOpenQRCode = (mesa: Mesa, e: React.MouseEvent) => {
+    e.stopPropagation();
     setSelectedMesaForQR(mesa);
     setQrDialogOpen(true);
   };
 
-  const handleStatusClick = (mesa: Mesa) => {
-    // Only allow status change for non-junction tables
+  const handleMesaClick = (mesa: Mesa) => {
     if (mesa.status !== 'juncao') {
       setSelectedMesaForStatus(mesa);
       setStatusDialogOpen(true);
@@ -258,7 +267,7 @@ export default function Mesas() {
 
       if (error) throw error;
 
-      toast.success(`Status alterado para ${statusLabels[newStatus]}`);
+      toast.success(`Status alterado para ${statusConfig[newStatus].label}`);
       setStatusDialogOpen(false);
       setSelectedMesaForStatus(null);
       queryClient.invalidateQueries({ queryKey: ['mesas'] });
@@ -276,17 +285,15 @@ export default function Mesas() {
     );
   }
 
-  const availableMesas = mesas.filter(m => m.status === 'disponivel');
-
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Gerenciamento de Mesas</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Gerenciamento de Mesas</h1>
           <p className="text-muted-foreground">Gerencie as mesas do seu estabelecimento</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Atualizar
@@ -296,7 +303,7 @@ export default function Mesas() {
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Merge className="w-4 h-4 mr-2" />
-                Juntar Mesas
+                Juntar
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -382,89 +389,141 @@ export default function Mesas() {
         </div>
       </div>
 
-      {/* Status Legend */}
-      <div className="flex flex-wrap gap-4">
-        {Object.entries(statusLabels).map(([key, label]) => (
-          <div key={key} className="flex items-center gap-2">
-            <div className={`w-4 h-4 rounded ${statusColors[key as keyof typeof statusColors].split(' ')[0]}`} />
-            <span className="text-sm text-muted-foreground">{label}</span>
-          </div>
-        ))}
-      </div>
-
       {/* Info Banner */}
       <div className="bg-muted/50 border border-border rounded-lg p-4">
         <p className="text-sm text-muted-foreground">
-          <strong>Status automático:</strong> O status da mesa é atualizado automaticamente quando uma comanda é aberta (ocupada) ou fechada (disponível).
+          <strong>Status automático:</strong> O status da mesa é atualizado automaticamente quando uma comanda é aberta (ocupada) ou fechada (disponível). Clique em uma mesa para alterar o status manualmente.
         </p>
       </div>
 
-      {/* Mesas Grid */}
-      {mesas.length === 0 ? (
-        <Card className="shadow-fcd border-0">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Users className="w-12 h-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Nenhuma mesa cadastrada</p>
-            <Button 
-              className="mt-4"
-              onClick={() => setIsDialogOpen(true)}
+      {/* Tabs por Status */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MesaStatus | 'todas')}>
+        <TabsList className="grid w-full grid-cols-5 h-auto">
+          {/* Tab Todas */}
+          <TabsTrigger
+            value="todas"
+            className="relative flex flex-col sm:flex-row items-center gap-1 py-2 px-1 sm:px-3 text-xs sm:text-sm"
+          >
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">Todas</span>
+            <Badge
+              variant="secondary"
+              className="absolute -top-1 -right-1 sm:relative sm:top-0 sm:right-0 sm:ml-1 h-5 w-5 flex items-center justify-center text-[10px] sm:text-xs"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Primeira Mesa
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {mesas.map((mesa) => (
-            <Card 
-              key={mesa.id} 
-              className={`shadow-fcd border-2 transition-all hover:scale-105 ${statusColors[mesa.status]}`}
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-2xl font-bold">
-                    {mesa.numero_mesa}
-                  </CardTitle>
-                  <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => handleOpenQRCode(mesa)}
-                      className="p-1 rounded hover:bg-primary/20 transition-colors"
-                      title="Ver QR Code"
-                    >
-                      <QrCode className="w-5 h-5" />
-                    </button>
-                    {mesa.status === 'juncao' && (
-                      <button 
-                        onClick={() => handleUnmergeMesa(mesa.id)}
-                        className="p-1 rounded hover:bg-destructive/20"
-                        title="Desfazer junção"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-1 text-sm">
-                  <Users className="w-4 h-4" />
-                  <span>{mesa.capacidade} lugares</span>
-                </div>
-                <button
-                  onClick={() => handleStatusClick(mesa)}
-                  className={`w-full text-xs font-medium px-2 py-1 rounded bg-background/50 hover:bg-background/80 transition-colors ${
-                    mesa.status !== 'juncao' ? 'cursor-pointer' : 'cursor-default'
-                  }`}
-                  title={mesa.status !== 'juncao' ? 'Clique para alterar status' : ''}
-                >
-                  {statusLabels[mesa.status]}
-                </button>
+              {mesas.length}
+            </Badge>
+          </TabsTrigger>
+          
+          {/* Tabs por Status */}
+          {(['disponivel', 'ocupada', 'reservada', 'juncao'] as MesaStatus[]).map((status) => {
+            const config = statusConfig[status];
+            const count = countByStatus(status);
+            return (
+              <TabsTrigger
+                key={status}
+                value={status}
+                className="relative flex flex-col sm:flex-row items-center gap-1 py-2 px-1 sm:px-3 text-xs sm:text-sm"
+              >
+                <config.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{config.label}</span>
+                {count > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="absolute -top-1 -right-1 sm:relative sm:top-0 sm:right-0 sm:ml-1 h-5 w-5 flex items-center justify-center text-[10px] sm:text-xs"
+                  >
+                    {count}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+
+        {/* Conteúdo - Grid de Mesas */}
+        <TabsContent value={activeTab} className="mt-6">
+          {filteredMesas.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Users className="w-12 h-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  {activeTab === 'todas' 
+                    ? 'Nenhuma mesa cadastrada' 
+                    : `Nenhuma mesa ${statusConfig[activeTab as MesaStatus].label.toLowerCase()}`}
+                </p>
+                {activeTab === 'todas' && (
+                  <Button 
+                    className="mt-4"
+                    onClick={() => setIsDialogOpen(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Adicionar Primeira Mesa
+                  </Button>
+                )}
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {filteredMesas.map((mesa) => {
+                const config = statusConfig[mesa.status];
+                const StatusIcon = config.icon;
+                
+                return (
+                  <Card 
+                    key={mesa.id} 
+                    className={`relative overflow-hidden cursor-pointer transition-all hover:scale-105 border-2 bg-white ${config.borderColor}`}
+                    onClick={() => handleMesaClick(mesa)}
+                  >
+                    {/* Barra colorida no topo */}
+                    <div className={`absolute top-0 left-0 right-0 h-1 ${config.color}`} />
+                    
+                    <CardHeader className="pb-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-2xl font-bold">
+                          {mesa.numero_mesa}
+                        </CardTitle>
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={(e) => handleOpenQRCode(mesa, e)}
+                            className="p-1 rounded hover:bg-primary/20 transition-colors"
+                            title="Ver QR Code"
+                          >
+                            <QrCode className="w-5 h-5" />
+                          </button>
+                          {mesa.status === 'juncao' && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUnmergeMesa(mesa.id);
+                              }}
+                              className="p-1 rounded hover:bg-destructive/20"
+                              title="Desfazer junção"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Users className="w-4 h-4" />
+                        <span>{mesa.capacidade} lugares</span>
+                      </div>
+                      <Badge 
+                        variant="outline" 
+                        className="w-full justify-center text-xs"
+                      >
+                        <StatusIcon className="w-3 h-3 mr-1" />
+                        {config.label}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* QR Code Dialog */}
       {selectedMesaForQR && empresaId && (
@@ -492,7 +551,7 @@ export default function Mesas() {
               onClick={() => handleChangeStatus('disponivel')}
               className="flex flex-col gap-2 h-auto py-4"
             >
-              <div className="w-4 h-4 rounded bg-status-available" />
+              <div className="w-4 h-4 rounded bg-green-500" />
               Disponível
             </Button>
             <Button
@@ -500,7 +559,7 @@ export default function Mesas() {
               onClick={() => handleChangeStatus('ocupada')}
               className="flex flex-col gap-2 h-auto py-4"
             >
-              <div className="w-4 h-4 rounded bg-status-occupied" />
+              <div className="w-4 h-4 rounded bg-orange-500" />
               Ocupada
             </Button>
             <Button
@@ -508,7 +567,7 @@ export default function Mesas() {
               onClick={() => handleChangeStatus('reservada')}
               className="flex flex-col gap-2 h-auto py-4"
             >
-              <div className="w-4 h-4 rounded bg-status-reserved" />
+              <div className="w-4 h-4 rounded bg-yellow-500" />
               Reservada
             </Button>
           </div>
