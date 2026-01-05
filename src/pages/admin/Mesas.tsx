@@ -151,6 +151,23 @@ export default function Mesas() {
 
   const availableMesas = mesas.filter(m => m.status === 'disponivel');
 
+  // Helper para mostrar quais mesas estão juntas
+  const getMesasJuntasText = (mesa: Mesa): string | null => {
+    if (mesa.status !== 'juncao' || !mesa.mesa_juncao_id) return null;
+    
+    // Encontra a mesa principal
+    const mesaPrincipal = mesas.find(m => m.id === mesa.mesa_juncao_id);
+    if (!mesaPrincipal) return null;
+    
+    // Encontra todas as mesas filhas da mesa principal
+    const mesasFilhas = mesas.filter(m => m.mesa_juncao_id === mesaPrincipal.id);
+    
+    // Junta todos os números e ordena
+    const numeros = [mesaPrincipal.numero_mesa, ...mesasFilhas.map(m => m.numero_mesa)].sort((a, b) => a - b);
+    
+    return numeros.join('+');
+  };
+
   // Handlers
   const handleCreateMesa = async () => {
     if (!empresaId) {
@@ -514,7 +531,9 @@ export default function Mesas() {
                         className="w-full justify-center text-xs"
                       >
                         <StatusIcon className="w-3 h-3 mr-1" />
-                        {config.label}
+                        {mesa.status === 'juncao' && getMesasJuntasText(mesa) 
+                          ? `Junção: ${getMesasJuntasText(mesa)}`
+                          : config.label}
                       </Badge>
                     </CardContent>
                   </Card>
