@@ -50,10 +50,6 @@ export default function Mesas() {
   // QR Code Dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedMesaForQR, setSelectedMesaForQR] = useState<Mesa | null>(null);
-  
-  // Status change dialog
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
-  const [selectedMesaForStatus, setSelectedMesaForStatus] = useState<Mesa | null>(null);
 
   const empresaId = profile?.empresa_id;
 
@@ -267,32 +263,17 @@ export default function Mesas() {
   };
 
   const handleMesaClick = (mesa: Mesa) => {
+    // Ao clicar na mesa, abre o QR Code para visualização
+    // O status é gerenciado automaticamente:
+    // - Ao abrir comanda -> mesa fica 'ocupada'
+    // - Ao fechar comanda no caixa -> mesa fica 'disponivel'
     if (mesa.status !== 'juncao') {
-      setSelectedMesaForStatus(mesa);
-      setStatusDialogOpen(true);
+      setSelectedMesaForQR(mesa);
+      setQrDialogOpen(true);
     }
   };
 
-  const handleChangeStatus = async (newStatus: 'disponivel' | 'ocupada' | 'reservada') => {
-    if (!selectedMesaForStatus) return;
 
-    try {
-      const { error } = await supabase
-        .from('mesas')
-        .update({ status: newStatus })
-        .eq('id', selectedMesaForStatus.id);
-
-      if (error) throw error;
-
-      toast.success(`Status alterado para ${statusConfig[newStatus].label}`);
-      setStatusDialogOpen(false);
-      setSelectedMesaForStatus(null);
-      queryClient.invalidateQueries({ queryKey: ['mesas'] });
-    } catch (error) {
-      console.error('Error changing status:', error);
-      toast.error('Erro ao alterar status');
-    }
-  };
 
   if (isLoading) {
     return (
@@ -409,7 +390,7 @@ export default function Mesas() {
       {/* Info Banner */}
       <div className="bg-muted/50 border border-border rounded-lg p-4">
         <p className="text-sm text-muted-foreground">
-          <strong>Status automático:</strong> O status da mesa é atualizado automaticamente quando uma comanda é aberta (ocupada) ou fechada (disponível). Clique em uma mesa para alterar o status manualmente.
+          <strong>Status 100% automático:</strong> O status da mesa é atualizado automaticamente quando uma comanda é aberta (ocupada) ou fechada no caixa (disponível). Clique em uma mesa para ver o QR Code.
         </p>
       </div>
 
@@ -555,43 +536,6 @@ export default function Mesas() {
         />
       )}
 
-      {/* Status Change Dialog */}
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Alterar Status da Mesa {selectedMesaForStatus?.numero_mesa}</DialogTitle>
-            <DialogDescription>
-              Selecione o novo status para a mesa
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 gap-3 mt-4">
-            <Button
-              variant={selectedMesaForStatus?.status === 'disponivel' ? 'default' : 'outline'}
-              onClick={() => handleChangeStatus('disponivel')}
-              className="flex flex-col gap-2 h-auto py-4"
-            >
-              <div className="w-4 h-4 rounded bg-green-500" />
-              Disponível
-            </Button>
-            <Button
-              variant={selectedMesaForStatus?.status === 'ocupada' ? 'default' : 'outline'}
-              onClick={() => handleChangeStatus('ocupada')}
-              className="flex flex-col gap-2 h-auto py-4"
-            >
-              <div className="w-4 h-4 rounded bg-orange-500" />
-              Ocupada
-            </Button>
-            <Button
-              variant={selectedMesaForStatus?.status === 'reservada' ? 'default' : 'outline'}
-              onClick={() => handleChangeStatus('reservada')}
-              className="flex flex-col gap-2 h-auto py-4"
-            >
-              <div className="w-4 h-4 rounded bg-yellow-500" />
-              Reservada
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
