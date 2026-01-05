@@ -122,6 +122,25 @@ const playNotificationSound = () => {
 // --- Componente Principal ---
 
 export default function Menu() {
+		// Atualiza status da mesa para 'ocupada' ao acessar o cardápio
+		useEffect(() => {
+			if (!empresaId || !mesaId) return;
+			const ocuparMesa = async () => {
+				// Busca status atual
+				const { data: mesaData, error } = await supabase
+					.from('mesas')
+					.select('status')
+					.eq('id', mesaId)
+					.maybeSingle();
+				if (!mesaData || mesaData.status === 'ocupada') return;
+				// Atualiza para ocupada
+				await supabase
+					.from('mesas')
+					.update({ status: 'ocupada' })
+					.eq('id', mesaId);
+			};
+			ocuparMesa();
+		}, [empresaId, mesaId]);
 	const { empresaId, mesaId } = useParams<{ empresaId: string; mesaId: string }>();
 	const [empresa, setEmpresa] = useState<Empresa | null>(null);
 	const [categorias, setCategorias] = useState<Categoria[]>([]);
