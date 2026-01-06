@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Download, Share2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 type MesaQRCodeDialogProps = {
   open: boolean;
@@ -79,11 +80,10 @@ export function MesaQRCodeDialog({
 		// Atualiza status da mesa para 'ocupada' ao visualizar o cardápio
 		if (mesaId && empresaId) {
 			try {
-				await fetch('/api/mesa-ocupar', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ mesaId, empresaId })
-				});
+				await supabase
+					.from('mesas')
+					.update({ status: 'ocupada' })
+					.eq('id', mesaId);
 			} catch (e) {
 				// Silencia erro, pois o cardápio deve abrir mesmo assim
 			}

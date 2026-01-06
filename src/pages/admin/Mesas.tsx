@@ -90,7 +90,7 @@ export default function Mesas() {
               .from('mesas')
               .update({ status: 'ocupada' })
               .eq('id', payload.new.mesa_id);
-            queryClient.invalidateQueries({ queryKey: ['mesas'] });
+            queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
           } else if (payload.eventType === 'UPDATE') {
             const newStatus = payload.new.status;
             const mesaId = payload.new.mesa_id;
@@ -107,7 +107,7 @@ export default function Mesas() {
                   .from('mesas')
                   .update({ status: 'disponivel' })
                   .eq('id', mesaId);
-                queryClient.invalidateQueries({ queryKey: ['mesas'] });
+                queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
               }
             }
           }
@@ -126,7 +126,7 @@ export default function Mesas() {
           filter: `empresa_id=eq.${empresaId}`
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['mesas'] });
+                queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
         }
       )
       .subscribe();
@@ -196,7 +196,7 @@ export default function Mesas() {
       toast.success('Mesa criada com sucesso!');
       setNewMesa({ numero_mesa: '', capacidade: '4' });
       setIsDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['mesas'] });
+      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
     } catch (error) {
       console.error('Error creating mesa:', error);
       toast.error('Erro ao criar mesa');
@@ -231,7 +231,7 @@ export default function Mesas() {
       toast.success('Mesas unidas com sucesso!');
       setSelectedMesas([]);
       setIsMergeDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['mesas'] });
+      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
     } catch (error) {
       console.error('Error merging mesas:', error);
       toast.error('Erro ao unir mesas');
@@ -249,7 +249,7 @@ export default function Mesas() {
         .eq('id', mesaId);
 
       toast.success('Junção desfeita!');
-      queryClient.invalidateQueries({ queryKey: ['mesas'] });
+      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
     } catch (error) {
       console.error('Error unmerging:', error);
       toast.error('Erro ao desfazer junção');

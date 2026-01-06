@@ -497,8 +497,12 @@ export default function Menu() {
 				if (comandaError) throw comandaError;
 				
 				currentComandaId = newComanda.id;
-				
-				       // Removido: atualização do status da mesa para 'ocupada' ao enviar pedido
+				// Garante que a mesa fique marcada como 'ocupada' ao abrir a comanda
+				try {
+					await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+				} catch (e) {
+					console.warn('Não foi possível atualizar status da mesa:', e);
+				}
 				
 				// Inserir os pedidos
 				const pedidosToInsert = itemsToSend.map(item => ({
@@ -520,7 +524,14 @@ export default function Menu() {
 			} else {
                 // 3. PEDIDOS SUBSEQUENTES (Se comanda já existe)
                 
-                // Insere os novos pedidos diretamente na tabela 'pedidos'
+			// Garante que a mesa esteja marcada como 'ocupada' antes de inserir pedidos
+			try {
+				await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+			} catch (e) {
+				console.warn('Não foi possível atualizar status da mesa (subsequente):', e);
+			}
+
+			// Insere os novos pedidos diretamente na tabela 'pedidos'
                 const subsequentPedidos = itemsToSend.map(item => ({
                     ...item,
                     comanda_id: currentComandaId,
