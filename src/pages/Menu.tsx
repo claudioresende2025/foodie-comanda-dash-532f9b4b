@@ -143,11 +143,30 @@ export default function Menu() {
 
 	// --- Efeitos e Fetch de Dados ---
 
-	useEffect(() => {
-		if (empresaId) {
-			fetchMenuData();
-		}
-	}, [empresaId, mesaId]);
+	       useEffect(() => {
+		       if (empresaId) {
+			       fetchMenuData();
+		       }
+	       }, [empresaId, mesaId]);
+
+	       // Atualiza status da mesa para 'ocupada' ao acessar o cardápio, se necessário
+	       useEffect(() => {
+		       const ocuparMesaSeDisponivel = async () => {
+			       if (!empresaId || !mesaId) return;
+			       const { data, error } = await supabase
+				       .from('mesas')
+				       .select('status')
+				       .eq('id', mesaId)
+				       .maybeSingle();
+			       if (!error && data && data.status === 'disponivel') {
+				       await supabase
+					       .from('mesas')
+					       .update({ status: 'ocupada' })
+					       .eq('id', mesaId);
+			       }
+		       };
+		       ocuparMesaSeDisponivel();
+	       }, [empresaId, mesaId]);
 
 	// Check for existing comanda in localStorage
 	useEffect(() => {
