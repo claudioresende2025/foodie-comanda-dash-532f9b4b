@@ -14,149 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      analytics_eventos: {
-        Row: {
-          created_at: string | null
-          dados: Json | null
-          empresa_id: string | null
-          id: string
-          tipo_evento: string
-        }
-        Insert: {
-          created_at?: string | null
-          dados?: Json | null
-          empresa_id?: string | null
-          id?: string
-          tipo_evento: string
-        }
-        Update: {
-          created_at?: string | null
-          dados?: Json | null
-          empresa_id?: string | null
-          id?: string
-          tipo_evento?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "analytics_eventos_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      assinaturas: {
-        Row: {
-          cancel_at_period_end: boolean | null
-          canceled_at: string | null
-          created_at: string | null
-          current_period_end: string | null
-          current_period_start: string | null
-          empresa_id: string
-          ended_at: string | null
-          id: string
-          periodo: string | null
-          plano_id: string | null
-          status: Database["public"]["Enums"]["subscription_status"] | null
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
-          trial_end: string | null
-          trial_start: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          cancel_at_period_end?: boolean | null
-          canceled_at?: string | null
-          created_at?: string | null
-          current_period_end?: string | null
-          current_period_start?: string | null
-          empresa_id: string
-          ended_at?: string | null
-          id?: string
-          periodo?: string | null
-          plano_id?: string | null
-          status?: Database["public"]["Enums"]["subscription_status"] | null
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          trial_end?: string | null
-          trial_start?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          cancel_at_period_end?: boolean | null
-          canceled_at?: string | null
-          created_at?: string | null
-          current_period_end?: string | null
-          current_period_start?: string | null
-          empresa_id?: string
-          ended_at?: string | null
-          id?: string
-          periodo?: string | null
-          plano_id?: string | null
-          status?: Database["public"]["Enums"]["subscription_status"] | null
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          trial_end?: string | null
-          trial_start?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "assinaturas_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: true
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "assinaturas_plano_id_fkey"
-            columns: ["plano_id"]
-            isOneToOne: false
-            referencedRelation: "planos"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      audit_logs: {
-        Row: {
-          acao: string
-          created_at: string | null
-          dados_antigos: Json | null
-          dados_novos: Json | null
-          id: string
-          ip_address: string | null
-          registro_id: string | null
-          tabela: string | null
-          user_agent: string | null
-          user_id: string | null
-        }
-        Insert: {
-          acao: string
-          created_at?: string | null
-          dados_antigos?: Json | null
-          dados_novos?: Json | null
-          id?: string
-          ip_address?: string | null
-          registro_id?: string | null
-          tabela?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          acao?: string
-          created_at?: string | null
-          dados_antigos?: Json | null
-          dados_novos?: Json | null
-          id?: string
-          ip_address?: string | null
-          registro_id?: string | null
-          tabela?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
       avaliacoes: {
         Row: {
           comentario: string | null
@@ -196,6 +53,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "avaliacoes_pedido_delivery_id_fkey"
+            columns: ["pedido_delivery_id"]
+            isOneToOne: true
+            referencedRelation: "pedidos_delivery"
+            referencedColumns: ["id"]
+          },
         ]
       }
       caixas: {
@@ -203,11 +67,11 @@ export type Database = {
           created_at: string
           data_abertura: string
           data_fechamento: string | null
-          empresa_id: string | null
+          empresa_id: string
           id: string
           observacoes: string | null
           status: string
-          usuario_id: string | null
+          usuario_id: string
           valor_abertura: number
           valor_fechamento: number | null
         }
@@ -215,39 +79,32 @@ export type Database = {
           created_at?: string
           data_abertura?: string
           data_fechamento?: string | null
-          empresa_id?: string | null
+          empresa_id: string
           id?: string
           observacoes?: string | null
-          status: string
-          usuario_id?: string | null
-          valor_abertura: number
+          status?: string
+          usuario_id: string
+          valor_abertura?: number
           valor_fechamento?: number | null
         }
         Update: {
           created_at?: string
           data_abertura?: string
           data_fechamento?: string | null
-          empresa_id?: string | null
+          empresa_id?: string
           id?: string
           observacoes?: string | null
           status?: string
-          usuario_id?: string | null
+          usuario_id?: string
           valor_abertura?: number
           valor_fechamento?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "fk_empresa"
+            foreignKeyName: "caixas_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_usuario"
-            columns: ["usuario_id"]
-            isOneToOne: false
-            referencedRelation: "user_roles"
             referencedColumns: ["id"]
           },
         ]
@@ -300,7 +157,7 @@ export type Database = {
           created_at: string
           empresa_id: string
           id: string
-          mesa_id: string | null
+          mesa_id: string
           status: string
         }
         Insert: {
@@ -309,8 +166,8 @@ export type Database = {
           created_at?: string
           empresa_id: string
           id?: string
-          mesa_id?: string | null
-          status: string
+          mesa_id: string
+          status?: string
         }
         Update: {
           atendida_at?: string | null
@@ -318,98 +175,29 @@ export type Database = {
           created_at?: string
           empresa_id?: string
           id?: string
-          mesa_id?: string | null
+          mesa_id?: string
           status?: string
         }
         Relationships: [
           {
-            foreignKeyName: "fk_empresa"
+            foreignKeyName: "chamadas_garcom_comanda_id_fkey"
+            columns: ["comanda_id"]
+            isOneToOne: false
+            referencedRelation: "comandas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chamadas_garcom_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_mesa"
+            foreignKeyName: "chamadas_garcom_mesa_id_fkey"
             columns: ["mesa_id"]
             isOneToOne: false
             referencedRelation: "mesas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      chat_conversas: {
-        Row: {
-          created_at: string | null
-          empresa_id: string
-          id: string
-          status: string | null
-          ultima_mensagem: string | null
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          empresa_id: string
-          id?: string
-          status?: string | null
-          ultima_mensagem?: string | null
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          empresa_id?: string
-          id?: string
-          status?: string | null
-          ultima_mensagem?: string | null
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chat_conversas_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      chat_mensagens: {
-        Row: {
-          conversa_id: string
-          created_at: string | null
-          id: string
-          lida: boolean | null
-          mensagem: string
-          tipo: string | null
-          user_id: string | null
-        }
-        Insert: {
-          conversa_id: string
-          created_at?: string | null
-          id?: string
-          lida?: boolean | null
-          mensagem: string
-          tipo?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          conversa_id?: string
-          created_at?: string | null
-          id?: string
-          lida?: boolean | null
-          mensagem?: string
-          tipo?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chat_mensagens_conversa_id_fkey"
-            columns: ["conversa_id"]
-            isOneToOne: false
-            referencedRelation: "chat_conversas"
             referencedColumns: ["id"]
           },
         ]
@@ -420,48 +208,52 @@ export type Database = {
           created_at: string
           data_fechamento: string | null
           empresa_id: string
-          forma_pagamento: string | null
+          forma_pagamento: Database["public"]["Enums"]["forma_pagamento"] | null
           id: string
           mesa_id: string | null
           nome_cliente: string | null
           qr_code_sessao: string | null
-          status: string
+          status: Database["public"]["Enums"]["comanda_status"] | null
           telefone_cliente: string | null
           total: number | null
           troco_para: number | null
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
           comanda_mestre_id?: string | null
           created_at?: string
           data_fechamento?: string | null
           empresa_id: string
-          forma_pagamento?: string | null
+          forma_pagamento?:
+            | Database["public"]["Enums"]["forma_pagamento"]
+            | null
           id?: string
           mesa_id?: string | null
           nome_cliente?: string | null
           qr_code_sessao?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["comanda_status"] | null
           telefone_cliente?: string | null
           total?: number | null
           troco_para?: number | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
           comanda_mestre_id?: string | null
           created_at?: string
           data_fechamento?: string | null
           empresa_id?: string
-          forma_pagamento?: string | null
+          forma_pagamento?:
+            | Database["public"]["Enums"]["forma_pagamento"]
+            | null
           id?: string
           mesa_id?: string | null
           nome_cliente?: string | null
           qr_code_sessao?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["comanda_status"] | null
           telefone_cliente?: string | null
           total?: number | null
           troco_para?: number | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -572,62 +364,50 @@ export type Database = {
       }
       config_delivery: {
         Row: {
-          aceita_pix: boolean | null
-          ativo: boolean | null
           created_at: string
           delivery_ativo: boolean
-          dias_funcionamento: number[] | null
           empresa_id: string
           horario_abertura: string | null
           horario_fechamento: string | null
           id: string
-          pedido_minimo: number | null
+          pedido_minimo: number
           raio_entrega_km: number | null
-          taxa_entrega: number | null
-          tempo_estimado_max: number | null
-          tempo_estimado_min: number | null
-          updated_at: string | null
-          valor_minimo_pedido: number | null
+          taxa_entrega: number
+          tempo_estimado_max: number
+          tempo_estimado_min: number
+          updated_at: string
         }
         Insert: {
-          aceita_pix?: boolean | null
-          ativo?: boolean | null
           created_at?: string
           delivery_ativo?: boolean
-          dias_funcionamento?: number[] | null
           empresa_id: string
           horario_abertura?: string | null
           horario_fechamento?: string | null
           id?: string
-          pedido_minimo?: number | null
+          pedido_minimo?: number
           raio_entrega_km?: number | null
-          taxa_entrega?: number | null
-          tempo_estimado_max?: number | null
-          tempo_estimado_min?: number | null
-          updated_at?: string | null
-          valor_minimo_pedido?: number | null
+          taxa_entrega?: number
+          tempo_estimado_max?: number
+          tempo_estimado_min?: number
+          updated_at?: string
         }
         Update: {
-          aceita_pix?: boolean | null
-          ativo?: boolean | null
           created_at?: string
           delivery_ativo?: boolean
-          dias_funcionamento?: number[] | null
           empresa_id?: string
           horario_abertura?: string | null
           horario_fechamento?: string | null
           id?: string
-          pedido_minimo?: number | null
+          pedido_minimo?: number
           raio_entrega_km?: number | null
-          taxa_entrega?: number | null
-          tempo_estimado_max?: number | null
-          tempo_estimado_min?: number | null
-          updated_at?: string | null
-          valor_minimo_pedido?: number | null
+          taxa_entrega?: number
+          tempo_estimado_max?: number
+          tempo_estimado_min?: number
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "fk_empresa"
+            foreignKeyName: "config_delivery_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: true
             referencedRelation: "empresas"
@@ -635,81 +415,51 @@ export type Database = {
           },
         ]
       }
-      config_sistema: {
-        Row: {
-          chave: string
-          created_at: string | null
-          descricao: string | null
-          editavel: boolean | null
-          grupo: string | null
-          id: string
-          tipo: string | null
-          updated_at: string | null
-          valor: string | null
-        }
-        Insert: {
-          chave: string
-          created_at?: string | null
-          descricao?: string | null
-          editavel?: boolean | null
-          grupo?: string | null
-          id?: string
-          tipo?: string | null
-          updated_at?: string | null
-          valor?: string | null
-        }
-        Update: {
-          chave?: string
-          created_at?: string | null
-          descricao?: string | null
-          editavel?: boolean | null
-          grupo?: string | null
-          id?: string
-          tipo?: string | null
-          updated_at?: string | null
-          valor?: string | null
-        }
-        Relationships: []
-      }
       cupons: {
         Row: {
           ativo: boolean | null
           codigo: string
-          created_at: string | null
-          data_expiracao: string | null
-          empresa_id: string | null
+          created_at: string
+          data_fim: string | null
+          data_inicio: string | null
+          empresa_id: string
           id: string
           tipo: string
+          updated_at: string
           uso_atual: number | null
           uso_maximo: number | null
           valor: number
-          valor_minimo: number | null
+          valor_minimo_pedido: number | null
         }
         Insert: {
           ativo?: boolean | null
           codigo: string
-          created_at?: string | null
-          data_expiracao?: string | null
-          empresa_id?: string | null
+          created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          empresa_id: string
           id?: string
-          tipo: string
+          tipo?: string
+          updated_at?: string
           uso_atual?: number | null
           uso_maximo?: number | null
           valor: number
-          valor_minimo?: number | null
+          valor_minimo_pedido?: number | null
         }
         Update: {
           ativo?: boolean | null
           codigo?: string
-          created_at?: string | null
-          data_expiracao?: string | null
-          empresa_id?: string | null
+          created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          empresa_id?: string
           id?: string
           tipo?: string
+          updated_at?: string
           uso_atual?: number | null
           uso_maximo?: number | null
           valor?: number
-          valor_minimo?: number | null
+          valor_minimo_pedido?: number | null
         }
         Relationships: [
           {
@@ -721,37 +471,79 @@ export type Database = {
           },
         ]
       }
-      delivery_tracking: {
+      cupons_uso: {
         Row: {
-          created_at: string | null
+          created_at: string
+          cupom_id: string
           id: string
-          latitude: number | null
-          longitude: number | null
-          observacao: string | null
-          pedido_delivery_id: string
-          status: Database["public"]["Enums"]["delivery_status"]
+          pedido_delivery_id: string | null
+          user_id: string
+          valor_desconto: number
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
+          cupom_id: string
           id?: string
-          latitude?: number | null
-          longitude?: number | null
-          observacao?: string | null
-          pedido_delivery_id: string
-          status: Database["public"]["Enums"]["delivery_status"]
+          pedido_delivery_id?: string | null
+          user_id: string
+          valor_desconto: number
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
+          cupom_id?: string
           id?: string
-          latitude?: number | null
-          longitude?: number | null
-          observacao?: string | null
-          pedido_delivery_id?: string
-          status?: Database["public"]["Enums"]["delivery_status"]
+          pedido_delivery_id?: string | null
+          user_id?: string
+          valor_desconto?: number
         }
         Relationships: [
           {
-            foreignKeyName: "delivery_tracking_pedido_delivery_id_fkey"
+            foreignKeyName: "cupons_uso_cupom_id_fkey"
+            columns: ["cupom_id"]
+            isOneToOne: false
+            referencedRelation: "cupons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cupons_uso_pedido_delivery_id_fkey"
+            columns: ["pedido_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos_delivery"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_locations: {
+        Row: {
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          pedido_delivery_id: string
+          precisao: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          pedido_delivery_id: string
+          precisao?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          pedido_delivery_id?: string
+          precisao?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_locations_pedido_delivery_id_fkey"
             columns: ["pedido_delivery_id"]
             isOneToOne: false
             referencedRelation: "pedidos_delivery"
@@ -761,9 +553,6 @@ export type Database = {
       }
       empresas: {
         Row: {
-          ativo: boolean | null
-          block_reason: string | null
-          blocked_at: string | null
           chave_pix: string | null
           cnpj: string | null
           created_at: string
@@ -772,17 +561,10 @@ export type Database = {
           inscricao_estadual: string | null
           logo_url: string | null
           nome_fantasia: string
-          slug: string | null
-          subscription_status: string | null
-          trial_ends_at: string | null
           updated_at: string
-          usuario_id: string | null
           usuario_proprietario_id: string | null
         }
         Insert: {
-          ativo?: boolean | null
-          block_reason?: string | null
-          blocked_at?: string | null
           chave_pix?: string | null
           cnpj?: string | null
           created_at?: string
@@ -791,17 +573,10 @@ export type Database = {
           inscricao_estadual?: string | null
           logo_url?: string | null
           nome_fantasia: string
-          slug?: string | null
-          subscription_status?: string | null
-          trial_ends_at?: string | null
           updated_at?: string
-          usuario_id?: string | null
           usuario_proprietario_id?: string | null
         }
         Update: {
-          ativo?: boolean | null
-          block_reason?: string | null
-          blocked_at?: string | null
           chave_pix?: string | null
           cnpj?: string | null
           created_at?: string
@@ -810,25 +585,21 @@ export type Database = {
           inscricao_estadual?: string | null
           logo_url?: string | null
           nome_fantasia?: string
-          slug?: string | null
-          subscription_status?: string | null
-          trial_ends_at?: string | null
           updated_at?: string
-          usuario_id?: string | null
           usuario_proprietario_id?: string | null
         }
         Relationships: []
       }
       enderecos_cliente: {
         Row: {
-          bairro: string | null
-          cep: string
-          cidade: string | null
+          bairro: string
+          cep: string | null
+          cidade: string
           complemento: string | null
-          created_at: string | null
-          estado: string | null
+          created_at: string
+          estado: string
           id: string
-          is_default: boolean | null
+          is_default: boolean
           nome_cliente: string
           numero: string
           referencia: string | null
@@ -837,14 +608,14 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
-          bairro?: string | null
-          cep: string
-          cidade?: string | null
+          bairro: string
+          cep?: string | null
+          cidade: string
           complemento?: string | null
-          created_at?: string | null
-          estado?: string | null
+          created_at?: string
+          estado?: string
           id?: string
-          is_default?: boolean | null
+          is_default?: boolean
           nome_cliente: string
           numero: string
           referencia?: string | null
@@ -853,14 +624,14 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
-          bairro?: string | null
-          cep?: string
-          cidade?: string | null
+          bairro?: string
+          cep?: string | null
+          cidade?: string
           complemento?: string | null
-          created_at?: string | null
-          estado?: string | null
+          created_at?: string
+          estado?: string
           id?: string
-          is_default?: boolean | null
+          is_default?: boolean
           nome_cliente?: string
           numero?: string
           referencia?: string | null
@@ -913,40 +684,28 @@ export type Database = {
       }
       fidelidade_pontos: {
         Row: {
-          created_at: string | null
-          empresa_id: string | null
-          historico: Json | null
+          created_at: string
+          empresa_id: string
           id: string
           pontos: number | null
-          pontos_atuais: number | null
-          saldo: number | null
-          telefone_cliente: string
-          updated_at: string | null
-          user_id: string | null
+          updated_at: string
+          user_id: string
         }
         Insert: {
-          created_at?: string | null
-          empresa_id?: string | null
-          historico?: Json | null
+          created_at?: string
+          empresa_id: string
           id?: string
           pontos?: number | null
-          pontos_atuais?: number | null
-          saldo?: number | null
-          telefone_cliente: string
-          updated_at?: string | null
-          user_id?: string | null
+          updated_at?: string
+          user_id: string
         }
         Update: {
-          created_at?: string | null
-          empresa_id?: string | null
-          historico?: Json | null
+          created_at?: string
+          empresa_id?: string
           id?: string
           pontos?: number | null
-          pontos_atuais?: number | null
-          saldo?: number | null
-          telefone_cliente?: string
-          updated_at?: string | null
-          user_id?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: [
           {
@@ -958,35 +717,77 @@ export type Database = {
           },
         ]
       }
+      fidelidade_transacoes: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          fidelidade_id: string
+          id: string
+          pedido_delivery_id: string | null
+          pontos: number
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          fidelidade_id: string
+          id?: string
+          pedido_delivery_id?: string | null
+          pontos: number
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          fidelidade_id?: string
+          id?: string
+          pedido_delivery_id?: string | null
+          pontos?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fidelidade_transacoes_fidelidade_id_fkey"
+            columns: ["fidelidade_id"]
+            isOneToOne: false
+            referencedRelation: "fidelidade_pontos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fidelidade_transacoes_pedido_delivery_id_fkey"
+            columns: ["pedido_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos_delivery"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       itens_delivery: {
         Row: {
-          created_at: string | null
+          created_at: string
           id: string
           nome_produto: string
           notas: string | null
-          pedido_delivery_id: string | null
+          pedido_delivery_id: string
           preco_unitario: number
           produto_id: string | null
           quantidade: number
           subtotal: number
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           id?: string
           nome_produto: string
           notas?: string | null
-          pedido_delivery_id?: string | null
+          pedido_delivery_id: string
           preco_unitario: number
           produto_id?: string | null
-          quantidade: number
+          quantidade?: number
           subtotal: number
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           id?: string
           nome_produto?: string
           notas?: string | null
-          pedido_delivery_id?: string | null
+          pedido_delivery_id?: string
           preco_unitario?: number
           produto_id?: string | null
           quantidade?: number
@@ -1063,7 +864,7 @@ export type Database = {
           comanda_id: string | null
           created_at: string
           descricao: string | null
-          forma_pagamento: Database["public"]["Enums"]["payment_method"]
+          forma_pagamento: Database["public"]["Enums"]["forma_pagamento"] | null
           id: string
           pedido_delivery_id: string | null
           tipo: string
@@ -1074,7 +875,9 @@ export type Database = {
           comanda_id?: string | null
           created_at?: string
           descricao?: string | null
-          forma_pagamento: Database["public"]["Enums"]["payment_method"]
+          forma_pagamento?:
+            | Database["public"]["Enums"]["forma_pagamento"]
+            | null
           id?: string
           pedido_delivery_id?: string | null
           tipo: string
@@ -1085,7 +888,9 @@ export type Database = {
           comanda_id?: string | null
           created_at?: string
           descricao?: string | null
-          forma_pagamento?: Database["public"]["Enums"]["payment_method"]
+          forma_pagamento?:
+            | Database["public"]["Enums"]["forma_pagamento"]
+            | null
           id?: string
           pedido_delivery_id?: string | null
           tipo?: string
@@ -1093,130 +898,27 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_caixa"
+            foreignKeyName: "movimentacoes_caixa_caixa_id_fkey"
             columns: ["caixa_id"]
             isOneToOne: false
             referencedRelation: "caixas"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      notificacoes_push: {
-        Row: {
-          created_at: string | null
-          data: Json | null
-          id: string
-          lida: boolean | null
-          mensagem: string
-          tipo: string | null
-          titulo: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          data?: Json | null
-          id?: string
-          lida?: boolean | null
-          mensagem: string
-          tipo?: string | null
-          titulo: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          data?: Json | null
-          id?: string
-          lida?: boolean | null
-          mensagem?: string
-          tipo?: string | null
-          titulo?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      pagamentos_assinatura: {
-        Row: {
-          assinatura_id: string | null
-          created_at: string | null
-          descricao: string | null
-          empresa_id: string
-          id: string
-          metadata: Json | null
-          metodo_pagamento: string | null
-          status: string
-          stripe_invoice_id: string | null
-          stripe_payment_intent_id: string | null
-          valor: number
-        }
-        Insert: {
-          assinatura_id?: string | null
-          created_at?: string | null
-          descricao?: string | null
-          empresa_id: string
-          id?: string
-          metadata?: Json | null
-          metodo_pagamento?: string | null
-          status: string
-          stripe_invoice_id?: string | null
-          stripe_payment_intent_id?: string | null
-          valor: number
-        }
-        Update: {
-          assinatura_id?: string | null
-          created_at?: string | null
-          descricao?: string | null
-          empresa_id?: string
-          id?: string
-          metadata?: Json | null
-          metodo_pagamento?: string | null
-          status?: string
-          stripe_invoice_id?: string | null
-          stripe_payment_intent_id?: string | null
-          valor?: number
-        }
-        Relationships: [
           {
-            foreignKeyName: "pagamentos_assinatura_assinatura_id_fkey"
-            columns: ["assinatura_id"]
+            foreignKeyName: "movimentacoes_caixa_comanda_id_fkey"
+            columns: ["comanda_id"]
             isOneToOne: false
-            referencedRelation: "assinaturas"
+            referencedRelation: "comandas"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "pagamentos_assinatura_empresa_id_fkey"
-            columns: ["empresa_id"]
+            foreignKeyName: "movimentacoes_caixa_pedido_delivery_id_fkey"
+            columns: ["pedido_delivery_id"]
             isOneToOne: false
-            referencedRelation: "empresas"
+            referencedRelation: "pedidos_delivery"
             referencedColumns: ["id"]
           },
         ]
-      }
-      password_reset_tokens: {
-        Row: {
-          created_at: string | null
-          expires_at: string
-          id: string
-          token: string
-          used: boolean | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          expires_at: string
-          id?: string
-          token: string
-          used?: boolean | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          expires_at?: string
-          id?: string
-          token?: string
-          used?: boolean | null
-          user_id?: string
-        }
-        Relationships: []
       }
       pedidos: {
         Row: {
@@ -1225,11 +927,11 @@ export type Database = {
           id: string
           notas_cliente: string | null
           preco_unitario: number
-          produto_id: string
+          produto_id: string | null
           quantidade: number
-          status_cozinha: Database["public"]["Enums"]["pedido_status"]
+          status_cozinha: Database["public"]["Enums"]["pedido_status"] | null
           subtotal: number
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
           comanda_id: string
@@ -1237,11 +939,11 @@ export type Database = {
           id?: string
           notas_cliente?: string | null
           preco_unitario: number
-          produto_id: string
-          quantidade: number
-          status_cozinha?: Database["public"]["Enums"]["pedido_status"]
+          produto_id?: string | null
+          quantidade?: number
+          status_cozinha?: Database["public"]["Enums"]["pedido_status"] | null
           subtotal: number
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
           comanda_id?: string
@@ -1249,11 +951,11 @@ export type Database = {
           id?: string
           notas_cliente?: string | null
           preco_unitario?: number
-          produto_id?: string
+          produto_id?: string | null
           quantidade?: number
-          status_cozinha?: Database["public"]["Enums"]["pedido_status"]
+          status_cozinha?: Database["public"]["Enums"]["pedido_status"] | null
           subtotal?: number
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -1275,68 +977,66 @@ export type Database = {
       pedidos_delivery: {
         Row: {
           agendado_para: string | null
-          created_at: string | null
+          created_at: string
           cupom_id: string | null
           desconto: number | null
-          empresa_id: string | null
+          empresa_id: string
           endereco_id: string | null
-          forma_pagamento: string | null
+          forma_pagamento: Database["public"]["Enums"]["forma_pagamento"] | null
           id: string
           notas: string | null
-          status: string | null
+          status: Database["public"]["Enums"]["delivery_status"]
           stripe_payment_id: string | null
-          stripe_payment_intent_id: string | null
           stripe_payment_status: string | null
-          subtotal: number | null
-          taxa_entrega: number | null
-          tempo_estimado: string | null
-          total: number | null
+          subtotal: number
+          taxa_entrega: number
+          total: number
           troco_para: number | null
-          updated_at: string | null
+          updated_at: string
           user_id: string | null
         }
         Insert: {
           agendado_para?: string | null
-          created_at?: string | null
+          created_at?: string
           cupom_id?: string | null
           desconto?: number | null
-          empresa_id?: string | null
+          empresa_id: string
           endereco_id?: string | null
-          forma_pagamento?: string | null
+          forma_pagamento?:
+            | Database["public"]["Enums"]["forma_pagamento"]
+            | null
           id?: string
           notas?: string | null
-          status?: string | null
+          status?: Database["public"]["Enums"]["delivery_status"]
           stripe_payment_id?: string | null
-          stripe_payment_intent_id?: string | null
           stripe_payment_status?: string | null
-          subtotal?: number | null
-          taxa_entrega?: number | null
-          tempo_estimado?: string | null
-          total?: number | null
+          subtotal?: number
+          taxa_entrega?: number
+          total?: number
           troco_para?: number | null
-          updated_at?: string | null
+          updated_at?: string
           user_id?: string | null
         }
         Update: {
           agendado_para?: string | null
-          created_at?: string | null
+          created_at?: string
           cupom_id?: string | null
           desconto?: number | null
-          empresa_id?: string | null
+          empresa_id?: string
           endereco_id?: string | null
-          forma_pagamento?: string | null
+          forma_pagamento?:
+            | Database["public"]["Enums"]["forma_pagamento"]
+            | null
           id?: string
           notas?: string | null
-          status?: string | null
+          status?: Database["public"]["Enums"]["delivery_status"]
           stripe_payment_id?: string | null
-          stripe_payment_intent_id?: string | null
           stripe_payment_status?: string | null
-          subtotal?: number | null
-          taxa_entrega?: number | null
-          tempo_estimado?: string | null
-          total?: number | null
+          subtotal?: number
+          taxa_entrega?: number
+          total?: number
           troco_para?: number | null
-          updated_at?: string | null
+          updated_at?: string
           user_id?: string | null
         }
         Relationships: [
@@ -1362,63 +1062,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      planos: {
-        Row: {
-          ativo: boolean | null
-          created_at: string | null
-          descricao: string | null
-          destaque: boolean | null
-          id: string
-          limite_mesas: number | null
-          limite_pedidos_mes: number | null
-          limite_usuarios: number | null
-          nome: string
-          ordem: number | null
-          preco_anual: number | null
-          preco_mensal: number
-          recursos: Json | null
-          stripe_price_id_anual: string | null
-          stripe_price_id_mensal: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          ativo?: boolean | null
-          created_at?: string | null
-          descricao?: string | null
-          destaque?: boolean | null
-          id?: string
-          limite_mesas?: number | null
-          limite_pedidos_mes?: number | null
-          limite_usuarios?: number | null
-          nome: string
-          ordem?: number | null
-          preco_anual?: number | null
-          preco_mensal: number
-          recursos?: Json | null
-          stripe_price_id_anual?: string | null
-          stripe_price_id_mensal?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          ativo?: boolean | null
-          created_at?: string | null
-          descricao?: string | null
-          destaque?: boolean | null
-          id?: string
-          limite_mesas?: number | null
-          limite_pedidos_mes?: number | null
-          limite_usuarios?: number | null
-          nome?: string
-          ordem?: number | null
-          preco_anual?: number | null
-          preco_mensal?: number
-          recursos?: Json | null
-          stripe_price_id_anual?: string | null
-          stripe_price_id_mensal?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       produtos: {
         Row: {
@@ -1482,7 +1125,6 @@ export type Database = {
           empresa_id: string | null
           id: string
           nome: string
-          role: string | null
           updated_at: string
         }
         Insert: {
@@ -1492,7 +1134,6 @@ export type Database = {
           empresa_id?: string | null
           id: string
           nome: string
-          role?: string | null
           updated_at?: string
         }
         Update: {
@@ -1502,7 +1143,6 @@ export type Database = {
           empresa_id?: string | null
           id?: string
           nome?: string
-          role?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1515,334 +1155,91 @@ export type Database = {
           },
         ]
       }
-      promocoes: {
+      promocao_itens: {
         Row: {
-          ativa: boolean | null
-          created_at: string | null
-          data_fim: string | null
-          data_inicio: string | null
-          descricao: string | null
-          empresa_id: string | null
+          created_at: string
           id: string
-          nome: string
-          tipo: string
-          valor_desconto: number
+          produto_id: string
+          promocao_id: string
+          quantidade: number | null
         }
         Insert: {
-          ativa?: boolean | null
-          created_at?: string | null
-          data_fim?: string | null
-          data_inicio?: string | null
-          descricao?: string | null
-          empresa_id?: string | null
+          created_at?: string
           id?: string
-          nome: string
-          tipo: string
-          valor_desconto: number
+          produto_id: string
+          promocao_id: string
+          quantidade?: number | null
         }
         Update: {
-          ativa?: boolean | null
-          created_at?: string | null
-          data_fim?: string | null
-          data_inicio?: string | null
-          descricao?: string | null
-          empresa_id?: string | null
+          created_at?: string
           id?: string
-          nome?: string
-          tipo?: string
-          valor_desconto?: number
+          produto_id?: string
+          promocao_id?: string
+          quantidade?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "promocoes_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      reembolsos: {
-        Row: {
-          assinatura_id: string | null
-          created_at: string | null
-          dados_reembolso: Json | null
-          empresa_id: string | null
-          id: string
-          metodo_original: string | null
-          motivo: string | null
-          pedido_delivery_id: string | null
-          processado_em: string | null
-          processado_por: string | null
-          status: Database["public"]["Enums"]["refund_status"] | null
-          stripe_refund_id: string | null
-          tipo: string
-          updated_at: string | null
-          valor: number
-        }
-        Insert: {
-          assinatura_id?: string | null
-          created_at?: string | null
-          dados_reembolso?: Json | null
-          empresa_id?: string | null
-          id?: string
-          metodo_original?: string | null
-          motivo?: string | null
-          pedido_delivery_id?: string | null
-          processado_em?: string | null
-          processado_por?: string | null
-          status?: Database["public"]["Enums"]["refund_status"] | null
-          stripe_refund_id?: string | null
-          tipo: string
-          updated_at?: string | null
-          valor: number
-        }
-        Update: {
-          assinatura_id?: string | null
-          created_at?: string | null
-          dados_reembolso?: Json | null
-          empresa_id?: string | null
-          id?: string
-          metodo_original?: string | null
-          motivo?: string | null
-          pedido_delivery_id?: string | null
-          processado_em?: string | null
-          processado_por?: string | null
-          status?: Database["public"]["Enums"]["refund_status"] | null
-          stripe_refund_id?: string | null
-          tipo?: string
-          updated_at?: string | null
-          valor?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "reembolsos_assinatura_id_fkey"
-            columns: ["assinatura_id"]
-            isOneToOne: false
-            referencedRelation: "assinaturas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reembolsos_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reembolsos_pedido_delivery_id_fkey"
-            columns: ["pedido_delivery_id"]
-            isOneToOne: false
-            referencedRelation: "pedidos_delivery"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      relatorio_clientes_inativos: {
-        Row: {
-          created_at: string | null
-          dias_inativo: number | null
-          empresa_id: string
-          id: string
-          total_gasto: number | null
-          ultima_compra: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          dias_inativo?: number | null
-          empresa_id: string
-          id?: string
-          total_gasto?: number | null
-          ultima_compra?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          dias_inativo?: number | null
-          empresa_id?: string
-          id?: string
-          total_gasto?: number | null
-          ultima_compra?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "relatorio_clientes_inativos_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      relatorio_fidelidade_clientes: {
-        Row: {
-          created_at: string | null
-          empresa_id: string
-          id: string
-          pontos_gastos: number | null
-          total_pedidos: number | null
-          total_pontos: number | null
-          user_id: string | null
-          valor_total_gasto: number | null
-        }
-        Insert: {
-          created_at?: string | null
-          empresa_id: string
-          id?: string
-          pontos_gastos?: number | null
-          total_pedidos?: number | null
-          total_pontos?: number | null
-          user_id?: string | null
-          valor_total_gasto?: number | null
-        }
-        Update: {
-          created_at?: string | null
-          empresa_id?: string
-          id?: string
-          pontos_gastos?: number | null
-          total_pedidos?: number | null
-          total_pontos?: number | null
-          user_id?: string | null
-          valor_total_gasto?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "relatorio_fidelidade_clientes_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      relatorio_horarios_pico: {
-        Row: {
-          created_at: string | null
-          dia_semana: number
-          empresa_id: string
-          hora: number
-          id: string
-          quantidade_pedidos: number | null
-          receita: number | null
-        }
-        Insert: {
-          created_at?: string | null
-          dia_semana: number
-          empresa_id: string
-          hora: number
-          id?: string
-          quantidade_pedidos?: number | null
-          receita?: number | null
-        }
-        Update: {
-          created_at?: string | null
-          dia_semana?: number
-          empresa_id?: string
-          hora?: number
-          id?: string
-          quantidade_pedidos?: number | null
-          receita?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "relatorio_horarios_pico_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      relatorio_produtos_vendidos: {
-        Row: {
-          created_at: string | null
-          empresa_id: string
-          id: string
-          nome_produto: string
-          periodo_fim: string
-          periodo_inicio: string
-          produto_id: string | null
-          quantidade_vendida: number | null
-          receita_total: number | null
-        }
-        Insert: {
-          created_at?: string | null
-          empresa_id: string
-          id?: string
-          nome_produto: string
-          periodo_fim: string
-          periodo_inicio: string
-          produto_id?: string | null
-          quantidade_vendida?: number | null
-          receita_total?: number | null
-        }
-        Update: {
-          created_at?: string | null
-          empresa_id?: string
-          id?: string
-          nome_produto?: string
-          periodo_fim?: string
-          periodo_inicio?: string
-          produto_id?: string | null
-          quantidade_vendida?: number | null
-          receita_total?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "relatorio_produtos_vendidos_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "relatorio_produtos_vendidos_produto_id_fkey"
+            foreignKeyName: "promocao_itens_produto_id_fkey"
             columns: ["produto_id"]
             isOneToOne: false
             referencedRelation: "produtos"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "promocao_itens_promocao_id_fkey"
+            columns: ["promocao_id"]
+            isOneToOne: false
+            referencedRelation: "promocoes"
+            referencedColumns: ["id"]
+          },
         ]
       }
-      relatorio_vendas_diarias: {
+      promocoes: {
         Row: {
-          created_at: string | null
-          data: string
+          ativo: boolean | null
+          created_at: string
+          data_fim: string | null
+          data_inicio: string | null
+          descricao: string | null
+          dias_semana: number[] | null
           empresa_id: string
           id: string
-          ticket_medio: number | null
-          total_delivery: number | null
-          total_pedidos: number | null
-          total_presencial: number | null
-          total_vendas: number | null
+          imagem_url: string | null
+          nome: string
+          preco_promocional: number
+          updated_at: string
         }
         Insert: {
-          created_at?: string | null
-          data: string
+          ativo?: boolean | null
+          created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          descricao?: string | null
+          dias_semana?: number[] | null
           empresa_id: string
           id?: string
-          ticket_medio?: number | null
-          total_delivery?: number | null
-          total_pedidos?: number | null
-          total_presencial?: number | null
-          total_vendas?: number | null
+          imagem_url?: string | null
+          nome: string
+          preco_promocional: number
+          updated_at?: string
         }
         Update: {
-          created_at?: string | null
-          data?: string
+          ativo?: boolean | null
+          created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          descricao?: string | null
+          dias_semana?: number[] | null
           empresa_id?: string
           id?: string
-          ticket_medio?: number | null
-          total_delivery?: number | null
-          total_pedidos?: number | null
-          total_presencial?: number | null
-          total_vendas?: number | null
+          imagem_url?: string | null
+          nome?: string
+          preco_promocional?: number
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "relatorio_vendas_diarias_empresa_id_fkey"
+            foreignKeyName: "promocoes_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
@@ -1864,7 +1261,7 @@ export type Database = {
           observacoes: string | null
           status: string
           telefone_cliente: string | null
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
           created_at?: string
@@ -1875,11 +1272,11 @@ export type Database = {
           id?: string
           mesa_id?: string | null
           nome_cliente: string
-          numero_pessoas: number
+          numero_pessoas?: number
           observacoes?: string | null
           status?: string
           telefone_cliente?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
           created_at?: string
@@ -1894,54 +1291,24 @@ export type Database = {
           observacoes?: string | null
           status?: string
           telefone_cliente?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "fk_empresa"
+            foreignKeyName: "reservas_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_mesa"
+            foreignKeyName: "reservas_mesa_id_fkey"
             columns: ["mesa_id"]
             isOneToOne: false
             referencedRelation: "mesas"
             referencedColumns: ["id"]
           },
         ]
-      }
-      super_admins: {
-        Row: {
-          ativo: boolean | null
-          created_at: string | null
-          email: string | null
-          id: string
-          nome: string | null
-          permissoes: Json | null
-          user_id: string
-        }
-        Insert: {
-          ativo?: boolean | null
-          created_at?: string | null
-          email?: string | null
-          id?: string
-          nome?: string | null
-          permissoes?: Json | null
-          user_id: string
-        }
-        Update: {
-          ativo?: boolean | null
-          created_at?: string | null
-          email?: string | null
-          id?: string
-          nome?: string | null
-          permissoes?: Json | null
-          user_id?: string
-        }
-        Relationships: []
       }
       user_roles: {
         Row: {
@@ -1980,45 +1347,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      abrir_comanda_e_ocupar_mesa:
-        | {
-            Args: {
-              p_empresa_id: string
-              p_items: Json
-              p_mesa_id: string
-              p_qr_code_sessao: string
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              p_empresa_id: string
-              p_mesa_id: string
-              p_qr_code_sessao: string
-            }
-            Returns: string
-          }
-      check_empresa_blocked: { Args: { p_empresa_id: string }; Returns: Json }
-      debitar_pontos_fidelidade: {
-        Args: { qtd_pontos: number; userid: string }
-        Returns: undefined
-      }
-      gerar_pix: {
-        Args: { p_comanda_id: string; p_empresa_id: string; p_valor: number }
-        Returns: Json
-      }
       get_empresa_public_info: {
         Args: { _empresa_id: string }
         Returns: {
           endereco_completo: string
-          id: string
-          logo_url: string
-          nome_fantasia: string
-        }[]
-      }
-      get_empresa_publico: {
-        Args: { p_empresa_id: string }
-        Returns: {
           id: string
           logo_url: string
           nome_fantasia: string
@@ -2033,7 +1365,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      is_super_admin: { Args: { p_user_id?: string }; Returns: boolean }
       user_belongs_to_empresa: {
         Args: { _empresa_id: string; _user_id: string }
         Returns: boolean
@@ -2049,27 +1380,14 @@ export type Database = {
         | "saiu_entrega"
         | "entregue"
         | "cancelado"
+      forma_pagamento: "dinheiro" | "pix" | "cartao_credito" | "cartao_debito"
       mesa_status: "disponivel" | "ocupada" | "reservada" | "juncao"
-      payment_method: "dinheiro" | "pix" | "cartao_credito" | "cartao_debito"
       pedido_status:
         | "pendente"
         | "preparando"
         | "pronto"
         | "entregue"
         | "cancelado"
-      refund_status:
-        | "pending"
-        | "processing"
-        | "succeeded"
-        | "failed"
-        | "canceled"
-      subscription_status:
-        | "trialing"
-        | "active"
-        | "past_due"
-        | "canceled"
-        | "unpaid"
-        | "paused"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2207,29 +1525,14 @@ export const Constants = {
         "entregue",
         "cancelado",
       ],
+      forma_pagamento: ["dinheiro", "pix", "cartao_credito", "cartao_debito"],
       mesa_status: ["disponivel", "ocupada", "reservada", "juncao"],
-      payment_method: ["dinheiro", "pix", "cartao_credito", "cartao_debito"],
       pedido_status: [
         "pendente",
         "preparando",
         "pronto",
         "entregue",
         "cancelado",
-      ],
-      refund_status: [
-        "pending",
-        "processing",
-        "succeeded",
-        "failed",
-        "canceled",
-      ],
-      subscription_status: [
-        "trialing",
-        "active",
-        "past_due",
-        "canceled",
-        "unpaid",
-        "paused",
       ],
     },
   },

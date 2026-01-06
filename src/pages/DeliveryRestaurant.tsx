@@ -133,11 +133,11 @@ export default function DeliveryRestaurant() {
           if (config) {
             setFidelidadeData({
               id: fidelidade.id,
-              pontos_atuais: fidelidade.saldo_pontos || 0,
+              pontos_atuais: fidelidade.pontos || 0,
               pontos_necessarios: config.pontos_necessarios || 100,
               valor_recompensa: config.valor_recompensa || 15,
-              percentual: ((fidelidade.saldo_pontos || 0) / (config.pontos_necessarios || 100)) * 100,
-              reais_por_ponto: config.reais_por_ponto || 0.01,
+              percentual: ((fidelidade.pontos || 0) / (config.pontos_necessarios || 100)) * 100,
+              reais_por_ponto: config.pontos_por_real || 0.01,
             });
           }
         }

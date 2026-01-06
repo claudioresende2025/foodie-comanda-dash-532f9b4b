@@ -6,19 +6,6 @@ interface DeliveryLocation {
   longitude: number;
   updated_at: string;
   precisao?: number;
-  status?: string;
-  observacao?: string;
-}
-
-interface DeliveryTrackingRow {
-  id: string;
-  pedido_delivery_id: string;
-  status: string;
-  latitude: number | null;
-  longitude: number | null;
-  precisao: number | null;
-  observacao: string | null;
-  created_at: string;
 }
 
 export function useDeliveryTracking(pedidoId: string | undefined) {
@@ -33,9 +20,9 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
     }
 
     try {
-      // Buscar localização usando a tabela delivery_tracking
+      // Buscar localização usando a tabela delivery_locations
       const { data, error } = await supabase
-        .from('delivery_tracking')
+        .from('delivery_locations')
         .select('*')
         .eq('pedido_delivery_id', pedidoId)
         .order('created_at', { ascending: false })
@@ -50,14 +37,11 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
       }
 
       if (data && data.latitude && data.longitude) {
-        const row = data as DeliveryTrackingRow;
         setLocation({
-          latitude: Number(row.latitude),
-          longitude: Number(row.longitude),
-          updated_at: row.created_at,
-          precisao: row.precisao ? Number(row.precisao) : undefined,
-          status: row.status,
-          observacao: row.observacao || undefined,
+          latitude: Number(data.latitude),
+          longitude: Number(data.longitude),
+          updated_at: data.updated_at,
+          precisao: data.precisao ? Number(data.precisao) : undefined,
         });
         setHasLocation(true);
       } else {
@@ -86,20 +70,23 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
         {
           event: '*',
           schema: 'public',
-          table: 'delivery_tracking',
+          table: 'delivery_locations',
           filter: `pedido_delivery_id=eq.${pedidoId}`,
         },
         (payload) => {
           if (payload.new && typeof payload.new === 'object') {
-            const newData = payload.new as DeliveryTrackingRow;
+            const newData = payload.new as {
+              latitude: number;
+              longitude: number;
+              updated_at: string;
+              precisao: number | null;
+            };
             if (newData.latitude && newData.longitude) {
               setLocation({
                 latitude: Number(newData.latitude),
                 longitude: Number(newData.longitude),
-                updated_at: newData.created_at,
+                updated_at: newData.updated_at,
                 precisao: newData.precisao ? Number(newData.precisao) : undefined,
-                status: newData.status,
-                observacao: newData.observacao || undefined,
               });
               setHasLocation(true);
             }
