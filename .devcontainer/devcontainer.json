@@ -1,0 +1,5 @@
+{
+  "name": "foodie-comanda-dash devcontainer",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "postStartCommand": "pkill -f auto-sync.sh || true; chmod +x /workspaces/foodie-comanda-dash-532f9b4b/auto-sync.sh; setsid bash /workspaces/foodie-comanda-dash-532f9b4b/auto-sync.sh > /workspaces/foodie-comanda-dash-532f9b4b/auto-sync.log 2>&1 < /dev/null &"
+}
