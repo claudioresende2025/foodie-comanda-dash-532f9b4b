@@ -28,13 +28,6 @@ const statusConfig: Record<DeliveryStatus, {
     icon: Clock,
     message: 'Seu pedido foi recebido e está aguardando confirmação do restaurante.'
   },
-  pago: { 
-    label: 'Pagamento Confirmado', 
-    color: 'text-emerald-600', 
-    bgColor: 'bg-emerald-100',
-    icon: CreditCard,
-    message: 'Pagamento aprovado! Seu pedido está aguardando confirmação do restaurante.'
-  },
   confirmado: { 
     label: 'Confirmado', 
     color: 'text-blue-600', 
@@ -72,7 +65,7 @@ const statusConfig: Record<DeliveryStatus, {
   },
 };
 
-const statusOrder: DeliveryStatus[] = ['pendente', 'pago', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
+const statusOrder: DeliveryStatus[] = ['pendente', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
 
 export default function DeliveryTracking() {
   const { pedidoId } = useParams<{ pedidoId: string }>();
