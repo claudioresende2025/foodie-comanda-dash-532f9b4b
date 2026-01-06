@@ -8,12 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2 } from 'lucide-react';
@@ -23,231 +23,519 @@ import { MesaQRCodeDialog } from '@/components/admin/MesaQRCodeDialog';
 type MesaStatus = 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
 
 type Mesa = {
-  id: string;
-  numero_mesa: number;
-  status: MesaStatus;
-  capacidade: number;
-  mesa_juncao_id: string | null;
+  id: string;
+  numero_mesa: number;
+  status: MesaStatus;
+  capacidade: number;
+  mesa_juncao_id: string | null;
 };
 
+// Config de status para tabs (igual ao KDS)
 const statusConfig: Record<MesaStatus, { label: string; color: string; borderColor: string; icon: React.ElementType }> = {
-  disponivel: { label: 'Disponível', color: 'bg-green-500', borderColor: 'border-green-500', icon: CheckCircle },
-  ocupada: { label: 'Ocupada', color: 'bg-orange-500', borderColor: 'border-orange-500', icon: Clock },
-  reservada: { label: 'Reservada', color: 'bg-yellow-500', borderColor: 'border-yellow-500', icon: CalendarCheck },
-  juncao: { label: 'Junção', color: 'bg-blue-500', borderColor: 'border-blue-500', icon: Link2 },
+  disponivel: { label: 'Disponível', color: 'bg-green-500', borderColor: 'border-green-500', icon: CheckCircle },
+  ocupada: { label: 'Ocupada', color: 'bg-orange-500', borderColor: 'border-orange-500', icon: Clock },
+  reservada: { label: 'Reservada', color: 'bg-yellow-500', borderColor: 'border-yellow-500', icon: CalendarCheck },
+  juncao: { label: 'Junção', color: 'bg-blue-500', borderColor: 'border-blue-500', icon: Link2 },
 };
 
 export default function Mesas() {
-  const { profile } = useAuth();
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<MesaStatus | 'todas'>('todas');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
-  const [newMesa, setNewMesa] = useState({ numero_mesa: '', capacidade: '4' });
-  const [selectedMesas, setSelectedMesas] = useState<string[]>([]);
-  
-  const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [selectedMesaForQR, setSelectedMesaForQR] = useState<Mesa | null>(null);
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<MesaStatus | 'todas'>('todas');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
+  const [newMesa, setNewMesa] = useState({ numero_mesa: '', capacidade: '4' });
+  const [selectedMesas, setSelectedMesas] = useState<string[]>([]);
+  
+  // QR Code Dialog
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [selectedMesaForQR, setSelectedMesaForQR] = useState<Mesa | null>(null);
 
-  const empresaId = profile?.empresa_id;
+  const empresaId = profile?.empresa_id;
 
-  const { data: mesas = [], isLoading, refetch } = useQuery({
-    queryKey: ['mesas', empresaId],
-    queryFn: async () => {
-      if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .order('numero_mesa');
-      if (error) throw error;
-      return data as Mesa[];
-    },
-    enabled: !!empresaId,
-  });
+  // Fetch mesas with react-query
+  const { data: mesas = [], isLoading, refetch } = useQuery({
+    queryKey: ['mesas', empresaId],
+    queryFn: async () => {
+      if (!empresaId) return [];
+      const { data, error } = await supabase
+        .from('mesas')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .order('numero_mesa');
+      if (error) throw error;
+      return data as Mesa[];
+    },
+    enabled: !!empresaId,
+    staleTime: 30000,
+  });
 
-  // --- SINCRONIZAÇÃO EM TEMPO REAL CORRIGIDA ---
-  useEffect(() => {
-    if (!empresaId) return;
+  // Realtime subscription
+  useEffect(() => {
+    if (!empresaId) return;
 
-    // Monitora mudanças nas comandas e atualiza a mesa
-    const channel = supabase
-      .channel('sync-comandas-mesas')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'comandas', filter: `empresa_id=eq.${empresaId}` },
-        async (payload) => {
-          if (payload.eventType === 'INSERT' && payload.new.mesa_id) {
-            await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', payload.new.mesa_id);
-            queryClient.invalidateQueries({ queryKey: ['mesas'] });
-          } else if (payload.eventType === 'UPDATE') {
-            const { status, mesa_id } = payload.new;
-            if ((status === 'fechada' || status === 'cancelada') && mesa_id) {
-              const { data: open } = await supabase.from('comandas').select('id').eq('mesa_id', mesa_id).eq('status', 'aberta');
-              if (!open || open.length === 0) {
-                await supabase.from('mesas').update({ status: 'disponivel' }).eq('id', mesa_id);
-                queryClient.invalidateQueries({ queryKey: ['mesas'] });
-              }
-            }
-          }
-        }
-      ).subscribe();
+    const channel = supabase
+      .channel('comandas-mesas-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comandas',
+          filter: `empresa_id=eq.${empresaId}`
+        },
+        async (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new.mesa_id) {
+            await supabase
+              .from('mesas')
+              .update({ status: 'ocupada' })
+              .eq('id', payload.new.mesa_id);
+            queryClient.invalidateQueries({ queryKey: ['mesas'] });
+          } else if (payload.eventType === 'UPDATE') {
+            const newStatus = payload.new.status;
+            const mesaId = payload.new.mesa_id;
+            
+            if ((newStatus === 'fechada' || newStatus === 'cancelada') && mesaId) {
+              const { data: openComandas } = await supabase
+                .from('comandas')
+                .select('id')
+                .eq('mesa_id', mesaId)
+                .eq('status', 'aberta');
+              
+              if (!openComandas || openComandas.length === 0) {
+                await supabase
+                  .from('mesas')
+                  .update({ status: 'disponivel' })
+                  .eq('id', mesaId);
+                queryClient.invalidateQueries({ queryKey: ['mesas'] });
+              }
+            }
+          }
+        }
+      )
+      .subscribe();
 
-    // Monitora mudanças DIRETAS na tabela de mesas (Essencial para o Menu.tsx refletir aqui)
-    const mesasChannel = supabase
-      .channel('sync-status-direto')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'mesas', filter: `empresa_id=eq.${empresaId}` },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['mesas'] });
-        }
-      ).subscribe();
+    const mesasChannel = supabase
+      .channel('mesas-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mesas',
+          filter: `empresa_id=eq.${empresaId}`
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['mesas'] });
+        }
+      )
+      .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-      supabase.removeChannel(mesasChannel);
-    };
-  }, [empresaId, queryClient]);
+    return () => {
+      supabase.removeChannel(channel);
+      supabase.removeChannel(mesasChannel);
+    };
+  }, [empresaId, queryClient]);
 
-  const countByStatus = (status: MesaStatus) => mesas.filter(m => m.status === status).length;
-  
-  const filteredMesas = useMemo(() => {
-    if (activeTab === 'todas') return mesas;
-    return mesas.filter(m => m.status === activeTab);
-  }, [mesas, activeTab]);
+  // Contadores e filtros
+  const countByStatus = (status: MesaStatus) => mesas.filter(m => m.status === status).length;
+  
+  const filteredMesas = useMemo(() => {
+    if (activeTab === 'todas') return mesas;
+    return mesas.filter(m => m.status === activeTab);
+  }, [mesas, activeTab]);
 
-  const availableMesas = mesas.filter(m => m.status === 'disponivel');
+  const availableMesas = mesas.filter(m => m.status === 'disponivel');
 
-  const getMesasJuntasText = (mesa: Mesa): string | null => {
-    if (mesa.status !== 'juncao' || !mesa.mesa_juncao_id) return null;
-    const mesaPrincipal = mesas.find(m => m.id === mesa.mesa_juncao_id);
-    if (!mesaPrincipal) return null;
-    const mesasFilhas = mesas.filter(m => m.mesa_juncao_id === mesaPrincipal.id);
-    const numeros = [mesaPrincipal.numero_mesa, ...mesasFilhas.map(m => m.numero_mesa)].sort((a, b) => a - b);
-    return numeros.join('+');
-  };
+  // Helper para mostrar quais mesas estão juntas
+  const getMesasJuntasText = (mesa: Mesa): string | null => {
+    if (mesa.status !== 'juncao' || !mesa.mesa_juncao_id) return null;
+    
+    // Encontra a mesa principal
+    const mesaPrincipal = mesas.find(m => m.id === mesa.mesa_juncao_id);
+    if (!mesaPrincipal) return null;
+    
+    // Encontra todas as mesas filhas da mesa principal
+    const mesasFilhas = mesas.filter(m => m.mesa_juncao_id === mesaPrincipal.id);
+    
+    // Junta todos os números e ordena
+    const numeros = [mesaPrincipal.numero_mesa, ...mesasFilhas.map(m => m.numero_mesa)].sort((a, b) => a - b);
+    
+    return numeros.join('+');
+  };
 
-  const handleCreateMesa = async () => {
-    if (!empresaId) return;
-    const numero = parseInt(newMesa.numero_mesa);
-    try {
-      const { error } = await supabase.from('mesas').insert({
-        empresa_id: empresaId,
-        numero_mesa: numero,
-        capacidade: parseInt(newMesa.capacidade),
-      });
-      if (error) throw error;
-      toast.success('Mesa criada!');
-      setIsDialogOpen(false);
-      setNewMesa({ numero_mesa: '', capacidade: '4' });
-      queryClient.invalidateQueries({ queryKey: ['mesas'] });
-    } catch (error) {
-      toast.error('Erro ao criar mesa');
-    }
-  };
+  // Handlers
+  const handleCreateMesa = async () => {
+    if (!empresaId) {
+      toast.error('Configure sua empresa primeiro');
+      return;
+    }
 
-  const handleMergeMesas = async () => {
-    if (selectedMesas.length < 2) return;
-    try {
-      const master = selectedMesas[0];
-      const others = selectedMesas.slice(1);
-      for (const id of others) {
-        await supabase.from('mesas').update({ status: 'juncao', mesa_juncao_id: master }).eq('id', id);
-      }
-      await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', master);
-      toast.success('Mesas unidas!');
-      setSelectedMesas([]);
-      setIsMergeDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['mesas'] });
-    } catch (error) {
-      toast.error('Erro na junção');
-    }
-  };
+    const numero = parseInt(newMesa.numero_mesa);
+    if (isNaN(numero) || numero <= 0) {
+      toast.error('Número da mesa inválido');
+      return;
+    }
 
-  const handleUnmergeMesa = async (mesaId: string) => {
-    await supabase.from('mesas').update({ status: 'disponivel', mesa_juncao_id: null }).eq('id', mesaId);
-    toast.success('Junção desfeita');
-    queryClient.invalidateQueries({ queryKey: ['mesas'] });
-  };
+    try {
+      const { error } = await supabase.from('mesas').insert({
+        empresa_id: empresaId,
+        numero_mesa: numero,
+        capacidade: parseInt(newMesa.capacidade),
+      });
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Gerenciamento de Mesas</h1>
-          <p className="text-muted-foreground">Status em tempo real das mesas</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => refetch()}><RefreshCw className="w-4 h-4 mr-2" /> Atualizar</Button>
-          
-          <Dialog open={isMergeDialogOpen} onOpenChange={setIsMergeDialogOpen}>
-            <DialogTrigger asChild><Button variant="outline"><Merge className="w-4 h-4 mr-2" /> Juntar</Button></DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Juntar Mesas</DialogTitle></DialogHeader>
-              <div className="grid grid-cols-4 gap-2 my-4">
-                {availableMesas.map((m) => (
-                  <button key={m.id} onClick={() => setSelectedMesas(prev => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id])}
-                    className={`p-4 rounded-lg border-2 ${selectedMesas.includes(m.id) ? 'border-primary bg-primary/10' : 'border-border'}`}>{m.numero_mesa}</button>
-                ))}
-              </div>
-              <Button onClick={handleMergeMesas} disabled={selectedMesas.length < 2} className="w-full">Confirmar Junção</Button>
-            </DialogContent>
-          </Dialog>
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('Já existe uma mesa com este número');
+        } else {
+          throw error;
+        }
+        return;
+      }
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" /> Nova Mesa</Button></DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Nova Mesa</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <Input type="number" placeholder="Número" value={newMesa.numero_mesa} onChange={e => setNewMesa({...newMesa, numero_mesa: e.target.value})} />
-                <Input type="number" placeholder="Capacidade" value={newMesa.capacidade} onChange={e => setNewMesa({...newMesa, capacidade: e.target.value})} />
-                <Button onClick={handleCreateMesa} className="w-full">Criar</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+      toast.success('Mesa criada com sucesso!');
+      setNewMesa({ numero_mesa: '', capacidade: '4' });
+      setIsDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['mesas'] });
+    } catch (error) {
+      console.error('Error creating mesa:', error);
+      toast.error('Erro ao criar mesa');
+    }
+  };
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <TabsList className="grid w-full grid-cols-5 h-auto">
-          <TabsTrigger value="todas">Todas <Badge className="ml-1" variant="secondary">{mesas.length}</Badge></TabsTrigger>
-          {Object.entries(statusConfig).map(([key, config]) => (
-            <TabsTrigger key={key} value={key} className="hidden sm:flex">
-               <config.icon className="w-4 h-4 mr-1" /> {config.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+  const handleMergeMesas = async () => {
+    if (selectedMesas.length < 2) {
+      toast.error('Selecione pelo menos 2 mesas para junção');
+      return;
+    }
 
-        <TabsContent value={activeTab} className="mt-6">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {filteredMesas.map((mesa) => {
-              const config = statusConfig[mesa.status];
-              const StatusIcon = config.icon;
-              return (
-                <Card key={mesa.id} className={`relative transition-all hover:scale-105 border-2 bg-white ${config.borderColor}`} onClick={() => { setSelectedMesaForQR(mesa); setQrDialogOpen(true); }}>
-                  <div className={`absolute top-0 left-0 right-0 h-1 ${config.color}`} />
-                  <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between">
-                    <CardTitle className="text-2xl font-bold">{mesa.numero_mesa}</CardTitle>
-                    <QrCode className="w-5 h-5 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0 space-y-2">
-                    <div className="text-xs text-muted-foreground flex items-center"><Users className="w-3 h-3 mr-1" /> {mesa.capacidade} lugares</div>
-                    <Badge variant="outline" className="w-full justify-center text-[10px]">
-                      <StatusIcon className="w-3 h-3 mr-1" />
-                      {mesa.status === 'juncao' ? `Unida ao nº ${mesas.find(m => m.id === mesa.mesa_juncao_id)?.numero_mesa}` : config.label}
-                    </Badge>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-      </Tabs>
+    try {
+      const masterMesa = selectedMesas[0];
+      const otherMesas = selectedMesas.slice(1);
 
-      {selectedMesaForQR && empresaId && (
-        <MesaQRCodeDialog open={qrDialogOpen} onOpenChange={setQrDialogOpen} mesaNumero={selectedMesaForQR.numero_mesa} mesaId={selectedMesaForQR.id} empresaId={empresaId} />
-      )}
-    </div>
-  );
+      for (const mesaId of otherMesas) {
+        await supabase
+          .from('mesas')
+          .update({ 
+            status: 'juncao',
+            mesa_juncao_id: masterMesa 
+          })
+          .eq('id', mesaId);
+      }
+
+      await supabase
+        .from('mesas')
+        .update({ status: 'ocupada' })
+        .eq('id', masterMesa);
+
+      toast.success('Mesas unidas com sucesso!');
+      setSelectedMesas([]);
+      setIsMergeDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['mesas'] });
+    } catch (error) {
+      console.error('Error merging mesas:', error);
+      toast.error('Erro ao unir mesas');
+    }
+  };
+
+  const handleUnmergeMesa = async (mesaId: string) => {
+    try {
+      await supabase
+        .from('mesas')
+        .update({ 
+          status: 'disponivel',
+          mesa_juncao_id: null 
+        })
+        .eq('id', mesaId);
+
+      toast.success('Junção desfeita!');
+      queryClient.invalidateQueries({ queryKey: ['mesas'] });
+    } catch (error) {
+      console.error('Error unmerging:', error);
+      toast.error('Erro ao desfazer junção');
+    }
+  };
+
+  const handleOpenQRCode = (mesa: Mesa, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedMesaForQR(mesa);
+    setQrDialogOpen(true);
+  };
+
+  const handleMesaClick = (mesa: Mesa) => {
+    // Ao clicar na mesa, abre o QR Code para visualização
+    // O status é gerenciado automaticamente:
+    // - Ao abrir comanda -> mesa fica 'ocupada'
+    // - Ao fechar comanda no caixa -> mesa fica 'disponivel'
+    if (mesa.status !== 'juncao') {
+      setSelectedMesaForQR(mesa);
+      setQrDialogOpen(true);
+    }
+  };
+
+
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Gerenciamento de Mesas</h1>
+          <p className="text-muted-foreground">Gerencie as mesas do seu estabelecimento</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => refetch()}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Atualizar
+          </Button>
+          
+          <Dialog open={isMergeDialogOpen} onOpenChange={setIsMergeDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Merge className="w-4 h-4 mr-2" />
+                Juntar
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Juntar Mesas</DialogTitle>
+                <DialogDescription>
+                  Selecione as mesas que deseja unir. A primeira será a mesa principal.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-4 gap-2 my-4">
+                {availableMesas.map((mesa) => (
+                  <button
+                    key={mesa.id}
+                    onClick={() => {
+                      if (selectedMesas.includes(mesa.id)) {
+                        setSelectedMesas(selectedMesas.filter(id => id !== mesa.id));
+                      } else {
+                        setSelectedMesas([...selectedMesas, mesa.id]);
+                      }
+                    }}
+                    className={`p-4 rounded-lg border-2 transition-colors ${
+                      selectedMesas.includes(mesa.id)
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    {mesa.numero_mesa}
+                  </button>
+                ))}
+              </div>
+              {availableMesas.length < 2 && (
+                <p className="text-sm text-muted-foreground text-center">
+                  É necessário ter pelo menos 2 mesas disponíveis para junção
+                </p>
+              )}
+              <Button onClick={handleMergeMesas} disabled={selectedMesas.length < 2}>
+                Confirmar Junção
+              </Button>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-primary hover:bg-primary/90">
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Mesa
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Adicionar Nova Mesa</DialogTitle>
+                <DialogDescription>
+                  Preencha os dados da nova mesa
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="numero">Número da Mesa</Label>
+                  <Input
+                    id="numero"
+                    type="number"
+                    placeholder="Ex: 1"
+                    value={newMesa.numero_mesa}
+                    onChange={(e) => setNewMesa({ ...newMesa, numero_mesa: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capacidade">Capacidade</Label>
+                  <Input
+                    id="capacidade"
+                    type="number"
+                    placeholder="Ex: 4"
+                    value={newMesa.capacidade}
+                    onChange={(e) => setNewMesa({ ...newMesa, capacidade: e.target.value })}
+                  />
+                </div>
+                <Button onClick={handleCreateMesa} className="w-full">
+                  Criar Mesa
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Info Banner */}
+      <div className="bg-muted/50 border border-border rounded-lg p-4">
+        <p className="text-sm text-muted-foreground">
+          <strong>Status 100% automático:</strong> O status da mesa é atualizado automaticamente quando uma comanda é aberta (ocupada) ou fechada no caixa (disponível). Clique em uma mesa para ver o QR Code.
+        </p>
+      </div>
+
+      {/* Tabs por Status */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MesaStatus | 'todas')}>
+        <TabsList className="grid w-full grid-cols-5 h-auto">
+          {/* Tab Todas */}
+          <TabsTrigger
+            value="todas"
+            className="relative flex flex-col sm:flex-row items-center gap-1 py-2 px-1 sm:px-3 text-xs sm:text-sm"
+          >
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">Todas</span>
+            <Badge
+              variant="secondary"
+              className="absolute -top-1 -right-1 sm:relative sm:top-0 sm:right-0 sm:ml-1 h-5 w-5 flex items-center justify-center text-[10px] sm:text-xs"
+            >
+              {mesas.length}
+            </Badge>
+          </TabsTrigger>
+          
+          {/* Tabs por Status */}
+          {(['disponivel', 'ocupada', 'reservada', 'juncao'] as MesaStatus[]).map((status) => {
+            const config = statusConfig[status];
+            const count = countByStatus(status);
+            return (
+              <TabsTrigger
+                key={status}
+                value={status}
+                className="relative flex flex-col sm:flex-row items-center gap-1 py-2 px-1 sm:px-3 text-xs sm:text-sm"
+              >
+                <config.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{config.label}</span>
+                {count > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="absolute -top-1 -right-1 sm:relative sm:top-0 sm:right-0 sm:ml-1 h-5 w-5 flex items-center justify-center text-[10px] sm:text-xs"
+                  >
+                    {count}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+
+        {/* Conteúdo - Grid de Mesas */}
+        <TabsContent value={activeTab} className="mt-6">
+          {filteredMesas.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Users className="w-12 h-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  {activeTab === 'todas' 
+                    ? 'Nenhuma mesa cadastrada' 
+                    : `Nenhuma mesa ${statusConfig[activeTab as MesaStatus].label.toLowerCase()}`}
+                </p>
+                {activeTab === 'todas' && (
+                  <Button 
+                    className="mt-4"
+                    onClick={() => setIsDialogOpen(true)}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Adicionar Primeira Mesa
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {filteredMesas.map((mesa) => {
+                const config = statusConfig[mesa.status];
+                const StatusIcon = config.icon;
+                
+                return (
+                  <Card 
+                    key={mesa.id} 
+                    className={`relative overflow-hidden cursor-pointer transition-all hover:scale-105 border-2 bg-white ${config.borderColor}`}
+                    onClick={() => handleMesaClick(mesa)}
+                  >
+                    {/* Barra colorida no topo */}
+                    <div className={`absolute top-0 left-0 right-0 h-1 ${config.color}`} />
+                    
+                    <CardHeader className="pb-2 pt-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-2xl font-bold">
+                          {mesa.numero_mesa}
+                        </CardTitle>
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={(e) => handleOpenQRCode(mesa, e)}
+                            className="p-1 rounded hover:bg-primary/20 transition-colors"
+                            title="Ver QR Code"
+                          >
+                            <QrCode className="w-5 h-5" />
+                          </button>
+                          {mesa.status === 'juncao' && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUnmergeMesa(mesa.id);
+                              }}
+                              className="p-1 rounded hover:bg-destructive/20"
+                              title="Desfazer junção"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Users className="w-4 h-4" />
+                        <span>{mesa.capacidade} lugares</span>
+                      </div>
+                      <Badge 
+                        variant="outline" 
+                        className="w-full justify-center text-xs"
+                      >
+                        <StatusIcon className="w-3 h-3 mr-1" />
+                        {mesa.status === 'juncao' && getMesasJuntasText(mesa) 
+                          ? `Junção: ${getMesasJuntasText(mesa)}`
+                          : config.label}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* QR Code Dialog */}
+      {selectedMesaForQR && empresaId && (
+        <MesaQRCodeDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          mesaNumero={selectedMesaForQR.numero_mesa}
+          mesaId={selectedMesaForQR.id}
+          empresaId={empresaId}
+        />
+      )}
+
+    </div>
+  );
 }
