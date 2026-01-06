@@ -498,11 +498,7 @@ export default function Menu() {
 				
 				currentComandaId = newComanda.id;
 				
-				// Atualizar mesa para ocupada
-				await supabase
-					.from('mesas')
-					.update({ status: 'ocupada' })
-					.eq('id', mesaId);
+				       // Removido: atualização do status da mesa para 'ocupada' ao enviar pedido
 				
 				// Inserir os pedidos
 				const pedidosToInsert = itemsToSend.map(item => ({
