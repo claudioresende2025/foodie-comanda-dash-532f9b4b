@@ -67,9 +67,8 @@ export default function Menu() {
     const [meusPedidos, setMeusPedidos] = useState<Pedido[]>([]);
     const [isOrdersOpen, setIsOrdersOpen] = useState(false);
     const [isSendingOrder, setIsSendingOrder] = useState(false);
-    const [waiterCallPending, setWaiterCallPending] = useState(false);
-    const [soundEnabled, setSoundEnabled] = useState(true);
 
+    // --- Fetch Inicial ---
     useEffect(() => {
         if (empresaId) {
             fetchMenuData();
@@ -105,7 +104,11 @@ export default function Menu() {
             setEmpresa(empresaData as Empresa);
 
             if (mesaId) {
-                const { data: mesaData } = await supabase.from('mesas').select('numero_mesa').eq('id', mesaId).maybeSingle();
+                const { data: mesaData } = await supabase
+                    .from('mesas')
+                    .select('numero_mesa')
+                    .eq('id', mesaId)
+                    .maybeSingle();
                 if (mesaData) setMesaNumero(mesaData.numero_mesa);
             }
 
@@ -150,10 +153,9 @@ export default function Menu() {
             let currentComandaId = comandaId;
             const cartTotal = cart.reduce((sum, item) => sum + (item.produto.preco * item.quantidade), 0);
 
-            // Mantém a mesa como ocupada no banco de dados
+            // Garante mesa ocupada
             await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
 
-            // Cria comanda se não existir
             if (!currentComandaId) {
                 const sessionId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
                 const { data: newComanda, error: comandaError } = await supabase
@@ -173,13 +175,12 @@ export default function Menu() {
                 setComandaId(currentComandaId);
                 localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
             } else {
-                // Atualiza total se já houver comanda
                 const { data: comandaAtual } = await supabase.from('comandas').select('total').eq('id', currentComandaId).single();
                 const novoTotal = (comandaAtual?.total || 0) + cartTotal;
                 await supabase.from('comandas').update({ total: novoTotal }).eq('id', currentComandaId);
             }
 
-            // Inserção dos pedidos (CORREÇÃO: Removido empresa_id que não existe na tabela pedidos)
+            // Inserção sem a coluna empresa_id (que causava o erro)
             const pedidosToInsert = cart.map(item => ({
                 produto_id: item.produto.id,
                 quantidade: item.quantidade,
@@ -198,7 +199,7 @@ export default function Menu() {
             setIsCartOpen(false);
             fetchMeusPedidos(currentComandaId);
         } catch (error: any) {
-            console.error('Erro detalhado:', error);
+            console.error('Erro no pedido:', error);
             toast.error(`Erro: ${error.message}`);
         } finally {
             setIsSendingOrder(false);
@@ -214,26 +215,37 @@ export default function Menu() {
                     <h1 className="text-xl font-bold">{empresa?.nome_fantasia}</h1>
                     <p className="text-sm opacity-80">Mesa {mesaNumero}</p>
                 </div>
-                {meusPedidos.length > 0 && <Button variant="secondary" size="sm" onClick={() => setIsOrdersOpen(true)}>Pedidos</Button>}
+                {meusPedidos.length > 0 && (
+                    <Button variant="secondary" size="sm" onClick={() => setIsOrdersOpen(true)}>
+                        Meus Pedidos
+                    </Button>
+                )}
             </header>
 
-            <main className="container mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {produtos.filter(p => activeCategory === 'all' || p.categoria_id === activeCategory).map(produto => (
-                    <Card key={produto.id} className="border-0 shadow-sm">
-                        <CardContent className="p-4">
-                            <h3 className="font-semibold">{produto.nome}</h3>
-                            <div className="flex justify-between items-center mt-2">
-                                <span className="font-bold text-primary">R$ {produto.preco.toFixed(2)}</span>
-                                <Button size="sm" onClick={() => addToCart(produto)}><Plus className="w-4 h-4 mr-1" /> Add</Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
+            <main className="container mx-auto px-4 py-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {produtos.filter(p => activeCategory === 'all' || p.categoria_id === activeCategory).map(produto => (
+                        <Card key={produto.id} className="overflow-hidden border-0 shadow-sm">
+                            <CardContent className="p-4">
+                                <h3 className="font-semibold text-lg">{produto.nome}</h3>
+                                <p className="text-sm text-muted-foreground">{produto.descricao}</p>
+                                <div className="mt-3 flex items-center justify-between">
+                                    <span className="font-bold text-primary">R$ {produto.preco.toFixed(2)}</span>
+                                    {/* Botão Adicionar Original Restaurado */}
+                                    <Button size="sm" onClick={() => addToCart(produto)}>
+                                        <Plus className="w-4 h-4 mr-1" /> Adicionar
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
             </main>
 
+            {/* Botão Flutuante de Enviar Pedido */}
             {cart.length > 0 && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-md px-4">
-                    <Button className="w-full h-14 shadow-xl" onClick={handleSendOrder} disabled={isSendingOrder}>
+                    <Button className="w-full h-14 text-lg shadow-xl" onClick={handleSendOrder} disabled={isSendingOrder}>
                         {isSendingOrder ? <Loader2 className="animate-spin mr-2" /> : <ShoppingCart className="mr-2" />}
                         Enviar Pedido (R$ {cart.reduce((s, i) => s + (i.produto.preco * i.quantidade), 0).toFixed(2)})
                     </Button>
