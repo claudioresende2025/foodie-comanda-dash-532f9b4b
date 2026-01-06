@@ -67,12 +67,12 @@ import { ptBR } from 'date-fns/locale';
 interface Empresa {
   id: string;
   nome_fantasia: string;
-  email: string;
-  telefone: string;
-  trial_ends_at: string;
-  subscription_status: string;
-  blocked_at: string | null;
+  cnpj: string | null;
+  endereco_completo: string | null;
+  logo_url: string | null;
+  chave_pix: string | null;
   created_at: string;
+  usuario_proprietario_id: string | null;
   assinatura?: any;
 }
 
@@ -331,22 +331,11 @@ export default function SuperAdmin() {
 
   const handleBlockEmpresa = async (empresa: Empresa, block: boolean) => {
     try {
-      const { error } = await supabase
-        .from('empresas')
-        .update({
-          blocked_at: block ? new Date().toISOString() : null,
-          block_reason: block ? 'Bloqueado pelo administrador' : null,
-        })
-        .eq('id', empresa.id);
-
-      if (error) throw error;
-      
-      toast.success(block ? 'Empresa bloqueada' : 'Empresa desbloqueada');
-      await loadEmpresas();
-      await loadStats();
+      // Funcionalidade de bloqueio removida - campo blocked_at não existe
+      toast.info('Funcionalidade em desenvolvimento');
       setEmpresaDialogOpen(false);
     } catch (err) {
-      console.error('Erro ao bloquear/desbloquear empresa:', err);
+      console.error('Erro:', err);
       toast.error('Erro ao atualizar empresa');
     }
   };
@@ -376,24 +365,16 @@ export default function SuperAdmin() {
   };
 
   const filteredEmpresas = empresas.filter(empresa => {
-    const matchesSearch = empresa.nome_fantasia?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          empresa.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = empresa.nome_fantasia?.toLowerCase().includes(searchTerm.toLowerCase());
     
     if (filterStatus === 'all') return matchesSearch;
     if (filterStatus === 'active') return matchesSearch && empresa.assinatura?.status === 'active';
     if (filterStatus === 'trialing') return matchesSearch && empresa.assinatura?.status === 'trialing';
-    if (filterStatus === 'blocked') return matchesSearch && empresa.blocked_at;
-    if (filterStatus === 'expired') return matchesSearch && 
-      empresa.assinatura?.status === 'trialing' && 
-      new Date(empresa.assinatura.trial_end) < new Date();
     
     return matchesSearch;
   });
 
   const getStatusBadge = (empresa: Empresa) => {
-    if (empresa.blocked_at) {
-      return <Badge variant="destructive">Bloqueada</Badge>;
-    }
     const status = empresa.assinatura?.status;
     switch (status) {
       case 'active':
@@ -681,7 +662,7 @@ export default function SuperAdmin() {
                           <TableCell>
                             <div>
                               <p className="font-medium">{empresa.nome_fantasia}</p>
-                              <p className="text-xs text-muted-foreground">{empresa.email}</p>
+                              <p className="text-xs text-muted-foreground">{empresa.cnpj || '-'}</p>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -899,12 +880,12 @@ export default function SuperAdmin() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">Email</p>
-                  <p className="font-medium">{selectedEmpresa.email}</p>
+                  <p className="text-muted-foreground">CNPJ</p>
+                  <p className="font-medium">{selectedEmpresa.cnpj || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Telefone</p>
-                  <p className="font-medium">{selectedEmpresa.telefone || '-'}</p>
+                  <p className="text-muted-foreground">Endereço</p>
+                  <p className="font-medium">{selectedEmpresa.endereco_completo || '-'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Plano</p>
@@ -921,37 +902,25 @@ export default function SuperAdmin() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Trial termina em</p>
-                  <p className="font-medium">
-                    {selectedEmpresa.assinatura?.trial_end 
-                      ? format(new Date(selectedEmpresa.assinatura.trial_end), 'dd/MM/yyyy', { locale: ptBR })
-                      : '-'}
-                  </p>
+                  <p className="text-muted-foreground">Chave PIX</p>
+                  <p className="font-medium">{selectedEmpresa.chave_pix || '-'}</p>
                 </div>
               </div>
 
               <Separator />
 
               <div className="flex gap-2">
-                {selectedEmpresa.blocked_at ? (
-                  <Button 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => handleBlockEmpresa(selectedEmpresa, false)}
-                  >
-                    <Unlock className="w-4 h-4 mr-2" />
-                    Desbloquear
-                  </Button>
-                ) : (
-                  <Button 
-                    variant="destructive" 
-                    className="flex-1"
-                    onClick={() => handleBlockEmpresa(selectedEmpresa, true)}
-                  >
-                    <Ban className="w-4 h-4 mr-2" />
-                    Bloquear
-                  </Button>
-                )}
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    toast.info('Funcionalidade em desenvolvimento');
+                    setEmpresaDialogOpen(false);
+                  }}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  Ver Detalhes
+                </Button>
               </div>
             </div>
           )}

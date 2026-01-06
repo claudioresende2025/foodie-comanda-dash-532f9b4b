@@ -219,8 +219,7 @@ export default function Caixa() {
         .from('comandas')
         .update({
           status: 'fechada',
-          forma_pagamento: formaPagamento,
-          formas_pagamento: formasPagamentoStr,
+          forma_pagamento: formaPagamento === 'multiplo' ? 'dinheiro' : formaPagamento,
           troco_para: trocoPara || null,
           total,
           data_fechamento: new Date().toISOString(),
