@@ -45,7 +45,18 @@ async function sync() {
       await run(`git push origin ${BRANCH}`);
       console.log('[autosync] Push successful');
     } catch (pErr) {
-      console.error('[autosync] Push failed:', pErr.stderr || pErr.err || pErr.stdout || pErr);
+      const errOut = pErr.stderr || pErr.err || pErr.stdout || pErr;
+      console.error('[autosync] Push failed:', errOut);
+      // If push failed because no upstream is set, try setting upstream and push again
+      if (String(errOut).includes('set-upstream') || String(errOut).includes('no upstream')) {
+        try {
+          console.log('[autosync] Attempting to set upstream and push...');
+          await run(`git push --set-upstream origin ${BRANCH}`);
+          console.log('[autosync] Push successful (with --set-upstream)');
+        } catch (pErr2) {
+          console.error('[autosync] Push failed after --set-upstream:', pErr2.stderr || pErr2.err || pErr2.stdout || pErr2);
+        }
+      }
     }
   } catch (err) {
     console.error('[autosync] Error during sync:', err);
