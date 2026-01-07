@@ -4,44 +4,20 @@ import { RestaurantCard } from '@/components/delivery/RestaurantCard';
 import { EmptyState } from '@/components/delivery/EmptyState';
 import { LoadingSkeleton } from '@/components/delivery/LoadingSkeleton';
 import { BottomNavigation } from '@/components/delivery/BottomNavigation';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Opcional: componente de erro
 import { AlertCircle } from "lucide-react";
 
 export default function Delivery() {
-  // Adicionei 'error' que deve ser retornado pelo seu useQuery dentro do hook
   const { 
-    empresas = [], // Default para array vazio previne erro de .length
+    empresas = [], 
     isLoading, 
-    isError,
     searchQuery, 
     setSearchQuery, 
     refetch 
   } = useDeliveryRestaurants();
 
-  // 1. Estado de Carregamento
+  // Se estiver carregando, mostra o esqueleto
   if (isLoading) {
     return <LoadingSkeleton />;
-  }
-
-  // 2. Estado de Erro (Novo)
-  if (isError) {
-    return (
-      <div className="container mx-auto px-4 py-10">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Erro ao carregar</AlertTitle>
-          <AlertDescription>
-            Não foi possível carregar os restaurantes. Verifique sua conexão.
-          </AlertDescription>
-        </Alert>
-        <button 
-          onClick={() => refetch()} 
-          className="mt-4 w-full bg-primary text-white p-2 rounded"
-        >
-          Tentar novamente
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -52,9 +28,14 @@ export default function Delivery() {
       />
 
       <main className="container mx-auto px-4 py-6">
-        {/* Verificação segura usando opcional chaining ou default value */}
-        {empresas.length === 0 ? (
-          <EmptyState onRetry={refetch} />
+        {/* Adicionamos uma verificação extra de segurança */}
+        {!empresas || empresas.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+             <EmptyState onRetry={refetch} />
+             <p className="text-xs text-muted-foreground mt-4">
+               Verificando disponibilidade para o seu perfil...
+             </p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
             {empresas.map((empresa) => (
