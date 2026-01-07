@@ -37,6 +37,7 @@ type CartItem = {
 export default function Menu() {
   const { empresaId, mesaId } = useParams<{ empresaId: string; mesaId: string }>();
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [mesaNome, setMesaNome] = useState<string>(""); // Novo estado para o nome amigável
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,21 +47,37 @@ export default function Menu() {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!empresaId) return;
+      if (!empresaId || !mesaId) return;
 
-      const [empRes, catRes, prodRes] = await Promise.all([
-        supabase.from('empresas').select('id, nome_fantasia, logo_url').eq('id', empresaId).single(),
-        supabase.from('categorias').select('*').eq('empresa_id', empresaId).eq('ativo', true).order('ordem'),
-        supabase.from('produtos').select('*').eq('empresa_id', empresaId).eq('ativo', true).order('nome'),
-      ]);
+      try {
+        // 1. Buscamos os dados da empresa, categorias e produtos
+        const [empRes, catRes, prodRes, mesaRes] = await Promise.all([
+          supabase.from('empresas').select('id, nome_fantasia, logo_url').eq('id', empresaId).single(),
+          supabase.from('categorias').select('*').eq('empresa_id', empresaId).eq('ativo', true).order('ordem'),
+          supabase.from('produtos').select('*').eq('empresa_id', empresaId).eq('ativo', true).order('nome'),
+          // 2. Buscamos o nome/número real da mesa usando o ID que veio da URL
+          supabase.from('mesas').select('numero_mesa').eq('id', mesaId).maybeSingle(),
+        ]);
 
-      setEmpresa(empRes.data);
-      setCategorias(catRes.data || []);
-      setProdutos(prodRes.data || []);
-      setIsLoading(false);
+        setEmpresa(empRes.data);
+        setCategorias(catRes.data || []);
+        setProdutos(prodRes.data || []);
+        
+        // Se encontrar a mesa, usa o número dela, senão usa o ID curto como fallback
+        if (mesaRes.data) {
+          setMesaNome(mesaRes.data.numero_mesa.toString());
+        } else {
+          setMesaNome(mesaId.substring(0, 5)); // Apenas para não mostrar o UUID gigante
+        }
+
+      } catch (err) {
+        console.error("Erro ao carregar dados do menu:", err);
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchData();
-  }, [empresaId]);
+  }, [empresaId, mesaId]);
 
   const addToCart = (produto: Produto) => {
     setCart((prev) => {
@@ -106,34 +123,20 @@ export default function Menu() {
 
     setIsSending(true);
     try {
-      // Buscar mesa
-      const { data: mesa } = await supabase
-        .from('mesas')
-        .select('id')
-        .eq('empresa_id', empresaId)
-        .eq('numero_mesa', parseInt(mesaId))
-        .single();
-
-      if (!mesa) {
-        toast.error('Mesa não encontrada');
-        setIsSending(false);
-        return;
-      }
-
       // Criar ou buscar comanda aberta
       let { data: comanda } = await supabase
         .from('comandas')
         .select('id')
-        .eq('mesa_id', mesa.id)
+        .eq('mesa_id', mesaId)
         .eq('status', 'aberta')
-        .single();
+        .maybeSingle();
 
       if (!comanda) {
         const { data: novaComanda, error: comandaError } = await supabase
           .from('comandas')
           .insert({
             empresa_id: empresaId,
-            mesa_id: mesa.id,
+            mesa_id: mesaId,
             status: 'aberta',
           })
           .select('id')
@@ -147,7 +150,7 @@ export default function Menu() {
       await supabase
         .from('mesas')
         .update({ status: 'ocupada' })
-        .eq('id', mesa.id);
+        .eq('id', mesaId);
 
       // Inserir pedidos
       const pedidos = cart.map((item) => ({
@@ -187,10 +190,11 @@ export default function Menu() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
-      {/* Header */}
+      {/* Header Corrigido */}
       <header className="bg-primary text-primary-foreground p-4 sticky top-0 z-10 shadow-md">
         <h1 className="text-xl font-bold">{empresa?.nome_fantasia}</h1>
-        <p className="text-sm opacity-90">Mesa {mesaId}</p>
+        {/* Aqui agora exibe o NOME/NÚMERO da mesa e não o ID */}
+        <p className="text-sm opacity-90">Mesa {mesaNome || "..."}</p>
       </header>
 
       {/* Categorias */}
@@ -218,7 +222,7 @@ export default function Menu() {
         </div>
       )}
 
-      {/* Produtos em Grid */}
+      {/* Grid de Produtos */}
       <main className="p-4">
         {produtosFiltrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
@@ -257,29 +261,16 @@ export default function Menu() {
                       </span>
                       {qtd > 0 ? (
                         <div className="flex items-center gap-2">
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8"
-                            onClick={() => removeFromCart(produto.id)}
-                          >
+                          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => removeFromCart(produto.id)}>
                             <Minus className="w-4 h-4" />
                           </Button>
                           <span className="font-semibold w-6 text-center">{qtd}</span>
-                          <Button
-                            size="icon"
-                            className="h-8 w-8 bg-primary"
-                            onClick={() => addToCart(produto)}
-                          >
+                          <Button size="icon" className="h-8 w-8 bg-primary" onClick={() => addToCart(produto)}>
                             <Plus className="w-4 h-4" />
                           </Button>
                         </div>
                       ) : (
-                        <Button
-                          size="sm"
-                          className="bg-primary hover:bg-primary/90"
-                          onClick={() => addToCart(produto)}
-                        >
+                        <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => addToCart(produto)}>
                           <Plus className="w-4 h-4 mr-1" />
                           Adicionar
                         </Button>
@@ -293,7 +284,7 @@ export default function Menu() {
         )}
       </main>
 
-      {/* Carrinho Fixo */}
+      {/* Footer Carrinho */}
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 z-20">
           <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
@@ -309,16 +300,8 @@ export default function Menu() {
                 <p className="font-bold text-lg">R$ {totalCart.toFixed(2)}</p>
               </div>
             </div>
-            <Button
-              className="bg-primary hover:bg-primary/90"
-              onClick={enviarPedido}
-              disabled={isSending}
-            >
-              {isSending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <Send className="w-4 h-4 mr-2" />
-              )}
+            <Button className="bg-primary hover:bg-primary/90" onClick={enviarPedido} disabled={isSending}>
+              {isSending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
               Enviar Pedido
             </Button>
           </div>
