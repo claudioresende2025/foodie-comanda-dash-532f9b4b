@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin, ChefHat, Plus, Minus } from "lucide-react";
+import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -26,9 +26,8 @@ export default function DeliveryRestaurant() {
   const [empresa, setEmpresa] = useState<any>(null);
   const [config, setConfig] = useState<any>(null);
   const [produtos, setProdutos] = useState<any[]>([]);
-  const [categorias, setCategorias] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
-  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>("todas");
+
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -253,17 +252,6 @@ export default function DeliveryRestaurant() {
       console.log('[DeliveryRestaurant] Config:', cfg);
       setConfig(cfg);
       
-      const { data: cats, error: catsError } = await supabase
-        .from("categorias")
-        .select("*")
-        .eq("empresa_id", empresaId)
-        .eq("ativo", true)
-        .order("ordem");
-      if (catsError) {
-        console.error('[DeliveryRestaurant] Error fetching categorias:', catsError);
-      }
-      setCategorias(cats || []);
-
       const { data: prods, error: prodsError } = await supabase
         .from("produtos")
         .select("*")
@@ -512,292 +500,28 @@ export default function DeliveryRestaurant() {
     );
   }
 
-  // Filtrar produtos por categoria
-  const produtosFiltrados = categoriaSelecionada === "todas"
-    ? produtos
-    : produtos.filter(p => p.categoria_id === categoriaSelecionada);
-
-  // Agrupar produtos por categoria para exibição
-  const produtosPorCategoria = categorias.reduce((acc, cat) => {
-    const prodsCategoria = produtosFiltrados.filter(p => p.categoria_id === cat.id);
-    if (prodsCategoria.length > 0) {
-      acc[cat.id] = { nome: cat.nome, produtos: prodsCategoria };
-    }
-    return acc;
-  }, {} as Record<string, { nome: string; produtos: any[] }>);
-
-  // Produtos sem categoria
-  const produtosSemCategoria = produtosFiltrados.filter(p => !p.categoria_id);
-
   return (
     <div className="min-h-screen bg-background pb-36">
       <RestaurantHeader empresa={empresa} config={config} onBack={() => navigate(-1)} />
 
-      <main className="p-4 space-y-6 max-w-4xl mx-auto">
-        {/* Tabs de Categorias */}
-        {categorias.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            <Button
-              variant={categoriaSelecionada === "todas" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setCategoriaSelecionada("todas")}
-              className="rounded-full whitespace-nowrap"
-            >
-              Todas
-            </Button>
-            {categorias.map((cat) => (
-              <Button
-                key={cat.id}
-                variant={categoriaSelecionada === cat.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => setCategoriaSelecionada(cat.id)}
-                className="rounded-full whitespace-nowrap"
-              >
-                {cat.nome}
-              </Button>
-            ))}
-          </div>
-        )}
-
-        {produtosFiltrados.length === 0 ? (
+      <main className="p-4 space-y-3 max-w-2xl mx-auto">
+        {produtos.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-muted-foreground">Nenhum produto disponível</p>
           </div>
-        ) : categoriaSelecionada === "todas" ? (
-          // Exibir agrupado por categoria
-          <>
-            {(Object.entries(produtosPorCategoria) as [string, { nome: string; produtos: any[] }][]).map(([catId, { nome, produtos: prods }]) => (
-              <div key={catId} className="space-y-4">
-                <h2 className="text-xl font-bold text-foreground border-b pb-2">{nome}</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {prods.map((produto) => (
-                    <div
-                      key={produto.id}
-                      className="bg-card rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all"
-                    >
-                      <div className="aspect-video w-full overflow-hidden bg-muted">
-                        {produto.imagem_url ? (
-                          <img
-                            src={produto.imagem_url}
-                            alt={produto.nome}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <ChefHat className="w-12 h-12 text-muted-foreground/50" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div>
-                          <h3 className="font-semibold text-foreground line-clamp-1">{produto.nome}</h3>
-                          {produto.descricao && (
-                            <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{produto.descricao}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-lg font-bold text-primary">
-                            R$ {produto.preco.toFixed(2)}
-                          </span>
-                          {getQuantity(produto.id) > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-8 w-8"
-                                onClick={() => removeFromCart(produto.id)}
-                              >
-                                <Minus className="w-4 h-4" />
-                              </Button>
-                              <span className="w-6 text-center font-semibold">
-                                {getQuantity(produto.id)}
-                              </span>
-                              <Button
-                                size="icon"
-                                className="h-8 w-8 bg-primary"
-                                onClick={() => {
-                                  addToCart(produto);
-                                  toast.success("Adicionado!");
-                                }}
-                              >
-                                <Plus className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              className="bg-primary hover:bg-primary/90"
-                              onClick={() => {
-                                addToCart(produto);
-                                toast.success("Adicionado!");
-                              }}
-                            >
-                              <Plus className="w-4 h-4 mr-1" />
-                              Adicionar
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {produtosSemCategoria.length > 0 && (
-              <div className="space-y-4">
-                <h2 className="text-xl font-bold text-foreground border-b pb-2">Outros</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {produtosSemCategoria.map((produto) => (
-                    <div
-                      key={produto.id}
-                      className="bg-card rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all"
-                    >
-                      <div className="aspect-video w-full overflow-hidden bg-muted">
-                        {produto.imagem_url ? (
-                          <img
-                            src={produto.imagem_url}
-                            alt={produto.nome}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <ChefHat className="w-12 h-12 text-muted-foreground/50" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div>
-                          <h3 className="font-semibold text-foreground line-clamp-1">{produto.nome}</h3>
-                          {produto.descricao && (
-                            <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{produto.descricao}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-lg font-bold text-primary">
-                            R$ {produto.preco.toFixed(2)}
-                          </span>
-                          {getQuantity(produto.id) > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-8 w-8"
-                                onClick={() => removeFromCart(produto.id)}
-                              >
-                                <Minus className="w-4 h-4" />
-                              </Button>
-                              <span className="w-6 text-center font-semibold">
-                                {getQuantity(produto.id)}
-                              </span>
-                              <Button
-                                size="icon"
-                                className="h-8 w-8 bg-primary"
-                                onClick={() => {
-                                  addToCart(produto);
-                                  toast.success("Adicionado!");
-                                }}
-                              >
-                                <Plus className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              className="bg-primary hover:bg-primary/90"
-                              onClick={() => {
-                                addToCart(produto);
-                                toast.success("Adicionado!");
-                              }}
-                            >
-                              <Plus className="w-4 h-4 mr-1" />
-                              Adicionar
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
         ) : (
-          // Exibir apenas produtos da categoria selecionada
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {produtosFiltrados.map((produto) => (
-              <div
-                key={produto.id}
-                className="bg-card rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all"
-              >
-                <div className="aspect-video w-full overflow-hidden bg-muted">
-                  {produto.imagem_url ? (
-                    <img
-                      src={produto.imagem_url}
-                      alt={produto.nome}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <ChefHat className="w-12 h-12 text-muted-foreground/50" />
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 space-y-3">
-                  <div>
-                    <h3 className="font-semibold text-foreground line-clamp-1">{produto.nome}</h3>
-                    {produto.descricao && (
-                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{produto.descricao}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg font-bold text-primary">
-                      R$ {produto.preco.toFixed(2)}
-                    </span>
-                    {getQuantity(produto.id) > 0 ? (
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-8 w-8"
-                          onClick={() => removeFromCart(produto.id)}
-                        >
-                          <Minus className="w-4 h-4" />
-                        </Button>
-                        <span className="w-6 text-center font-semibold">
-                          {getQuantity(produto.id)}
-                        </span>
-                        <Button
-                          size="icon"
-                          className="h-8 w-8 bg-primary"
-                          onClick={() => {
-                            addToCart(produto);
-                            toast.success("Adicionado!");
-                          }}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="bg-primary hover:bg-primary/90"
-                        onClick={() => {
-                          addToCart(produto);
-                          toast.success("Adicionado!");
-                        }}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Adicionar
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          produtos.map((p) => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              quantity={getQuantity(p.id)}
+              onAdd={() => {
+                addToCart(p);
+                toast.success("Adicionado!");
+              }}
+              onRemove={() => removeFromCart(p.id)}
+            />
+          ))
         )}
       </main>
 

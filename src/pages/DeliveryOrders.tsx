@@ -47,8 +47,6 @@ export default function DeliveryOrders() {
       return;
     }
     setUser(session.user);
-    // Log apenas o ID do usuário para diagnóstico (não expõe objetos completos)
-    console.log('[DeliveryOrders] session.user.id:', session.user.id);
     fetchPedidos(session.user.id);
   };
 
@@ -70,8 +68,6 @@ export default function DeliveryOrders() {
 
       if (error) throw error;
       setPedidos(data as any[] || []);
-      // Log apenas o tamanho do resultado para diagnóstico
-      console.log('[DeliveryOrders] pedidos fetched:', (data || []).length);
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
     } finally {

@@ -9,8 +9,6 @@ export function AdminLayout() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  const debug = typeof window !== 'undefined' && window.location.search.includes('debug=1');
-
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
@@ -29,17 +27,6 @@ export function AdminLayout() {
   }
 
   if (!user) {
-    if (debug) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-background p-6">
-          <div style={{ maxWidth: 900 }}>
-            <h2 className="text-xl font-bold mb-2">DEBUG - AdminLayout</h2>
-            <p className="mb-2">`user` is not available — Auth returned null.</p>
-            <p className="text-sm text-muted-foreground">Verifique sessão e autenticação.</p>
-          </div>
-        </div>
-      );
-    }
     return null;
   }
 

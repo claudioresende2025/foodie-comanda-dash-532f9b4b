@@ -137,11 +137,10 @@ export default function PedidosDelivery() {
 
   // Debug logging
   useEffect(() => {
-    // Removido logs de debug para evitar exposição de dados em consoles
-    // console.log('[PedidosDelivery] Profile:', profile);
-    // console.log('[PedidosDelivery] Loading:', isLoading);
-    // console.log('[PedidosDelivery] Query Error:', queryError);
-    // console.log('[PedidosDelivery] Pedidos:', pedidos);
+    console.log('[PedidosDelivery] Profile:', profile);
+    console.log('[PedidosDelivery] Loading:', isLoading);
+    console.log('[PedidosDelivery] Query Error:', queryError);
+    console.log('[PedidosDelivery] Pedidos:', pedidos);
   }, [profile, isLoading, queryError, pedidos]);
 
   const updateStatusMutation = useMutation({
