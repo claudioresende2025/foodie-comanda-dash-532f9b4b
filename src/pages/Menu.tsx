@@ -43,6 +43,7 @@ export default function Menu() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [categoriaAtiva, setCategoriaAtiva] = useState<string | null>(null);
+  const [numeroMesa, setNumeroMesa] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -57,10 +58,24 @@ export default function Menu() {
       setEmpresa(empRes.data);
       setCategorias(catRes.data || []);
       setProdutos(prodRes.data || []);
+
+      // Buscar número da mesa pelo ID
+      if (mesaId) {
+        const { data: mesa } = await supabase
+          .from('mesas')
+          .select('numero_mesa')
+          .eq('id', mesaId)
+          .maybeSingle();
+        
+        if (mesa) {
+          setNumeroMesa(mesa.numero_mesa);
+        }
+      }
+
       setIsLoading(false);
     };
     fetchData();
-  }, [empresaId]);
+  }, [empresaId, mesaId]);
 
   const addToCart = (produto: Produto) => {
     setCart((prev) => {
@@ -106,13 +121,12 @@ export default function Menu() {
 
     setIsSending(true);
     try {
-      // Buscar mesa
+      // Buscar mesa pelo ID (UUID)
       const { data: mesa } = await supabase
         .from('mesas')
         .select('id')
-        .eq('empresa_id', empresaId)
-        .eq('numero_mesa', parseInt(mesaId))
-        .single();
+        .eq('id', mesaId)
+        .maybeSingle();
 
       if (!mesa) {
         toast.error('Mesa não encontrada');
@@ -190,7 +204,7 @@ export default function Menu() {
       {/* Header */}
       <header className="bg-primary text-primary-foreground p-4 sticky top-0 z-10 shadow-md">
         <h1 className="text-xl font-bold">{empresa?.nome_fantasia}</h1>
-        <p className="text-sm opacity-90">Mesa {mesaId}</p>
+        <p className="text-sm opacity-90">Mesa {numeroMesa || '-'}</p>
       </header>
 
       {/* Categorias */}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin } from "lucide-react";
+import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin, ChefHat, Plus, Minus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -575,16 +575,20 @@ export default function DeliveryRestaurant() {
                       key={produto.id}
                       className="bg-card rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all"
                     >
-                      {produto.imagem_url && (
-                        <div className="aspect-video w-full overflow-hidden bg-muted">
+                      <div className="aspect-video w-full overflow-hidden bg-muted">
+                        {produto.imagem_url ? (
                           <img
                             src={produto.imagem_url}
                             alt={produto.nome}
                             className="w-full h-full object-cover"
                             loading="lazy"
                           />
-                        </div>
-                      )}
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ChefHat className="w-12 h-12 text-muted-foreground/50" />
+                          </div>
+                        )}
+                      </div>
                       <div className="p-4 space-y-3">
                         <div>
                           <h3 className="font-semibold text-foreground line-clamp-1">{produto.nome}</h3>
@@ -597,38 +601,39 @@ export default function DeliveryRestaurant() {
                             R$ {produto.preco.toFixed(2)}
                           </span>
                           {getQuantity(produto.id) > 0 ? (
-                            <div className="flex items-center gap-2 bg-primary/10 rounded-full px-2 py-1">
+                            <div className="flex items-center gap-2">
                               <Button
                                 size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 rounded-full text-primary hover:bg-primary/20"
+                                variant="outline"
+                                className="h-8 w-8"
                                 onClick={() => removeFromCart(produto.id)}
                               >
-                                <span className="text-lg font-bold">-</span>
+                                <Minus className="w-4 h-4" />
                               </Button>
-                              <span className="w-6 text-center font-bold text-primary">
+                              <span className="w-6 text-center font-semibold">
                                 {getQuantity(produto.id)}
                               </span>
                               <Button
                                 size="icon"
-                                className="h-8 w-8 rounded-full"
+                                className="h-8 w-8 bg-primary"
                                 onClick={() => {
                                   addToCart(produto);
                                   toast.success("Adicionado!");
                                 }}
                               >
-                                <span className="text-lg font-bold">+</span>
+                                <Plus className="w-4 h-4" />
                               </Button>
                             </div>
                           ) : (
                             <Button
                               size="sm"
-                              className="rounded-full"
+                              className="bg-primary hover:bg-primary/90"
                               onClick={() => {
                                 addToCart(produto);
                                 toast.success("Adicionado!");
                               }}
                             >
+                              <Plus className="w-4 h-4 mr-1" />
                               Adicionar
                             </Button>
                           )}
@@ -648,16 +653,20 @@ export default function DeliveryRestaurant() {
                       key={produto.id}
                       className="bg-card rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all"
                     >
-                      {produto.imagem_url && (
-                        <div className="aspect-video w-full overflow-hidden bg-muted">
+                      <div className="aspect-video w-full overflow-hidden bg-muted">
+                        {produto.imagem_url ? (
                           <img
                             src={produto.imagem_url}
                             alt={produto.nome}
                             className="w-full h-full object-cover"
                             loading="lazy"
                           />
-                        </div>
-                      )}
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ChefHat className="w-12 h-12 text-muted-foreground/50" />
+                          </div>
+                        )}
+                      </div>
                       <div className="p-4 space-y-3">
                         <div>
                           <h3 className="font-semibold text-foreground line-clamp-1">{produto.nome}</h3>
@@ -670,38 +679,39 @@ export default function DeliveryRestaurant() {
                             R$ {produto.preco.toFixed(2)}
                           </span>
                           {getQuantity(produto.id) > 0 ? (
-                            <div className="flex items-center gap-2 bg-primary/10 rounded-full px-2 py-1">
+                            <div className="flex items-center gap-2">
                               <Button
                                 size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 rounded-full text-primary hover:bg-primary/20"
+                                variant="outline"
+                                className="h-8 w-8"
                                 onClick={() => removeFromCart(produto.id)}
                               >
-                                <span className="text-lg font-bold">-</span>
+                                <Minus className="w-4 h-4" />
                               </Button>
-                              <span className="w-6 text-center font-bold text-primary">
+                              <span className="w-6 text-center font-semibold">
                                 {getQuantity(produto.id)}
                               </span>
                               <Button
                                 size="icon"
-                                className="h-8 w-8 rounded-full"
+                                className="h-8 w-8 bg-primary"
                                 onClick={() => {
                                   addToCart(produto);
                                   toast.success("Adicionado!");
                                 }}
                               >
-                                <span className="text-lg font-bold">+</span>
+                                <Plus className="w-4 h-4" />
                               </Button>
                             </div>
                           ) : (
                             <Button
                               size="sm"
-                              className="rounded-full"
+                              className="bg-primary hover:bg-primary/90"
                               onClick={() => {
                                 addToCart(produto);
                                 toast.success("Adicionado!");
                               }}
                             >
+                              <Plus className="w-4 h-4 mr-1" />
                               Adicionar
                             </Button>
                           )}
@@ -721,16 +731,20 @@ export default function DeliveryRestaurant() {
                 key={produto.id}
                 className="bg-card rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-all"
               >
-                {produto.imagem_url && (
-                  <div className="aspect-video w-full overflow-hidden bg-muted">
+                <div className="aspect-video w-full overflow-hidden bg-muted">
+                  {produto.imagem_url ? (
                     <img
                       src={produto.imagem_url}
                       alt={produto.nome}
                       className="w-full h-full object-cover"
                       loading="lazy"
                     />
-                  </div>
-                )}
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <ChefHat className="w-12 h-12 text-muted-foreground/50" />
+                    </div>
+                  )}
+                </div>
                 <div className="p-4 space-y-3">
                   <div>
                     <h3 className="font-semibold text-foreground line-clamp-1">{produto.nome}</h3>
@@ -743,38 +757,39 @@ export default function DeliveryRestaurant() {
                       R$ {produto.preco.toFixed(2)}
                     </span>
                     {getQuantity(produto.id) > 0 ? (
-                      <div className="flex items-center gap-2 bg-primary/10 rounded-full px-2 py-1">
+                      <div className="flex items-center gap-2">
                         <Button
                           size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 rounded-full text-primary hover:bg-primary/20"
+                          variant="outline"
+                          className="h-8 w-8"
                           onClick={() => removeFromCart(produto.id)}
                         >
-                          <span className="text-lg font-bold">-</span>
+                          <Minus className="w-4 h-4" />
                         </Button>
-                        <span className="w-6 text-center font-bold text-primary">
+                        <span className="w-6 text-center font-semibold">
                           {getQuantity(produto.id)}
                         </span>
                         <Button
                           size="icon"
-                          className="h-8 w-8 rounded-full"
+                          className="h-8 w-8 bg-primary"
                           onClick={() => {
                             addToCart(produto);
                             toast.success("Adicionado!");
                           }}
                         >
-                          <span className="text-lg font-bold">+</span>
+                          <Plus className="w-4 h-4" />
                         </Button>
                       </div>
                     ) : (
                       <Button
                         size="sm"
-                        className="rounded-full"
+                        className="bg-primary hover:bg-primary/90"
                         onClick={() => {
                           addToCart(produto);
                           toast.success("Adicionado!");
                         }}
                       >
+                        <Plus className="w-4 h-4 mr-1" />
                         Adicionar
                       </Button>
                     )}
