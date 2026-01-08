@@ -15,45 +15,71 @@ export const UpdateNotification = () => {
     // Função para verificar atualizações
     const checkForUpdates = async () => {
       try {
+        // Tenta obter a registration ativa (se já existir)
         const registration = await navigator.serviceWorker.getRegistration();
         if (registration) {
-          // Verifica se há um novo service worker esperando
           if (registration.waiting) {
             setWaitingWorker(registration.waiting);
             setShowNotification(true);
           }
 
-          // Escuta por novas atualizações
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
             if (newWorker) {
               newWorker.addEventListener('statechange', () => {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  // Novo service worker está pronto para ativar
                   setWaitingWorker(newWorker);
                   setShowNotification(true);
                 }
               });
             }
           });
-
-          // Verifica atualizações a cada 15 segundos
-          const interval = setInterval(() => {
-            registration.update();
-          }, 15 * 1000);
-
-          return () => clearInterval(interval);
         }
+
+        // Também aguarda a registration caso ainda esteja sendo registrada
+        navigator.serviceWorker.ready.then((reg) => {
+          if (reg) {
+            if (reg.waiting) {
+              setWaitingWorker(reg.waiting);
+              setShowNotification(true);
+            }
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    setWaitingWorker(newWorker);
+                    setShowNotification(true);
+                  }
+                });
+              }
+            });
+          }
+        }).catch(() => {});
+
+        // Verifica atualizações a cada 15 segundos (se houver registration obtida)
+        const interval = setInterval(async () => {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) reg.update();
+        }, 15 * 1000);
+
+        return () => clearInterval(interval);
       } catch (error) {
         console.error('Erro ao verificar atualizações:', error);
       }
     };
 
-    // Escuta mensagens do service worker
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      // Service worker foi atualizado, recarrega a página
-      window.location.reload();
-    });
+    // Escuta mudanças de controller (quando o SW ativa)
+    const onControllerChange = () => window.location.reload();
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+
+    // Escuta mensagens do service worker — útil para builds que enviam aviso
+    const onMessage = (e: MessageEvent) => {
+      if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
+        setShowNotification(true);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage as EventListener);
 
     // Verifica atualizações quando o componente monta
     checkForUpdates();
@@ -69,6 +95,8 @@ export const UpdateNotification = () => {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
     };
   }, []);
 
