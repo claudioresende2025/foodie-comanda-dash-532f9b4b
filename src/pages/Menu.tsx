@@ -507,22 +507,11 @@ export default function Menu() {
           .select("id")
           .single();
 
-          console.log('[DEBUG] comanda insert response', { newComanda, comandaError });
+        if (comandaError) throw comandaError;
+        currentComandaId = newComanda.id;
 
-          if (comandaError) throw comandaError;
-
-          currentComandaId = newComanda.id;
-
-        // Atualizar mesa para ocupada
-        const { data: mesaUpdateData2, error: mesaUpdateError2 } = await supabase
-          .from('mesas')
-          .update({ status: 'ocupada' })
-          .eq('id', mesaId)
-          .select();
-        console.log('[DEBUG] mesa update after new comanda', { mesaUpdateData2, mesaUpdateError2 });
-        if (mesaUpdateError2) console.warn('Erro ao marcar mesa como ocupada (send order new comanda):', mesaUpdateError2);
-        // tenta garantir com retries
-        await ensureMesaOcupada(mesaId);
+        // NOTA: O trigger 'update_mesa_status_on_comanda' no banco de dados já marca a mesa como 'ocupada'
+        // automaticamente quando uma comanda é inserida com status 'aberta'.
 
         // Inserir os pedidos
         const pedidosToInsert = itemsToSend.map((item) => ({
@@ -530,8 +519,7 @@ export default function Menu() {
           comanda_id: currentComandaId,
         }));
 
-        const { data: pedidosDataIns, error: pedidosError } = await supabase.from("pedidos").insert(pedidosToInsert).select();
-        console.log('[DEBUG] pedidos insert (new comanda)', { pedidosDataIns, pedidosError });
+        const { error: pedidosError } = await supabase.from("pedidos").insert(pedidosToInsert);
         if (pedidosError) throw pedidosError;
 
         setComandaId(currentComandaId);
@@ -545,8 +533,6 @@ export default function Menu() {
           .eq("id", currentComandaId)
           .single();
 
-        console.log('[DEBUG] fetched comanda before subsequent insert', { comandaAtual, fetchTotalError });
-
         if (fetchTotalError) throw fetchTotalError;
 
         const totalAtual = Number(comandaAtual?.total) || 0;
@@ -557,29 +543,17 @@ export default function Menu() {
           ...item,
           comanda_id: currentComandaId,
         }));
-        const { data: pedidosDataSub, error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos).select();
-        console.log('[DEBUG] pedidos insert (subsequent)', { pedidosDataSub, pedidosError });
+        const { error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos);
         if (pedidosError) throw pedidosError;
 
         // Atualiza o total da comanda com a soma
-        const { data: updateTotalData, error: updateTotalError } = await supabase
+        // NOTA: O trigger do banco de dados NÃO altera o status da mesa quando apenas o total é atualizado
+        // (só altera quando status muda para 'fechada' ou 'cancelada')
+        const { error: updateTotalError } = await supabase
           .from("comandas")
           .update({ total: novoTotal })
-          .eq("id", currentComandaId)
-          .select();
-        console.log('[DEBUG] comanda update total', { updateTotalData, updateTotalError });
+          .eq("id", currentComandaId);
         if (updateTotalError) throw updateTotalError;
-
-        // FORÇA o status da mesa para ocupada
-        const { data: mesaUpdateData3, error: mesaUpdateError3 } = await supabase
-          .from('mesas')
-          .update({ status: 'ocupada' })
-          .eq('id', mesaId)
-          .select();
-        console.log('[DEBUG] mesa update after subsequent orders', { mesaUpdateData3, mesaUpdateError3 });
-        if (mesaUpdateError3) console.warn('Erro ao marcar mesa como ocupada (send order subsequent):', mesaUpdateError3);
-        // tenta garantir com retries
-        await ensureMesaOcupada(mesaId);
       }
 
       // 5. Ações de Conclusão
