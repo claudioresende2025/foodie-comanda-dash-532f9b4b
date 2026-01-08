@@ -182,12 +182,33 @@ export default function Menu() {
     markMesaOcupada();
   }, [mesaId]);
 
-  // Check for existing comanda in localStorage
+  // Check for existing comanda in localStorage - VERIFICAR SE AINDA ESTÁ ABERTA
   useEffect(() => {
-    const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
-    if (savedComandaId) {
-      setComandaId(savedComandaId);
-      fetchMeusPedidos(savedComandaId);
+    const validateAndLoadComanda = async () => {
+      const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
+      if (savedComandaId) {
+        // Verifica se a comanda ainda está aberta no banco de dados
+        const { data: comanda } = await supabase
+          .from("comandas")
+          .select("id, status")
+          .eq("id", savedComandaId)
+          .maybeSingle();
+
+        if (comanda && comanda.status === "aberta") {
+          // Comanda ainda está aberta, pode usar
+          setComandaId(savedComandaId);
+          fetchMeusPedidos(savedComandaId);
+        } else {
+          // Comanda foi fechada/cancelada ou não existe mais - limpar localStorage
+          localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+          setComandaId(null);
+          setMeusPedidos([]);
+        }
+      }
+    };
+
+    if (empresaId && mesaId) {
+      validateAndLoadComanda();
     }
   }, [empresaId, mesaId]);
 
