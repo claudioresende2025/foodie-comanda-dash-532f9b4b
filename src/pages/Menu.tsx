@@ -441,7 +441,6 @@ export default function Menu() {
 
     try {
       let currentComandaId = comandaId;
-      let totalUpdateNeeded = false;
 
       // 1. Prepara os dados do carrinho
       const itemsToSend = cart.map((item) => ({
@@ -495,6 +494,18 @@ export default function Menu() {
         localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId); // A RPC já inseriu os pedidos e atualizou o total.
       } else {
         // 3. PEDIDOS SUBSEQUENTES (Se comanda já existe)
+        // Busca o total atual da comanda ANTES de inserir os pedidos
+        const { data: comandaAtual, error: fetchTotalError } = await supabase
+          .from("comandas")
+          .select("total")
+          .eq("id", currentComandaId)
+          .single();
+
+        if (fetchTotalError) throw fetchTotalError;
+
+        const totalAtual = Number(comandaAtual?.total) || 0;
+        const novoTotal = totalAtual + cartTotal;
+
         // Insere os novos pedidos diretamente na tabela 'pedidos'
         const subsequentPedidos = itemsToSend.map((item) => ({
           ...item,
@@ -503,19 +514,17 @@ export default function Menu() {
         const { error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos);
 
         if (pedidosError) throw pedidosError;
-        totalUpdateNeeded = true;
-      } // 4. ATUALIZAÇÃO DO TOTAL (apenas para pedidos subsequentes)
-      if (totalUpdateNeeded) {
-        const { data: comandaData, error: totalError } = await supabase
-          .from("comandas")
-          .select("total")
-          .eq("id", currentComandaId)
-          .single();
-        if (totalError) throw totalError;
 
-        const currentTotal = comandaData?.total || 0;
-        const newPedidosTotal = currentTotal + cartTotal;
-        await supabase.from("comandas").update({ total: newPedidosTotal }).eq("id", currentComandaId);
+        // Atualiza o total da comanda com a soma
+        const { error: updateTotalError } = await supabase
+          .from("comandas")
+          .update({ total: novoTotal })
+          .eq("id", currentComandaId);
+
+        if (updateTotalError) throw updateTotalError;
+
+        // FORÇA o status da mesa para ocupada
+        await supabase.from("mesas").update({ status: "ocupada" }).eq("id", mesaId);
       }
 
       // 5. Ações de Conclusão
