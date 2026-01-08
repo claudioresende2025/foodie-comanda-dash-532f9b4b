@@ -528,7 +528,7 @@ export default function Menu() {
         if (pedidosError) throw pedidosError;
 
         setComandaId(currentComandaId);
-        localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId); // A RPC já inseriu os pedidos e atualizou o total.
+        localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
       } else {
         // 3. PEDIDOS SUBSEQUENTES (Se comanda já existe)
         // Busca o total atual da comanda ANTES de inserir os pedidos
@@ -540,24 +540,64 @@ export default function Menu() {
 
         if (fetchTotalError) throw fetchTotalError;
 
-        const totalAtual = Number(comandaAtual?.total) || 0;
-        const novoTotal = totalAtual + cartTotal;
+        // IMPORTANTE: Verificar se a comanda ainda está aberta
+        // Se a comanda foi fechada (ex: cliente anterior), criar uma nova
+        if (comandaAtual?.status !== "aberta") {
+          // Limpa referência antiga
+          localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+          setComandaId(null);
+          
+          // Cria nova comanda (recursivamente chamando a lógica de nova comanda)
+          const sessionId = crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
-        // Insere os novos pedidos diretamente na tabela 'pedidos'
-        const subsequentPedidos = itemsToSend.map((item) => ({
-          ...item,
-          comanda_id: currentComandaId,
-        }));
-        const { error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos);
-        if (pedidosError) throw pedidosError;
+          const { data: newComanda, error: newComandaError } = await supabase
+            .from("comandas")
+            .insert({
+              empresa_id: empresaId,
+              mesa_id: mesaId,
+              qr_code_sessao: sessionId,
+              status: "aberta",
+              total: cartTotal,
+            })
+            .select("id")
+            .single();
 
-        // Atualiza o total da comanda com a soma
-        // NOTA: O trigger do banco de dados NÃO altera o status da mesa quando apenas o total é atualizado
-        // (só altera quando status muda para 'fechada' ou 'cancelada')
-        const { error: updateTotalError } = await supabase
-          .from("comandas")
-          .update({ total: novoTotal })
-          .eq("id", currentComandaId);
+          if (newComandaError) throw newComandaError;
+          currentComandaId = newComanda.id;
+
+          // Inserir os pedidos na nova comanda
+          const pedidosToInsert = itemsToSend.map((item) => ({
+            ...item,
+            comanda_id: currentComandaId,
+          }));
+
+          const { error: pedidosError } = await supabase.from("pedidos").insert(pedidosToInsert);
+          if (pedidosError) throw pedidosError;
+
+          setComandaId(currentComandaId);
+          localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
+        } else {
+          // Comanda ainda está aberta - adicionar pedidos normalmente
+          const totalAtual = Number(comandaAtual?.total) || 0;
+          const novoTotal = totalAtual + cartTotal;
+
+          // Insere os novos pedidos diretamente na tabela 'pedidos'
+          const subsequentPedidos = itemsToSend.map((item) => ({
+            ...item,
+            comanda_id: currentComandaId,
+          }));
+          const { error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos);
+          if (pedidosError) throw pedidosError;
+
+          // Atualiza o total da comanda com a soma
+          const { error: updateTotalError } = await supabase
+            .from("comandas")
+            .update({ total: novoTotal })
+            .eq("id", currentComandaId);
+          if (updateTotalError) throw updateTotalError;
+        }
         if (updateTotalError) throw updateTotalError;
       }
 
