@@ -39,18 +39,38 @@ async function applyMigration() {
     for (let i = 0; i < statements.length; i++) {
       const statement = statements[i] + ';';
       console.log(`⏳ Executando statement ${i + 1}/${statements.length}...`);
-      
-      const { error } = await supabase.rpc('exec_sql', { sql: statement });
-      
-      if (error) {
-        // Alguns erros são esperados (tabelas que já existem, etc)
-        if (error.message.includes('already exists') || 
-            error.message.includes('does not exist') ||
-            error.message.includes('duplicate')) {
-          console.log(`⚠️  Aviso (ignorado): ${error.message}\n`);
+
+      let execError = null;
+
+      // Tentar executar via RPC exec_sql (projeto antigo) primeiro
+      try {
+        const { error } = await supabase.rpc('exec_sql', { sql: statement });
+        execError = error;
+      } catch (rpcErr) {
+        execError = rpcErr;
+      }
+
+      // Se falhou por falta da função exec_sql ou RPC indisponível, tentar usar API direta `postgrest`/`postgres.query`
+      if (execError) {
+        try {
+          if (supabase.postgres && typeof supabase.postgres.query === 'function') {
+            // supabase.postgres.query accepts an object with `sql` in newer clients
+            const qRes = await supabase.postgres.query({ sql: statement });
+            if (qRes?.error) execError = qRes.error;
+            else execError = null;
+          }
+        } catch (directErr) {
+          execError = directErr;
+        }
+      }
+
+      if (execError) {
+        const msg = String(execError?.message || execError);
+        if (msg.includes('already exists') || msg.includes('does not exist') || msg.includes('duplicate')) {
+          console.log(`⚠️  Aviso (ignorado): ${msg}\n`);
         } else {
-          console.error(`❌ Erro no statement ${i + 1}:`, error.message);
-          console.error('Statement:', statement.substring(0, 100) + '...\n');
+          console.error(`❌ Erro no statement ${i + 1}:`, msg);
+          console.error('Statement:', statement.substring(0, 200) + '...\n');
           // Continuar mesmo com erro
         }
       } else {
