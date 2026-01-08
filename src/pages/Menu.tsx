@@ -1,623 +1,252 @@
 import { useState, useEffect } from 'react';
-
 import { useParams } from 'react-router-dom';
-
 import { supabase } from '@/integrations/supabase/client';
-
-import { Loader2, Plus, Minus, ShoppingCart, ChefHat, Send } from 'lucide-react';
-
+import { 
+  Loader2, Plus, Minus, ShoppingCart, ChefHat, Send, 
+  Search, Bell, Clock, CheckCircle2 
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
 import { Card, CardContent } from '@/components/ui/card';
-
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 
-
-
-type Empresa = {
-
-  id: string;
-
-  nome_fantasia: string;
-
-  logo_url: string | null;
-
-};
-
-
-
-type Categoria = {
-
-  id: string;
-
-  nome: string;
-
-  ordem: number;
-
-};
-
-
-
-type Produto = {
-
-  id: string;
-
-  nome: string;
-
-  descricao: string | null;
-
-  preco: number;
-
-  imagem_url: string | null;
-
-  categoria_id: string | null;
-
-  ativo: boolean;
-
-};
-
-
-
-type CartItem = {
-
-  produto: Produto;
-
-  quantidade: number;
-
-  notas: string;
-
-};
-
-
+type Empresa = { id: string; nome_fantasia: string; logo_url: string | null };
+type Categoria = { id: string; nome: string; ordem: number };
+type Produto = { id: string; nome: string; descricao: string | null; preco: number; imagem_url: string | null; categoria_id: string | null; ativo: boolean };
+type CartItem = { produto: Produto; quantidade: number; notas: string };
 
 export default function Menu() {
-
   const { empresaId, mesaId } = useParams<{ empresaId: string; mesaId: string }>();
-
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
-
-  const [mesaNome, setMesaNome] = useState<string>(""); // Novo estado para o nome amigável
-
+  const [mesaNome, setMesaNome] = useState<string>("");
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-
   const [produtos, setProdutos] = useState<Produto[]>([]);
-
   const [isLoading, setIsLoading] = useState(true);
-
   const [cart, setCart] = useState<CartItem[]>([]);
-
   const [isSending, setIsSending] = useState(false);
-
   const [categoriaAtiva, setCategoriaAtiva] = useState<string | null>(null);
-
-
+  const [searchQuery, setSearchQuery] = useState("");
+  const [comandaId, setComandaId] = useState<string | null>(null);
+  const [meusPedidos, setMeusPedidos] = useState<any[]>([]);
 
   useEffect(() => {
-
     const fetchData = async () => {
-
       if (!empresaId || !mesaId) return;
-
-
-
       try {
-
-        // 1. Buscamos os dados da empresa, categorias e produtos
-
         const [empRes, catRes, prodRes, mesaRes] = await Promise.all([
-
           supabase.from('empresas').select('id, nome_fantasia, logo_url').eq('id', empresaId).single(),
-
           supabase.from('categorias').select('*').eq('empresa_id', empresaId).eq('ativo', true).order('ordem'),
-
           supabase.from('produtos').select('*').eq('empresa_id', empresaId).eq('ativo', true).order('nome'),
-
-          // 2. Buscamos o nome/número real da mesa usando o ID que veio da URL
-
           supabase.from('mesas').select('numero_mesa').eq('id', mesaId).maybeSingle(),
-
         ]);
 
-
-
         setEmpresa(empRes.data);
-
         setCategorias(catRes.data || []);
-
         setProdutos(prodRes.data || []);
+        if (mesaRes.data) setMesaNome(mesaRes.data.numero_mesa.toString());
 
-        
-
-        // Se encontrar a mesa, usa o número dela, senão usa o ID curto como fallback
-
-        if (mesaRes.data) {
-
-          setMesaNome(mesaRes.data.numero_mesa.toString());
-
-        } else {
-
-          setMesaNome(mesaId.substring(0, 5)); // Apenas para não mostrar o UUID gigante
-
+        const savedComanda = localStorage.getItem(`comanda_${mesaId}`);
+        if (savedComanda) {
+          setComandaId(savedComanda);
+          fetchHistorico(savedComanda);
         }
-
-
-
       } catch (err) {
-
-        console.error("Erro ao carregar dados do menu:", err);
-
+        console.error("Erro ao carregar:", err);
       } finally {
-
         setIsLoading(false);
-
       }
-
     };
-
     fetchData();
-
   }, [empresaId, mesaId]);
 
-
+  const fetchHistorico = async (id: string) => {
+    const { data } = await supabase
+      .from('pedidos')
+      .select('id, status_cozinha, quantidade, produtos(nome)')
+      .eq('comanda_id', id)
+      .order('created_at', { ascending: false });
+    setMeusPedidos(data || []);
+  };
 
   const addToCart = (produto: Produto) => {
-
     setCart((prev) => {
-
       const existing = prev.find((item) => item.produto.id === produto.id);
-
-      if (existing) {
-
-        return prev.map((item) =>
-
-          item.produto.id === produto.id
-
-            ? { ...item, quantidade: item.quantidade + 1 }
-
-            : item
-
-        );
-
-      }
-
+      if (existing) return prev.map((item) => item.produto.id === produto.id ? { ...item, quantidade: item.quantidade + 1 } : item);
       return [...prev, { produto, quantidade: 1, notas: '' }];
-
     });
-
     toast.success(`${produto.nome} adicionado`);
-
   };
 
-
-
-  const removeFromCart = (produtoId: string) => {
-
-    setCart((prev) => {
-
-      const existing = prev.find((item) => item.produto.id === produtoId);
-
-      if (existing && existing.quantidade > 1) {
-
-        return prev.map((item) =>
-
-          item.produto.id === produtoId
-
-            ? { ...item, quantidade: item.quantidade - 1 }
-
-            : item
-
-        );
-
-      }
-
-      return prev.filter((item) => item.produto.id !== produtoId);
-
-    });
-
-  };
-
-
-
-  const getCartQuantity = (produtoId: string) => {
-
-    const item = cart.find((c) => c.produto.id === produtoId);
-
-    return item?.quantidade || 0;
-
-  };
-
-
-
-  const totalCart = cart.reduce(
-
-    (sum, item) => sum + item.produto.preco * item.quantidade,
-
-    0
-
-  );
-
-
+  const totalCart = cart.reduce((sum, item) => sum + item.produto.preco * item.quantidade, 0);
 
   const enviarPedido = async () => {
-
     if (cart.length === 0 || !mesaId || !empresaId) return;
-
-
-
     setIsSending(true);
 
     try {
+      let currentComandaId = comandaId;
+      const valorNovoPedido = totalCart;
 
-      // Criar ou buscar comanda aberta
-
-      let { data: comanda } = await supabase
-
-        .from('comandas')
-
-        .select('id')
-
-        .eq('mesa_id', mesaId)
-
-        .eq('status', 'aberta')
-
-        .maybeSingle();
-
-
-
-      if (!comanda) {
-
-        const { data: novaComanda, error: comandaError } = await supabase
-
+      // 1. GESTÃO DA COMANDA E VALORES (Para aparecer no Caixa)
+      if (!currentComandaId) {
+        // Primeira vez: Cria comanda com o valor inicial
+        const { data: novaComanda, error: errC } = await supabase
           .from('comandas')
-
-          .insert({
-
-            empresa_id: empresaId,
-
-            mesa_id: mesaId,
-
+          .insert({ 
+            empresa_id: empresaId, 
+            mesa_id: mesaId, 
             status: 'aberta',
-
+            total: valorNovoPedido 
           })
-
-          .select('id')
-
+          .select().single();
+        if (errC) throw errC;
+        currentComandaId = novaComanda.id;
+        setComandaId(currentComandaId);
+        localStorage.setItem(`comanda_${mesaId}`, currentComandaId);
+      } else {
+        // Pedidos subsequentes: Busca o total atual e soma o novo
+        const { data: comandaAtual } = await supabase
+          .from('comandas')
+          .select('total')
+          .eq('id', currentComandaId)
           .single();
 
+        const novoTotalAcumulado = (comandaAtual?.total || 0) + valorNovoPedido;
 
-
-        if (comandaError) throw comandaError;
-
-        comanda = novaComanda;
-
+        await supabase
+          .from('comandas')
+          .update({ total: novoTotalAcumulado })
+          .eq('id', currentComandaId);
       }
 
-
-
-      // Atualizar mesa para ocupada
-
+      // 2. STATUS DA MESA (Garantir que continue Ocupada)
       await supabase
-
         .from('mesas')
-
         .update({ status: 'ocupada' })
-
         .eq('id', mesaId);
 
-
-
-      // Inserir pedidos
-
+      // 3. INSERIR ITENS
       const pedidos = cart.map((item) => ({
-
-        comanda_id: comanda!.id,
-
+        comanda_id: currentComandaId,
         produto_id: item.produto.id,
-
         quantidade: item.quantidade,
-
         preco_unitario: item.produto.preco,
-
         subtotal: item.produto.preco * item.quantidade,
-
         notas_cliente: item.notas || null,
-
-        status_cozinha: 'pendente' as const,
-
+        status_cozinha: 'pendente',
       }));
 
-
-
       const { error: pedidoError } = await supabase.from('pedidos').insert(pedidos);
-
       if (pedidoError) throw pedidoError;
 
-
-
       setCart([]);
-
       toast.success('Pedido enviado com sucesso!');
-
+      fetchHistorico(currentComandaId);
     } catch (error) {
-
-      console.error('Erro ao enviar pedido:', error);
-
+      console.error(error);
       toast.error('Erro ao enviar pedido');
-
     } finally {
-
       setIsSending(false);
-
     }
-
   };
 
-
-
-  const produtosFiltrados = categoriaAtiva
-
-    ? produtos.filter((p) => p.categoria_id === categoriaAtiva)
-
-    : produtos;
-
-
-
-  if (isLoading) {
-
-    return (
-
-      <div className="flex h-screen items-center justify-center bg-background">
-
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-
-      </div>
-
-    );
-
-  }
-
-
-
-  return (
-
-    <div className="min-h-screen bg-gray-50 pb-32">
-
-      {/* Header Corrigido */}
-
-      <header className="bg-primary text-primary-foreground p-4 sticky top-0 z-10 shadow-md">
-
-        <h1 className="text-xl font-bold">{empresa?.nome_fantasia}</h1>
-
-        {/* Aqui agora exibe o NOME/NÚMERO da mesa e não o ID */}
-
-        <p className="text-sm opacity-90">Mesa {mesaNome || "..."}</p>
-
-      </header>
-
-
-
-      {/* Categorias */}
-
-      {categorias.length > 0 && (
-
-        <div className="bg-white sticky top-[72px] z-10 border-b overflow-x-auto">
-
-          <div className="flex gap-2 p-3">
-
-            <Button
-
-              variant={categoriaAtiva === null ? 'default' : 'outline'}
-
-              size="sm"
-
-              onClick={() => setCategoriaAtiva(null)}
-
-            >
-
-              Todos
-
-            </Button>
-
-            {categorias.map((cat) => (
-
-              <Button
-
-                key={cat.id}
-
-                variant={categoriaAtiva === cat.id ? 'default' : 'outline'}
-
-                size="sm"
-
-                onClick={() => setCategoriaAtiva(cat.id)}
-
-              >
-
-                {cat.nome}
-
-              </Button>
-
-            ))}
-
-          </div>
-
-        </div>
-
-      )}
-
-
-
-      {/* Grid de Produtos */}
-
-      <main className="p-4">
-
-        {produtosFiltrados.length === 0 ? (
-
-          <div className="flex flex-col items-center justify-center py-12">
-
-            <ChefHat className="w-12 h-12 text-muted-foreground mb-4" />
-
-            <p className="text-muted-foreground">Nenhum produto disponível</p>
-
-          </div>
-
-        ) : (
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-
-            {produtosFiltrados.map((produto) => {
-
-              const qtd = getCartQuantity(produto.id);
-
-              return (
-
-                <Card key={produto.id} className="shadow-md border-0 overflow-hidden">
-
-                  <div className="aspect-video bg-muted overflow-hidden">
-
-                    {produto.imagem_url ? (
-
-                      <img
-
-                        src={produto.imagem_url}
-
-                        alt={produto.nome}
-
-                        className="w-full h-full object-cover"
-
-                      />
-
-                    ) : (
-
-                      <div className="w-full h-full flex items-center justify-center">
-
-                        <ChefHat className="w-12 h-12 text-muted-foreground/50" />
-
-                      </div>
-
-                    )}
-
-                  </div>
-
-                  <CardContent className="p-4">
-
-                    <h3 className="font-semibold text-foreground">{produto.nome}</h3>
-
-                    {produto.descricao && (
-
-                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-
-                        {produto.descricao}
-
-                      </p>
-
-                    )}
-
-                    <div className="flex items-center justify-between mt-4">
-
-                      <span className="text-lg font-bold text-primary">
-
-                        R$ {produto.preco.toFixed(2)}
-
-                      </span>
-
-                      {qtd > 0 ? (
-
-                        <div className="flex items-center gap-2">
-
-                          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => removeFromCart(produto.id)}>
-
-                            <Minus className="w-4 h-4" />
-
-                          </Button>
-
-                          <span className="font-semibold w-6 text-center">{qtd}</span>
-
-                          <Button size="icon" className="h-8 w-8 bg-primary" onClick={() => addToCart(produto)}>
-
-                            <Plus className="w-4 h-4" />
-
-                          </Button>
-
-                        </div>
-
-                      ) : (
-
-                        <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => addToCart(produto)}>
-
-                          <Plus className="w-4 h-4 mr-1" />
-
-                          Adicionar
-
-                        </Button>
-
-                      )}
-
-                    </div>
-
-                  </CardContent>
-
-                </Card>
-
-              );
-
-            })}
-
-          </div>
-
-        )}
-
-      </main>
-
-
-
-      {/* Footer Carrinho */}
-
-      {cart.length > 0 && (
-
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 z-20">
-
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-
-            <div className="flex items-center gap-3">
-
-              <div className="relative">
-
-                <ShoppingCart className="w-6 h-6 text-primary" />
-
-                <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
-
-                  {cart.reduce((sum, item) => sum + item.quantidade, 0)}
-
-                </span>
-
-              </div>
-
-              <div>
-
-                <p className="text-sm text-muted-foreground">Total</p>
-
-                <p className="font-bold text-lg">R$ {totalCart.toFixed(2)}</p>
-
-              </div>
-
-            </div>
-
-            <Button className="bg-primary hover:bg-primary/90" onClick={enviarPedido} disabled={isSending}>
-
-              {isSending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-
-              Enviar Pedido
-
-            </Button>
-
-          </div>
-
-        </div>
-
-      )}
-
-    </div>
-
+  const produtosFiltrados = produtos.filter(p => 
+    (categoriaAtiva ? p.categoria_id === categoriaAtiva : true) &&
+    (p.nome.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-}
+  if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>;
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-32">
+      <header className="bg-primary text-white p-4 sticky top-0 z-30 shadow-md">
+        <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-xl font-bold">{empresa?.nome_fantasia}</h1>
+            <p className="text-sm opacity-90">Mesa {mesaNome}</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => toast.info("Chamando garçom...")}>
+             <Bell className="w-4 h-4 mr-2" /> Garçom
+          </Button>
+        </div>
+      </header>
+
+      <div className="p-4 max-w-4xl mx-auto space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+          <Input 
+            placeholder="Buscar no cardápio..." 
+            className="pl-10 bg-white" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          <Button variant={!categoriaAtiva ? 'default' : 'outline'} size="sm" onClick={() => setCategoriaAtiva(null)}>Todos</Button>
+          {categorias.map((cat) => (
+            <Button key={cat.id} variant={categoriaAtiva === cat.id ? 'default' : 'outline'} size="sm" onClick={() => setCategoriaAtiva(cat.id)}>
+              {cat.nome}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <main className="p-4 max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {produtosFiltrados.map((produto) => (
+          <Card key={produto.id} className="shadow-sm border-0 flex h-28 overflow-hidden">
+            <div className="w-28 bg-muted">
+              {produto.imagem_url && <img src={produto.imagem_url} className="w-full h-full object-cover" />}
+            </div>
+            <div className="flex-1 p-3 flex flex-col justify-between">
+              <div>
+                <h3 className="font-bold text-sm leading-tight">{produto.nome}</h3>
+                <p className="text-xs text-muted-foreground line-clamp-1">{produto.descricao}</p>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-primary">R$ {produto.preco.toFixed(2)}</span>
+                <Button size="icon" className="h-8 w-8" onClick={() => addToCart(produto)}><Plus className="w-4 h-4" /></Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </main>
+
+      {/* Footer Fixo */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 z-40 shadow-2xl">
+        <div className="max-w-4xl mx-auto flex justify-between gap-4">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" className="flex-1">
+                <Clock className="w-4 h-4 mr-2" /> Pedidos ({meusPedidos.length})
+              </Button>
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader><SheetTitle>Meus Pedidos - Mesa {mesaNome}</SheetTitle></SheetHeader>
+              <div className="mt-4 space-y-3">
+                {meusPedidos.map((p, i) => (
+                  <div key={i} className="p-3 border rounded-lg bg-gray-50 flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-bold">{p.quantidade}x {p.produtos?.nome}</p>
+                      <Badge variant="outline" className="text-[10px] uppercase mt-1">{p.status_cozinha}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button className="flex-[2]" disabled={cart.length === 0}>
+                <ShoppingCart className="w-4 h-4 mr-2" /> Carrinho R$ {totalCart.toFixed(2)}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-[80vh]">
+              <SheetHeader><SheetTitle>Revisar Pedido</SheetTitle></SheetHeader>
+              <div className="mt-4 space-y-4 overflow-y-auto h-[45vh] pr-2">
+                {cart.map((item, i) => (
+                  <div key={i} className="p-4
