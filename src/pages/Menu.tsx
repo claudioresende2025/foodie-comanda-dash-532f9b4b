@@ -164,6 +164,21 @@ export default function Menu() {
     }
   }, [empresaId, mesaId]);
 
+  // Marca a mesa como 'ocupada' ao carregar o cardápio via QR (garante persistência após refresh)
+  useEffect(() => {
+    const markMesaOcupada = async () => {
+      if (!mesaId) return;
+      try {
+        await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+      } catch (e) {
+        // não bloqueia a UI se falhar
+        console.warn('Não foi possível marcar mesa como ocupada:', e);
+      }
+    };
+
+    markMesaOcupada();
+  }, [mesaId]);
+
   // Check for existing comanda in localStorage
   useEffect(() => {
     const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
