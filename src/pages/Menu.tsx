@@ -166,21 +166,15 @@ export default function Menu() {
 
   // Marca a mesa como 'ocupada' ao carregar o cardápio via QR (garante persistência após refresh)
   useEffect(() => {
-    const markMesaOcupada = async () => {
+    // Usa helper com retries para garantir atualização mesmo em condições de corrida
+    (async () => {
       if (!mesaId) return;
       try {
-        const { data: mesaUpdateData, error: mesaUpdateError } = await supabase
-          .from('mesas')
-          .update({ status: 'ocupada' })
-          .eq('id', mesaId);
-        if (mesaUpdateError) console.warn('Erro ao marcar mesa como ocupada (mount):', mesaUpdateError);
+        await ensureMesaOcupada(mesaId);
       } catch (e) {
-        // não bloqueia a UI se falhar
-        console.warn('Não foi possível marcar mesa como ocupada:', e);
+        console.warn('Não foi possível garantir mesa ocupada (mount):', e);
       }
-    };
-
-    markMesaOcupada();
+    })();
   }, [mesaId]);
 
   // Helper: garante que a mesa esteja marcada como 'ocupada' (retries para evitar condições de corrida)
@@ -193,6 +187,8 @@ export default function Menu() {
         if (!error && data?.status === 'ocupada') return;
         const { error: updErr } = await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', id);
         if (!updErr) return;
+        // Log detailed error for diagnosis
+        console.warn(`ensureMesaOcupada attempt ${i + 1} update error:`, updErr);
       } catch (e) {
         // ignore and retry
       }
@@ -522,7 +518,7 @@ export default function Menu() {
           .eq('id', mesaId);
         if (mesaUpdateError2) console.warn('Erro ao marcar mesa como ocupada (send order new comanda):', mesaUpdateError2);
         // tenta garantir com retries
-        ensureMesaOcupada(mesaId);
+        await ensureMesaOcupada(mesaId);
 
         // Inserir os pedidos
         const pedidosToInsert = itemsToSend.map((item) => ({
@@ -574,7 +570,7 @@ export default function Menu() {
           .eq('id', mesaId);
         if (mesaUpdateError3) console.warn('Erro ao marcar mesa como ocupada (send order subsequent):', mesaUpdateError3);
         // tenta garantir com retries
-        ensureMesaOcupada(mesaId);
+        await ensureMesaOcupada(mesaId);
       }
 
       // 5. Ações de Conclusão
