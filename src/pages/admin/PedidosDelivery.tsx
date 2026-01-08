@@ -377,7 +377,7 @@ export default function PedidosDelivery() {
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent className="w-full sm:max-w-lg">
           <SheetHeader>
-            <SheetTitle>Pedido #{selectedPedido?.id.slice(0, 8)}</SheetTitle>
+            <SheetTitle>Pedido #{selectedPedido?.id ? selectedPedido.id.slice(0, 8) : ''}</SheetTitle>
           </SheetHeader>
           
           {selectedPedido && (
