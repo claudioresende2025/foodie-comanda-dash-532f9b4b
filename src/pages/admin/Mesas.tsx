@@ -71,6 +71,8 @@ export default function Mesas() {
   });
 
   // Realtime subscription
+  // NOTA: A lógica de alteração de status da mesa é feita APENAS pelo trigger no banco de dados (update_mesa_status_on_comanda).
+  // Este subscription serve apenas para atualizar a UI quando houver mudanças.
   useEffect(() => {
     if (!empresaId) return;
 
@@ -84,33 +86,10 @@ export default function Mesas() {
           table: 'comandas',
           filter: `empresa_id=eq.${empresaId}`
         },
-        async (payload) => {
-          if (payload.eventType === 'INSERT' && payload.new.mesa_id) {
-            await supabase
-              .from('mesas')
-              .update({ status: 'ocupada' })
-              .eq('id', payload.new.mesa_id);
-            queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
-          } else if (payload.eventType === 'UPDATE') {
-            const newStatus = payload.new.status;
-            const mesaId = payload.new.mesa_id;
-            
-            if ((newStatus === 'fechada' || newStatus === 'cancelada') && mesaId) {
-              const { data: openComandas } = await supabase
-                .from('comandas')
-                .select('id')
-                .eq('mesa_id', mesaId)
-                .eq('status', 'aberta');
-              
-              if (!openComandas || openComandas.length === 0) {
-                await supabase
-                  .from('mesas')
-                  .update({ status: 'disponivel' })
-                  .eq('id', mesaId);
-                queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
-              }
-            }
-          }
+        () => {
+          // Apenas invalida a query para atualizar a UI
+          // O trigger no banco de dados já cuida de alterar o status da mesa
+          queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
         }
       )
       .subscribe();
