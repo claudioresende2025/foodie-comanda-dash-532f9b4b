@@ -77,17 +77,25 @@ export function MesaQRCodeDialog({
   };
 
 	const handleOpenMenu = async () => {
-		// Atualiza status da mesa para 'ocupada' ao visualizar o cardápio
+		// Tenta marcar a mesa como 'ocupada' com retries (não bloqueia abertura do cardápio)
 		if (mesaId && empresaId) {
-			try {
-				await supabase
-					.from('mesas')
-					.update({ status: 'ocupada' })
-					.eq('id', mesaId);
-			} catch (e) {
-				// Silencia erro, pois o cardápio deve abrir mesmo assim
+			const maxAttempts = 3;
+			for (let i = 0; i < maxAttempts; i++) {
+				try {
+					const { error } = await supabase
+						.from('mesas')
+						.update({ status: 'ocupada' })
+						.eq('id', mesaId);
+					if (!error) break;
+					console.warn('Erro ao marcar mesa como ocupada (tentativa', i + 1, '):', error);
+				} catch (e) {
+					console.warn('Exception ao marcar mesa como ocupada (tentativa', i + 1, '):', e);
+				}
+				// pequeno backoff
+				await new Promise((res) => setTimeout(res, 300));
 			}
 		}
+		// Abre o cardápio em nova aba (não deve ser bloqueado por falhas no update)
 		window.open(menuUrl, '_blank');
 	};
 
