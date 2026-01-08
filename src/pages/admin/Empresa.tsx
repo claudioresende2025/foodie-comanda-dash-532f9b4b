@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Building2, Upload, Save, Loader2 } from 'lucide-react';
 import { maskCNPJ } from '@/utils/masks';
@@ -33,17 +34,17 @@ export default function Empresa() {
     enabled: !!profile?.empresa_id,
   });
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     nome_fantasia: '',
     cnpj: '',
-    endereco_completo: '',
     inscricao_estadual: '',
+    endereco_completo: '',
     chave_pix: '',
   });
 
-  // Couver / Música ao vivo - configuração local
-  const [couverAtivoLocal, setCouverAtivoLocal] = useState(false);
-  const [couverValorLocal, setCouverValorLocal] = useState('0.00');
+  // Couver / Música ao vivo local state
+  const [couverAtivoLocal, setCouverAtivoLocal] = useState<boolean>(false);
+  const [couverValorLocal, setCouverValorLocal] = useState<string>('0.00');
   const [weekdays, setWeekdays] = useState<Record<string, boolean>>({
     monday: false,
     tuesday: false,
@@ -53,62 +54,21 @@ export default function Empresa() {
     saturday: false,
     sunday: false,
   });
-  const [specificDates, setSpecificDates] = useState('');
-
-  // Update form when empresa loads
-  useEffect(() => {
-    if (empresa) {
-      setFormData({
-        nome_fantasia: empresa.nome_fantasia || '',
-        cnpj: empresa.cnpj ? maskCNPJ(empresa.cnpj) : '',
-        endereco_completo: empresa.endereco_completo || '',
-        inscricao_estadual: empresa.inscricao_estadual || '',
-        chave_pix: (empresa as any).chave_pix || '',
-      });
-    }
-  }, [empresa]);
-
-  // Load couver settings from localStorage
-  useEffect(() => {
-    if (!empresa) return;
-    try {
-      const settingsRaw = localStorage.getItem('fcd-settings');
-      if (settingsRaw) {
-        const s = JSON.parse(settingsRaw);
-        if (s.couverAtivo !== undefined) setCouverAtivoLocal(!!s.couverAtivo);
-        if (s.couverValor !== undefined) setCouverValorLocal(String(s.couverValor || '0.00'));
-      }
-
-      const liveKey = `fcd-live-music-${empresa.id}`;
-      const liveRaw = localStorage.getItem(liveKey);
-      if (liveRaw) {
-        const live = JSON.parse(liveRaw);
-        if (live.weekdays) setWeekdays((w) => ({ ...w, ...live.weekdays }));
-        if (live.specificDates) setSpecificDates(live.specificDates);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [empresa]);
+  const [specificDates, setSpecificDates] = useState<string>('');
 
   const handleSaveCouver = () => {
-    if (!empresa) return;
     try {
-      // update fcd-settings localStorage to keep compatibility with Caixa
-      const settingsRaw = localStorage.getItem('fcd-settings');
-      const settings = settingsRaw ? JSON.parse(settingsRaw) : {};
-      settings.couverAtivo = couverAtivoLocal;
-      settings.couverValor = parseFloat(couverValorLocal) || 0;
-      localStorage.setItem('fcd-settings', JSON.stringify(settings));
-
-      // save schedule
-      const liveKey = `fcd-live-music-${empresa.id}`;
-      const payload = { weekdays, specificDates };
-      localStorage.setItem(liveKey, JSON.stringify(payload));
-
+      const payload = {
+        ativo: couverAtivoLocal,
+        valor: couverValorLocal,
+        weekdays,
+        specificDates: specificDates.split(',').map(s => s.trim()).filter(Boolean),
+      };
+      const key = `fcd-live-music-${empresa?.id || 'local'}`;
+      localStorage.setItem(key, JSON.stringify(payload));
       toast.success('Configurações de couver salvas localmente');
-    } catch (e) {
-      console.error('Erro salvando couver:', e);
+    } catch (err) {
+      console.error('Erro salvando couver:', err);
       toast.error('Erro ao salvar configurações de couver');
     }
   };
@@ -232,7 +192,7 @@ export default function Empresa() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      
 
       {/* Couver / Música ao vivo */}
       <div className="grid gap-6 lg:grid-cols-1">
