@@ -66,9 +66,15 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
     // Atualiza status da mesa para 'ocupada' ao visualizar o cardapio
     if (mesaId && empresaId) {
       try {
-        await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+        const { data: mesaUpdateData, error: mesaUpdateError } = await supabase
+          .from('mesas')
+          .update({ status: 'ocupada' })
+          .eq('id', mesaId)
+          .select();
+        console.log('[DEBUG][MesaQRCodeDialog] mesa update', { mesaUpdateData, mesaUpdateError });
       } catch (e) {
-        // Silencia erro para nao bloquear a experiencia do cliente
+        // Silencia erro para nao bloquear a experiencia do cliente, mas loga para diagnostico
+        console.error('[DEBUG][MesaQRCodeDialog] erro ao atualizar mesa', e);
       }
     }
     window.open(menuUrl, '_blank');

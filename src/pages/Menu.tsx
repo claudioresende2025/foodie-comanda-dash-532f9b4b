@@ -299,6 +299,38 @@ export default function Menu() {
     };
   }, [empresaId, mesaId]);
 
+  // Debug realtime: monitora alterações em comandas e mesas para diagnóstico
+  useEffect(() => {
+    if (!empresaId || !mesaId) return;
+
+    const comandaChannel = supabase
+      .channel('debug-comandas')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comandas', filter: `mesa_id=eq.${mesaId}` },
+        (payload) => {
+          console.log('[DEBUG][comandas]', payload.eventType, payload.old, payload.new);
+        },
+      )
+      .subscribe();
+
+    const mesaChannel = supabase
+      .channel('debug-mesas')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'mesas', filter: `id=eq.${mesaId}` },
+        (payload) => {
+          console.log('[DEBUG][mesas]', payload.eventType, payload.old, payload.new);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(comandaChannel);
+      supabase.removeChannel(mesaChannel);
+    };
+  }, [empresaId, mesaId]);
+
   const fetchMenuData = async () => {
     try {
       // Busca empresa diretamente - RLS policy permite acesso público
@@ -507,15 +539,19 @@ export default function Menu() {
           .select("id")
           .single();
 
-        if (comandaError) throw comandaError;
+          console.log('[DEBUG] comanda insert response', { newComanda, comandaError });
 
-        currentComandaId = newComanda.id;
+          if (comandaError) throw comandaError;
+
+          currentComandaId = newComanda.id;
 
         // Atualizar mesa para ocupada
-        const { error: mesaUpdateError2 } = await supabase
+        const { data: mesaUpdateData2, error: mesaUpdateError2 } = await supabase
           .from('mesas')
           .update({ status: 'ocupada' })
-          .eq('id', mesaId);
+          .eq('id', mesaId)
+          .select();
+        console.log('[DEBUG] mesa update after new comanda', { mesaUpdateData2, mesaUpdateError2 });
         if (mesaUpdateError2) console.warn('Erro ao marcar mesa como ocupada (send order new comanda):', mesaUpdateError2);
         // tenta garantir com retries
         await ensureMesaOcupada(mesaId);
@@ -526,8 +562,8 @@ export default function Menu() {
           comanda_id: currentComandaId,
         }));
 
-        const { error: pedidosError } = await supabase.from("pedidos").insert(pedidosToInsert);
-
+        const { data: pedidosDataIns, error: pedidosError } = await supabase.from("pedidos").insert(pedidosToInsert).select();
+        console.log('[DEBUG] pedidos insert (new comanda)', { pedidosDataIns, pedidosError });
         if (pedidosError) throw pedidosError;
 
         setComandaId(currentComandaId);
@@ -537,9 +573,11 @@ export default function Menu() {
         // Busca o total atual da comanda ANTES de inserir os pedidos
         const { data: comandaAtual, error: fetchTotalError } = await supabase
           .from("comandas")
-          .select("total")
+          .select("total, status")
           .eq("id", currentComandaId)
           .single();
+
+        console.log('[DEBUG] fetched comanda before subsequent insert', { comandaAtual, fetchTotalError });
 
         if (fetchTotalError) throw fetchTotalError;
 
@@ -551,23 +589,26 @@ export default function Menu() {
           ...item,
           comanda_id: currentComandaId,
         }));
-        const { error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos);
-
+        const { data: pedidosDataSub, error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos).select();
+        console.log('[DEBUG] pedidos insert (subsequent)', { pedidosDataSub, pedidosError });
         if (pedidosError) throw pedidosError;
 
         // Atualiza o total da comanda com a soma
-        const { error: updateTotalError } = await supabase
+        const { data: updateTotalData, error: updateTotalError } = await supabase
           .from("comandas")
           .update({ total: novoTotal })
-          .eq("id", currentComandaId);
-
+          .eq("id", currentComandaId)
+          .select();
+        console.log('[DEBUG] comanda update total', { updateTotalData, updateTotalError });
         if (updateTotalError) throw updateTotalError;
 
         // FORÇA o status da mesa para ocupada
-        const { error: mesaUpdateError3 } = await supabase
+        const { data: mesaUpdateData3, error: mesaUpdateError3 } = await supabase
           .from('mesas')
           .update({ status: 'ocupada' })
-          .eq('id', mesaId);
+          .eq('id', mesaId)
+          .select();
+        console.log('[DEBUG] mesa update after subsequent orders', { mesaUpdateData3, mesaUpdateError3 });
         if (mesaUpdateError3) console.warn('Erro ao marcar mesa como ocupada (send order subsequent):', mesaUpdateError3);
         // tenta garantir com retries
         await ensureMesaOcupada(mesaId);
@@ -580,6 +621,30 @@ export default function Menu() {
 				triggerKitchenPrint(mesaNumero, cart);
 			}
 			*/
+
+      // Verificação adicional: garante que a mesa permaneça 'ocupada' por alguns segundos
+      const checkAndHealMesa = async () => {
+        const attempts = 8; // ~4 segundos
+        for (let i = 0; i < attempts; i++) {
+          try {
+            const { data: mesaRow } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
+            if (mesaRow?.status !== 'ocupada') {
+              console.warn('[HEAL][mesa] status altered to', mesaRow?.status, '— reapplying occupied');
+              const { data: healData, error: healErr } = await supabase
+                .from('mesas')
+                .update({ status: 'ocupada' })
+                .eq('id', mesaId)
+                .select();
+              console.log('[HEAL][mesa] heal result', { healData, healErr });
+            }
+          } catch (e) {
+            // ignore and retry
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      };
+
+      checkAndHealMesa().catch((e) => console.error('[HEAL][mesa] unexpected error', e));
 
       toast.success("Pedido enviado com sucesso!");
       setCart([]);
