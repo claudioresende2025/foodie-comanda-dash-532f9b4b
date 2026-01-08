@@ -183,6 +183,25 @@ export default function Menu() {
     markMesaOcupada();
   }, [mesaId]);
 
+  // Helper: garante que a mesa esteja marcada como 'ocupada' (retries para evitar condições de corrida)
+  const ensureMesaOcupada = async (id: string | undefined) => {
+    if (!id) return;
+    const maxAttempts = 5;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const { data, error } = await supabase.from('mesas').select('status').eq('id', id).maybeSingle();
+        if (!error && data?.status === 'ocupada') return;
+        const { error: updErr } = await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', id);
+        if (!updErr) return;
+      } catch (e) {
+        // ignore and retry
+      }
+      // espera antes de tentar novamente
+      await new Promise((res) => setTimeout(res, 400));
+    }
+    console.warn('ensureMesaOcupada: não conseguiu garantir status ocupado para mesa', id);
+  };
+
   // Check for existing comanda in localStorage
   useEffect(() => {
     const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
@@ -502,6 +521,8 @@ export default function Menu() {
           .update({ status: 'ocupada' })
           .eq('id', mesaId);
         if (mesaUpdateError2) console.warn('Erro ao marcar mesa como ocupada (send order new comanda):', mesaUpdateError2);
+        // tenta garantir com retries
+        ensureMesaOcupada(mesaId);
 
         // Inserir os pedidos
         const pedidosToInsert = itemsToSend.map((item) => ({
@@ -552,6 +573,8 @@ export default function Menu() {
           .update({ status: 'ocupada' })
           .eq('id', mesaId);
         if (mesaUpdateError3) console.warn('Erro ao marcar mesa como ocupada (send order subsequent):', mesaUpdateError3);
+        // tenta garantir com retries
+        ensureMesaOcupada(mesaId);
       }
 
       // 5. Ações de Conclusão
