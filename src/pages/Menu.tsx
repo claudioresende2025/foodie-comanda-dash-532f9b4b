@@ -615,37 +615,6 @@ export default function Menu() {
       }
 
       // 5. Ações de Conclusão
-      // O bloco de impressão da cozinha foi comentado para evitar o ReferenceError
-      /*
-			if (mesaNumero) {
-				triggerKitchenPrint(mesaNumero, cart);
-			}
-			*/
-
-      // Verificação adicional: garante que a mesa permaneça 'ocupada' por alguns segundos
-      const checkAndHealMesa = async () => {
-        const attempts = 8; // ~4 segundos
-        for (let i = 0; i < attempts; i++) {
-          try {
-            const { data: mesaRow } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
-            if (mesaRow?.status !== 'ocupada') {
-              console.warn('[HEAL][mesa] status altered to', mesaRow?.status, '— reapplying occupied');
-              const { data: healData, error: healErr } = await supabase
-                .from('mesas')
-                .update({ status: 'ocupada' })
-                .eq('id', mesaId)
-                .select();
-              console.log('[HEAL][mesa] heal result', { healData, healErr });
-            }
-          } catch (e) {
-            // ignore and retry
-          }
-          await new Promise((r) => setTimeout(r, 500));
-        }
-      };
-
-      checkAndHealMesa().catch((e) => console.error('[HEAL][mesa] unexpected error', e));
-
       toast.success("Pedido enviado com sucesso!");
       setCart([]);
       setIsCartOpen(false);
