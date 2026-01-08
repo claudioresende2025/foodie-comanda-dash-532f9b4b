@@ -173,6 +173,10 @@ export default function Equipe() {
         data: { session: currentSession },
       } = await supabase.auth.getSession();
 
+      const previousTokens = currentSession
+        ? { access_token: (currentSession as any).access_token, refresh_token: (currentSession as any).refresh_token }
+        : null;
+
       // Criar usuário via Supabase Auth (isso faz login como o novo usuário)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newMember.email,
@@ -184,26 +188,40 @@ export default function Equipe() {
         },
       });
 
+      // Se ocorrer erro de email já cadastrado, tentar restaurar sessão antes de sair
       if (authError) {
         if (authError.message?.includes("already registered")) {
           toast.error("Este email já está cadastrado no sistema");
         } else {
-          throw authError;
+          console.error('Auth signUp error:', authError);
+          toast.error('Erro ao criar usuário');
         }
+
+        if (previousTokens) {
+          // Pequeno delay para permitir que o auth state change processe
+          await new Promise((r) => setTimeout(r, 300));
+          const { error: restoreErr } = await supabase.auth.setSession(previousTokens as any);
+          if (restoreErr) console.error('Erro restaurando sessão anterior:', restoreErr);
+        }
+
         return;
       }
 
       const newUserId = authData.user?.id;
       if (!newUserId) {
+        // tentar restaurar sessão mesmo se user não estiver disponível
+        if (previousTokens) {
+          await new Promise((r) => setTimeout(r, 300));
+          await supabase.auth.setSession(previousTokens as any);
+        }
         throw new Error("Erro ao criar usuário");
       }
 
-      // Restaurar sessão original do usuário atual
-      if (currentSession) {
-        await supabase.auth.setSession({
-          access_token: currentSession.access_token,
-          refresh_token: currentSession.refresh_token,
-        });
+      // Restaurar sessão original do usuário atual (tentar com pequeno delay)
+      if (previousTokens) {
+        await new Promise((r) => setTimeout(r, 300));
+        const { error: restoreErr } = await supabase.auth.setSession(previousTokens as any);
+        if (restoreErr) console.error('Erro restaurando sessão anterior:', restoreErr);
       }
 
       // >>> Correção definitiva: garantir empresa_id no perfil (update + upsert se necessário)

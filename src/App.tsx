@@ -36,6 +36,7 @@ import Marketing from "@/pages/admin/Marketing";
 import Assinatura from "@/pages/admin/Assinatura";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const queryClient = new QueryClient();
 
@@ -54,7 +55,8 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <PWAManifestHandler />
-          <Routes>
+          <ErrorBoundary>
+            <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             {/* Public menu route for customers */}
@@ -95,7 +97,8 @@ const App = () => (
               
             </Route>
             <Route path="*" element={<NotFound />} />
-          </Routes>
+            </Routes>
+          </ErrorBoundary>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

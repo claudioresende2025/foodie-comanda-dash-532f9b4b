@@ -2,10 +2,45 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Check, Clock, Phone, Shield, Star, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
-// Página simplificada de planos - sem tabela de planos do banco
+type Plano = {
+  id: string;
+  nome: string;
+  preco_mensal: number;
+  preco_anual: number;
+  recursos: string[] | string;
+  ativo: boolean;
+};
+
 export default function Planos() {
   const navigate = useNavigate();
+  const [planos, setPlanos] = useState<Plano[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data } = await (supabase as any)
+          .from('planos')
+          .select('*')
+          .eq('ativo', true)
+          .order('ordem', { ascending: true });
+
+        if (!mounted) return;
+        const fetched = (data || []) as Plano[];
+        setPlanos(fetched);
+      } catch (err) {
+        console.error('Erro carregando planos:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
@@ -17,7 +52,7 @@ export default function Planos() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold">Planos</h1>
-              <p className="text-muted-foreground text-sm">Em breve</p>
+              <p className="text-muted-foreground text-sm">Escolha o plano ideal</p>
             </div>
           </div>
         </div>
@@ -29,91 +64,64 @@ export default function Planos() {
             <Clock className="w-4 h-4" />
             <span className="font-medium">Sistema em período de teste gratuito</span>
           </div>
-          
-          <h2 className="text-4xl font-bold mb-4">
-            Gestão completa para seu restaurante
-          </h2>
+
+          <h2 className="text-4xl font-bold mb-4">Planos disponíveis</h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Comandas digitais, delivery, controle de mesas e muito mais
+            Escolha um plano e gerencie sua assinatura facilmente
           </p>
         </div>
 
-        <div className="max-w-md mx-auto">
-          <Card className="border-primary shadow-lg">
-            <CardHeader className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center">
-                <Star className="w-8 h-8 fill-current" />
-              </div>
-              <CardTitle className="text-2xl">Acesso Completo</CardTitle>
-              <CardDescription>Todas as funcionalidades liberadas</CardDescription>
-            </CardHeader>
+        {loading ? (
+          <div className="text-center">Carregando planos...</div>
+        ) : (
+          (() => {
+            const defaultPlans: Plano[] = [
+              { id: 'basico', nome: 'Básico', preco_mensal: 149.9, preco_anual: 149.9 * 12 * 0.9, recursos: ['Cardápio digital', 'Comandas', 'Delivery'], ativo: true },
+              { id: 'intermediario', nome: 'Intermediário', preco_mensal: 299.9, preco_anual: 299.9 * 12 * 0.9, recursos: ['Tudo do Básico', 'Relatórios', 'Suporte prioritário'], ativo: true },
+              { id: 'avancado', nome: 'Avançado', preco_mensal: 549.9, preco_anual: 549.9 * 12 * 0.9, recursos: ['Tudo do Intermediário', 'Integrações', 'SLA dedicado'], ativo: true },
+            ];
 
-            <CardContent>
-              <ul className="space-y-3">
-                <li className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm">Cardápio digital com QR Code</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm">Sistema de comandas</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm">Gestão de mesas</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm">Delivery integrado</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm">Controle de caixa</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm">Relatórios e analytics</span>
-                </li>
-              </ul>
-            </CardContent>
+            const toRender = planos.length === 0 ? defaultPlans : planos;
 
-            <CardFooter>
-              <Button className="w-full" size="lg" onClick={() => navigate('/admin')}>
-                Continuar usando
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
+            return (
+              <div className="grid md:grid-cols-3 gap-6">
+                {toRender.map((pl) => (
+                  <Card key={pl.id} className="border-primary shadow-lg">
+                    <CardHeader className="text-center">
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center">
+                        <Star className="w-8 h-8 fill-current" />
+                      </div>
+                      <CardTitle className="text-2xl">{pl.nome}</CardTitle>
+                      <CardDescription>
+                        {pl.recursos ? (Array.isArray(pl.recursos) ? pl.recursos.join(', ') : String(pl.recursos)) : ''}
+                      </CardDescription>
+                    </CardHeader>
 
-        <div className="mt-20 text-center">
-          <h3 className="text-2xl font-bold mb-8">Por que escolher nossa plataforma?</h3>
-          
-          <div className="grid md:grid-cols-3 gap-6 max-w-3xl mx-auto">
-            <div className="p-6">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Shield className="w-6 h-6 text-primary" />
+                    <CardContent>
+                      <ul className="space-y-3">
+                        <li className="flex items-start gap-3">
+                          <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <span className="text-sm">Acesso completo às funcionalidades</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                          <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          <span className="text-sm">Suporte e atualizações</span>
+                        </li>
+                      </ul>
+                    </CardContent>
+
+                    <CardFooter>
+                      <div className="w-full">
+                        <div className="text-lg font-bold mb-2">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(pl.preco_mensal || 0)}</div>
+                        <Button className="w-full" onClick={() => navigate('/admin/assinatura')}>Escolher Plano</Button>
+                      </div>
+                    </CardFooter>
+                  </Card>
+                ))}
               </div>
-              <h4 className="font-semibold mb-2">Seguro</h4>
-              <p className="text-sm text-muted-foreground">Seus dados protegidos</p>
-            </div>
-            
-            <div className="p-6">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Zap className="w-6 h-6 text-primary" />
-              </div>
-              <h4 className="font-semibold mb-2">Rápido</h4>
-              <p className="text-sm text-muted-foreground">Sistema otimizado</p>
-            </div>
-            
-            <div className="p-6">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Phone className="w-6 h-6 text-primary" />
-              </div>
-              <h4 className="font-semibold mb-2">Suporte</h4>
-              <p className="text-sm text-muted-foreground">Equipe pronta para ajudar</p>
-            </div>
-          </div>
-        </div>
+            );
+          })()
+        )}
       </main>
     </div>
   );
