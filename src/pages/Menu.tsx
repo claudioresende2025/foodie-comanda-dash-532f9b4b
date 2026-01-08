@@ -299,38 +299,6 @@ export default function Menu() {
     };
   }, [empresaId, mesaId]);
 
-  // Debug realtime: monitora alterações em comandas e mesas para diagnóstico
-  useEffect(() => {
-    if (!empresaId || !mesaId) return;
-
-    const comandaChannel = supabase
-      .channel('debug-comandas')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'comandas', filter: `mesa_id=eq.${mesaId}` },
-        (payload) => {
-          console.log('[DEBUG][comandas]', payload.eventType, payload.old, payload.new);
-        },
-      )
-      .subscribe();
-
-    const mesaChannel = supabase
-      .channel('debug-mesas')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'mesas', filter: `id=eq.${mesaId}` },
-        (payload) => {
-          console.log('[DEBUG][mesas]', payload.eventType, payload.old, payload.new);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(comandaChannel);
-      supabase.removeChannel(mesaChannel);
-    };
-  }, [empresaId, mesaId]);
-
   const fetchMenuData = async () => {
     try {
       // Busca empresa diretamente - RLS policy permite acesso público
