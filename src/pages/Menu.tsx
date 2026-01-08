@@ -166,37 +166,21 @@ export default function Menu() {
 
   // Marca a mesa como 'ocupada' ao carregar o cardápio via QR (garante persistência após refresh)
   useEffect(() => {
-    // Usa helper com retries para garantir atualização mesmo em condições de corrida
-    (async () => {
-      if (!mesaId) return;
+    if (!mesaId) return;
+    // Atualiza a mesa para ocupada quando o cliente acessa o cardápio
+    // Isso garante que mesmo após F5, a mesa permaneça ocupada
+    const markMesaOcupada = async () => {
       try {
-        await ensureMesaOcupada(mesaId);
+        const { data: mesa } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
+        if (mesa && mesa.status !== 'ocupada') {
+          await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+        }
       } catch (e) {
-        console.warn('Não foi possível garantir mesa ocupada (mount):', e);
+        // Ignora erros silenciosamente - não é crítico
       }
-    })();
+    };
+    markMesaOcupada();
   }, [mesaId]);
-
-  // Helper: garante que a mesa esteja marcada como 'ocupada' (retries para evitar condições de corrida)
-  const ensureMesaOcupada = async (id: string | undefined) => {
-    if (!id) return;
-    const maxAttempts = 5;
-    for (let i = 0; i < maxAttempts; i++) {
-      try {
-        const { data, error } = await supabase.from('mesas').select('status').eq('id', id).maybeSingle();
-        if (!error && data?.status === 'ocupada') return;
-        const { error: updErr } = await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', id);
-        if (!updErr) return;
-        // Log detailed error for diagnosis
-        console.warn(`ensureMesaOcupada attempt ${i + 1} update error:`, updErr);
-      } catch (e) {
-        // ignore and retry
-      }
-      // espera antes de tentar novamente
-      await new Promise((res) => setTimeout(res, 400));
-    }
-    console.warn('ensureMesaOcupada: não conseguiu garantir status ocupado para mesa', id);
-  };
 
   // Check for existing comanda in localStorage
   useEffect(() => {

@@ -228,38 +228,34 @@ export default function Caixa() {
       if (error) throw error;
       
       // 2. Atualiza o status da mesa para disponível e desfaz junção se necessário
+      // NOTA: O trigger 'update_mesa_status_on_comanda' também libera a mesa quando o status muda para 'fechada',
+      // mas mantemos este código para garantir que junções sejam desfeitas corretamente
       if (mesaId) {
         // Busca informações da mesa
-        const { data: mesaData, error: mesaDataError } = await supabase
+        const { data: mesaData } = await supabase
           .from('mesas')
           .select('id, mesa_juncao_id')
           .eq('id', mesaId)
           .single();
-        console.log('[DEBUG][Caixa] fetched mesaData', { mesaData, mesaDataError });
 
         if (mesaData?.mesa_juncao_id) {
           // Mesa filha: libera só ela
-          const { data: mesaLiberadaData, error: mesaLiberadaError } = await supabase
+          await supabase
             .from('mesas')
             .update({ status: 'disponivel', mesa_juncao_id: null })
-            .eq('id', mesaId)
-            .select();
-          console.log('[DEBUG][Caixa] mesa filha liberada', { mesaLiberadaData, mesaLiberadaError });
+            .eq('id', mesaId);
         } else {
           // Mesa principal: libera todas as mesas da junção (inclusive ela) e desfaz junção
-          const { data: mesasJuncao, error: mesasJuncaoError } = await supabase
+          const { data: mesasJuncao } = await supabase
             .from('mesas')
             .select('id')
             .or(`id.eq.${mesaId},mesa_juncao_id.eq.${mesaId}`);
-          console.log('[DEBUG][Caixa] mesas da juncao', { mesasJuncao, mesasJuncaoError });
 
           if (mesasJuncao && mesasJuncao.length > 0) {
-            const { data: mesasLiberadasData, error: mesasLiberadasError } = await supabase
+            await supabase
               .from('mesas')
               .update({ status: 'disponivel', mesa_juncao_id: null })
-              .in('id', mesasJuncao.map(m => m.id))
-              .select();
-            console.log('[DEBUG][Caixa] mesas liberadas da juncao', { mesasLiberadasData, mesasLiberadasError });
+              .in('id', mesasJuncao.map(m => m.id));
           }
         }
       }
