@@ -421,7 +421,7 @@ export default function Menu() {
 
 
 	// #################################################################
-	// # FUNÇÃO handleSendOrder CORRIGIDA (RPC, RLS e TRATAMENTO DE ERRO) #
+	// # FUNÇÃO handleSendOrder CORRIGIDA (STATUS MESA E VALOR CAIXA)  #
 	// #################################################################
 
 	const handleSendOrder = async () => {
@@ -439,26 +439,12 @@ export default function Menu() {
 
 		try {
 			let currentComandaId = comandaId;
-            let totalUpdateNeeded = false;
 
-			// 1. Prepara os dados do carrinho
-			const itemsToSend = cart.map(item => ({
-				produto_id: item.produto.id,
-				quantidade: item.quantidade,
-				preco_unitario: item.produto.preco,
-				subtotal: item.produto.preco * item.quantidade,
-				notas_cliente: item.notas || null,
-				status_cozinha: 'pendente' as const,
-                comanda_id: currentComandaId,
-			}));
-
-			// 2. ABERTURA DE COMANDA (Se comanda não existe)
+			// 1. ABERTURA OU RECUPERAÇÃO DA COMANDA
 			if (!currentComandaId) {
-				// Gera ID de sessão
-				const sessionId = crypto.randomUUID ? crypto.randomUUID() : 
+				const sessionId = crypto.randomUUID ? crypto.randomUUID() : 
 					`${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 				
-				// Criar comanda manualmente
 				const { data: newComanda, error: comandaError } = await supabase
 					.from('comandas')
 					.insert({
@@ -466,7 +452,7 @@ export default function Menu() {
 						mesa_id: mesaId,
 						qr_code_sessao: sessionId,
 						status: 'aberta',
-						total: cartTotal,
+						total: cartTotal, // Valor inicial
 					})
 					.select('id')
 					.single();
@@ -474,92 +460,57 @@ export default function Menu() {
 				if (comandaError) throw comandaError;
 				
 				currentComandaId = newComanda.id;
-				
-				// Atualizar mesa para ocupada
-				await supabase
-					.from('mesas')
-					.update({ status: 'ocupada' })
-					.eq('id', mesaId);
-				
-				// Inserir os pedidos
-				const pedidosToInsert = itemsToSend.map(item => ({
-					...item,
-					comanda_id: currentComandaId,
-				}));
-				
-				const { error: pedidosError } = await supabase
-					.from('pedidos')
-					.insert(pedidosToInsert);
-
-				if (pedidosError) throw pedidosError;
-				
 				setComandaId(currentComandaId);
 				localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
-                
-                // A RPC já inseriu os pedidos e atualizou o total.
 
 			} else {
-                // 3. PEDIDOS SUBSEQUENTES (Se comanda já existe)
-                
-                // Insere os novos pedidos diretamente na tabela 'pedidos'
-                const subsequentPedidos = itemsToSend.map(item => ({
-                    ...item,
-                    comanda_id: currentComandaId,
-                }));
-                
-                const { error: pedidosError } = await supabase
-                    .from('pedidos')
-                    .insert(subsequentPedidos);
+				// 2. SE JÁ EXISTE COMANDA, SOMA O VALOR NO CAIXA
+                const { data: comandaData } = await supabase
+                    .from('comandas')
+                    .select('total')
+                    .eq('id', currentComandaId)
+                    .single();
 
-                if (pedidosError) throw pedidosError;
-                
-                totalUpdateNeeded = true;
+                const novoTotal = (comandaData?.total || 0) + cartTotal;
+
+                await supabase
+                    .from('comandas')
+                    .update({ total: novoTotal })
+                    .eq('id', currentComandaId);
 			}
-            
-            // 4. ATUALIZAÇÃO DO TOTAL (apenas para pedidos subsequentes)
-            if (totalUpdateNeeded) {
-                const { data: comandaData, error: totalError } = await supabase
-                    .from('comandas')
-                    .select('total')
-                    .eq('id', currentComandaId)
-                    .single();
-                    
-                if (totalError) throw totalError;
 
-                const currentTotal = comandaData?.total || 0;
-                const newPedidosTotal = currentTotal + cartTotal;
-                
-                await supabase
-                    .from('comandas')
-                    .update({ total: newPedidosTotal })
-                    .eq('id', currentComandaId);
-            }
+            // 3. INSERIR OS PEDIDOS
+            const itemsToSend = cart.map(item => ({
+                produto_id: item.produto.id,
+                quantidade: item.quantidade,
+                preco_unitario: item.produto.preco,
+                subtotal: item.produto.preco * item.quantidade,
+                notas_cliente: item.notas || null,
+                status_cozinha: 'pendente' as const,
+                comanda_id: currentComandaId,
+            }));
 
-			// 5. Ações de Conclusão
-			// O bloco de impressão da cozinha foi comentado para evitar o ReferenceError
-			/*
-			if (mesaNumero) {
-				triggerKitchenPrint(mesaNumero, cart);
-			}
-			*/
+            const { error: pedidosError } = await supabase
+                .from('pedidos')
+                .insert(itemsToSend);
 
+            if (pedidosError) throw pedidosError;
+
+            // 4. MANTER MESA COMO OCUPADA
+            await supabase
+                .from('mesas')
+                .update({ status: 'occupied' }) 
+                .eq('id', mesaId);
+
+			// 5. Conclusão
 			toast.success('Pedido enviado com sucesso!');
 			setCart([]);
 			setIsCartOpen(false);
 			fetchMeusPedidos(currentComandaId);
 
 		} catch (error) {
-			
-			// 💡 CORREÇÃO AQUI: Tenta extrair a mensagem de erro do Supabase
-			const errorMessage = 
-				(error as any)?.message || 
-				(error as any)?.error_description || 
-				'Erro desconhecido ao enviar pedido. (Detalhes no console)';
-
-			console.error('Error sending order (detailed):', error);
-			// Mensagem mais informativa
-			toast.error(`Erro ao enviar pedido: ${errorMessage}`);
-            
+			console.error('Error sending order:', error);
+			toast.error('Erro ao enviar pedido.');
 		} finally {
 			setIsSendingOrder(false);
 		}
