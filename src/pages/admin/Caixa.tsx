@@ -546,7 +546,7 @@ export default function Caixa() {
             {/* Detalhes da Comanda */}
             <div className="lg:col-span-2">
               {selectedComanda ? (
-                <Card>
+                <Card className="printable-receipt">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2">

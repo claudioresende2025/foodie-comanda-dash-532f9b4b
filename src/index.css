@@ -173,6 +173,27 @@
   }
 }
 
+/* Impressão - otimizada para impressoras térmicas simples */
+@media print {
+  /* Remove backgrounds and shadows to economizar tinta/recursos */
+  * { box-shadow: none !important; background: transparent !important; }
+  body { background: #fff !important; color: #000 !important; }
+
+  /* Esconder elementos de navegação e interface que não são o comprovante */
+  header, nav, .tabs, .sidebar, .container > :not(.printable-receipt) { display: none !important; }
+
+  /* Ajustes do comprovante */
+  .printable-receipt { display: block !important; width: 300px; margin: 0; padding: 4mm; }
+  .printable-receipt * { color: #000 !important; background: transparent !important; }
+  .printable-receipt .card { border: none !important; }
+
+  /* Fonte e espaçamento reduzidos para térmicas */
+  body, .printable-receipt { font-size: 12px; line-height: 1.1; }
+
+  /* Remove paginação (impressoras térmicas usam rolo) */
+  @page { size: 80mm auto; margin: 0; }
+}
+
 /* PWA Touch states */
 @media (hover: none) and (pointer: coarse) {
   .touch-manipulation {

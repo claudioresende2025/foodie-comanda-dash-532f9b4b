@@ -44,8 +44,11 @@ export default function Mesas() {
   const [activeTab, setActiveTab] = useState<MesaStatus | 'todas'>('todas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
+  const [isReserveDialogOpen, setIsReserveDialogOpen] = useState(false);
   const [newMesa, setNewMesa] = useState({ numero_mesa: '', capacidade: '4' });
   const [selectedMesas, setSelectedMesas] = useState<string[]>([]);
+  const [selectedReserveMesas, setSelectedReserveMesas] = useState<string[]>([]);
+  const [reserveName, setReserveName] = useState('');
   
   // QR Code Dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
@@ -322,6 +325,65 @@ export default function Mesas() {
             </DialogContent>
           </Dialog>
 
+          <Dialog open={isReserveDialogOpen} onOpenChange={setIsReserveDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <CalendarCheck className="w-4 h-4 mr-2" />
+                Reservar
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Reservar Mesas</DialogTitle>
+                <DialogDescription>Selecione as mesas que deseja reservar e informe o nome do cliente.</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-4 gap-2 my-4">
+                {availableMesas.map((mesa) => (
+                  <button
+                    key={mesa.id}
+                    onClick={() => {
+                      if (selectedReserveMesas.includes(mesa.id)) {
+                        setSelectedReserveMesas(selectedReserveMesas.filter(id => id !== mesa.id));
+                      } else {
+                        setSelectedReserveMesas([...selectedReserveMesas, mesa.id]);
+                      }
+                    }}
+                    className={`p-4 rounded-lg border-2 transition-colors ${
+                      selectedReserveMesas.includes(mesa.id)
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    {mesa.numero_mesa}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <Label>Nome do Cliente</Label>
+                <Input value={reserveName} onChange={(e) => setReserveName(e.target.value)} />
+              </div>
+              <div className="flex gap-2 mt-4">
+                <Button onClick={async () => {
+                  if (selectedReserveMesas.length === 0) { toast.error('Selecione pelo menos uma mesa'); return; }
+                  if (!reserveName) { toast.error('Informe o nome do cliente'); return; }
+                  try {
+                    for (const id of selectedReserveMesas) {
+                      await supabase.from('mesas').update({ status: 'reservada', nome: reserveName }).eq('id', id);
+                    }
+                    toast.success('Mesas reservadas');
+                    setSelectedReserveMesas([]);
+                    setReserveName('');
+                    setIsReserveDialogOpen(false);
+                    queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+                  } catch (e) {
+                    console.error('Erro reservando mesas', e);
+                    toast.error('Erro ao reservar mesas');
+                  }
+                }}>Confirmar Reserva</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-primary hover:bg-primary/90">
@@ -495,6 +557,21 @@ export default function Mesas() {
                           ? `Junção: ${getMesasJuntasText(mesa)}`
                           : config.label}
                       </Badge>
+                      {mesa.status === 'reservada' && (
+                        <div className="mt-2 flex gap-2">
+                          <Button variant="outline" onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              await supabase.from('mesas').update({ status: 'disponivel', nome: null }).eq('id', mesa.id);
+                              toast.success('Reserva cancelada');
+                              queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+                            } catch (err) {
+                              console.error('Erro cancelando reserva', err);
+                              toast.error('Erro ao cancelar reserva');
+                            }
+                          }}>Cancelar Reserva</Button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );

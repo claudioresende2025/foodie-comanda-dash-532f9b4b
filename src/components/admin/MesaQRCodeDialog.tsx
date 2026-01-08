@@ -77,6 +77,43 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
     window.open(menuUrl, '_blank');
   };
 
+  const handleCancelarComanda = async () => {
+    try {
+      const { data: comanda } = await supabase
+        .from('comandas')
+        .select('id')
+        .eq('mesa_id', mesaId)
+        .eq('status', 'aberta')
+        .limit(1)
+        .maybeSingle();
+
+      if (!comanda) {
+        toast.error('Nenhuma comanda aberta encontrada para esta mesa');
+        return;
+      }
+
+      // Marca comanda como cancelada
+      const { error: err } = await supabase
+        .from('comandas')
+        .update({ status: 'cancelada', data_fechamento: new Date().toISOString() })
+        .eq('id', comanda.id);
+
+      if (err) throw err;
+
+      // Libera a mesa
+      await supabase
+        .from('mesas')
+        .update({ status: 'disponivel', nome: null, mesa_juncao_id: null })
+        .eq('id', mesaId);
+
+      toast.success('Comanda cancelada e mesa liberada');
+      onOpenChange(false);
+    } catch (e) {
+      console.error('Erro cancelando comanda:', e);
+      toast.error('Erro ao cancelar comanda');
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
@@ -100,11 +137,17 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
               Compartilhar
             </Button>
           </div>
-
           <Button onClick={handleOpenMenu} className="w-full">
             <ExternalLink className="w-4 h-4 mr-2" />
             Visualizar Cardapio
           </Button>
+
+          <div className="flex gap-2 mt-2">
+            <Button variant="destructive" onClick={handleCancelarComanda} className="flex-1">
+              <X className="w-4 h-4 mr-2" />
+              Cancelar Comanda
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

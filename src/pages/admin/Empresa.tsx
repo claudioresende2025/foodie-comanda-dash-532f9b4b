@@ -41,6 +41,20 @@ export default function Empresa() {
     chave_pix: '',
   });
 
+  // Couver / Música ao vivo - configuração local
+  const [couverAtivoLocal, setCouverAtivoLocal] = useState(false);
+  const [couverValorLocal, setCouverValorLocal] = useState('0.00');
+  const [weekdays, setWeekdays] = useState<Record<string, boolean>>({
+    monday: false,
+    tuesday: false,
+    wednesday: false,
+    thursday: false,
+    friday: false,
+    saturday: false,
+    sunday: false,
+  });
+  const [specificDates, setSpecificDates] = useState('');
+
   // Update form when empresa loads
   useEffect(() => {
     if (empresa) {
@@ -53,6 +67,51 @@ export default function Empresa() {
       });
     }
   }, [empresa]);
+
+  // Load couver settings from localStorage
+  useEffect(() => {
+    if (!empresa) return;
+    try {
+      const settingsRaw = localStorage.getItem('fcd-settings');
+      if (settingsRaw) {
+        const s = JSON.parse(settingsRaw);
+        if (s.couverAtivo !== undefined) setCouverAtivoLocal(!!s.couverAtivo);
+        if (s.couverValor !== undefined) setCouverValorLocal(String(s.couverValor || '0.00'));
+      }
+
+      const liveKey = `fcd-live-music-${empresa.id}`;
+      const liveRaw = localStorage.getItem(liveKey);
+      if (liveRaw) {
+        const live = JSON.parse(liveRaw);
+        if (live.weekdays) setWeekdays((w) => ({ ...w, ...live.weekdays }));
+        if (live.specificDates) setSpecificDates(live.specificDates);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [empresa]);
+
+  const handleSaveCouver = () => {
+    if (!empresa) return;
+    try {
+      // update fcd-settings localStorage to keep compatibility with Caixa
+      const settingsRaw = localStorage.getItem('fcd-settings');
+      const settings = settingsRaw ? JSON.parse(settingsRaw) : {};
+      settings.couverAtivo = couverAtivoLocal;
+      settings.couverValor = parseFloat(couverValorLocal) || 0;
+      localStorage.setItem('fcd-settings', JSON.stringify(settings));
+
+      // save schedule
+      const liveKey = `fcd-live-music-${empresa.id}`;
+      const payload = { weekdays, specificDates };
+      localStorage.setItem(liveKey, JSON.stringify(payload));
+
+      toast.success('Configurações de couver salvas localmente');
+    } catch (e) {
+      console.error('Erro salvando couver:', e);
+      toast.error('Erro ao salvar configurações de couver');
+    }
+  };
 
   const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const masked = maskCNPJ(e.target.value);
@@ -173,6 +232,81 @@ export default function Empresa() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Couver / Música ao vivo */}
+      <div className="grid gap-6 lg:grid-cols-1">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Couver / Música ao Vivo</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Ativar Couver Musical</p>
+                <p className="text-sm text-muted-foreground">Cobrança por pessoa em dias selecionados</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={couverAtivoLocal}
+                  onChange={(e) => setCouverAtivoLocal(e.target.checked)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label>Valor por pessoa (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={couverValorLocal}
+                  onChange={(e) => setCouverValorLocal(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Dias da semana</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {Object.entries(weekdays).map(([k, v]) => (
+                    <button
+                      key={k}
+                      className={`px-2 py-1 rounded border ${v ? 'bg-primary text-white' : 'bg-muted'}`}
+                      onClick={() => setWeekdays({ ...weekdays, [k]: !weekdays[k] })}
+                      type="button"
+                    >
+                      {k.slice(0,3).toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Datas específicas (YYYY-MM-DD, separadas por vírgula)</Label>
+              <Textarea
+                placeholder="2025-01-10,2025-02-14"
+                value={specificDates}
+                onChange={(e) => setSpecificDates(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button onClick={handleSaveCouver} className="bg-primary">Salvar Couver</Button>
+              <Button variant="outline" onClick={() => {
+                // reset local
+                setCouverAtivoLocal(false);
+                setCouverValorLocal('0.00');
+                setWeekdays({ monday:false,tuesday:false,wednesday:false,thursday:false,friday:false,saturday:false,sunday:false });
+                setSpecificDates('');
+                toast.success('Configurações de couver resetadas localmente');
+              }}>Resetar</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
         {/* Dados */}
         <Card className="lg:col-span-2">

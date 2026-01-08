@@ -17,9 +17,11 @@ import {
   Volume2,
   Printer,
 } from "lucide-react";
+import { PixQRCode } from '@/components/pix/PixQRCode';
 // A LINHA ABAIXO ESTÁ COMENTADA PARA EVITAR O REFERENCE ERROR
 //import { triggerKitchenPrint } from '@/utils/kitchenPrinter';
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -156,6 +158,17 @@ export default function Menu() {
   const [waiterCallPending, setWaiterCallPending] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  // Cliente (quando abre comanda via QR) - coletar nome/telefone
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [clientFirstName, setClientFirstName] = useState('');
+  const [clientLastName, setClientLastName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+
+  // PIX modal for quick payments from menu
+  const [showPixModal, setShowPixModal] = useState(false);
+  const [pixValue, setPixValue] = useState(0);
+  const [pixConfirmEnabled, setPixConfirmEnabled] = useState(false);
+
   // --- Efeitos e Fetch de Dados ---
 
   useEffect(() => {
@@ -163,6 +176,24 @@ export default function Menu() {
       fetchMenuData();
     }
   }, [empresaId, mesaId]);
+
+  // Realtime subscription to comanda status to enable PIX confirmation button
+  useEffect(() => {
+    if (!comandaId) return;
+    const channel = supabase
+      .channel('menu-comanda-status')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comandas', filter: `id=eq.${comandaId}` },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' && (payload.new as any).status === 'fechada') {
+            setPixConfirmEnabled(true);
+          }
+        }
+      ).subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [comandaId]);
 
   // Marca a mesa como 'ocupada' ao carregar o cardápio via QR (garante persistência após refresh)
   useEffect(() => {
@@ -499,6 +530,28 @@ export default function Menu() {
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
+        // Antes de criar comanda, verifica se já temos info do cliente (quando via QR na mesa)
+        const clientKey = `client_info_${empresaId}_${mesaId}`;
+        let nomeCliente: string | null = null;
+        let telefoneCliente: string | null = null;
+        try {
+          const saved = localStorage.getItem(clientKey);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            nomeCliente = `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim() || null;
+            telefoneCliente = parsed.phone || null;
+          } else {
+            // Abre modal para coletar nome/telefone e interrompe envio
+            setShowClientModal(true);
+            setIsSendingOrder(false);
+            return;
+          }
+        } catch (e) {
+          setShowClientModal(true);
+          setIsSendingOrder(false);
+          return;
+        }
+
         // Criar comanda manualmente
         const { data: newComanda, error: comandaError } = await supabase
           .from("comandas")
@@ -508,6 +561,8 @@ export default function Menu() {
             qr_code_sessao: sessionId,
             status: "aberta",
             total: cartTotal,
+            nome_cliente: nomeCliente,
+            telefone_cliente: telefoneCliente,
           })
           .select("id")
           .single();
@@ -681,6 +736,57 @@ export default function Menu() {
         </div>
       </header>
 
+      {/* Dialog para coletar nome/telefone do cliente quando abre comanda via QR */}
+      <Dialog open={showClientModal} onOpenChange={setShowClientModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Olá! Informe seus dados</DialogTitle>
+            <DialogDescription>
+              Para abrir a comanda precisamos do primeiro e segundo nome e telefone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Primeiro nome" value={clientFirstName} onChange={(e) => setClientFirstName(e.target.value)} />
+              <Input placeholder="Sobrenome" value={clientLastName} onChange={(e) => setClientLastName(e.target.value)} />
+            </div>
+            <Input placeholder="Telefone" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
+            <div className="flex gap-2">
+              <Button onClick={() => {
+                // validação simples
+                if (!clientFirstName || !clientPhone) { toast.error('Preencha primeiro nome e telefone'); return; }
+                const key = `client_info_${empresaId}_${mesaId}`;
+                localStorage.setItem(key, JSON.stringify({ firstName: clientFirstName, lastName: clientLastName, phone: clientPhone }));
+                toast.success('Dados salvos');
+                setShowClientModal(false);
+              }}>Confirmar</Button>
+              <Button variant="outline" onClick={() => setShowClientModal(false)}>Cancelar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* PIX Modal (Menu) */}
+      <Dialog open={showPixModal} onOpenChange={setShowPixModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">Pagamento PIX - R$ {pixValue.toFixed(2)}</DialogTitle>
+            <DialogDescription>Use o app do seu banco para ler o QR Code ou copie a chave PIX.</DialogDescription>
+          </DialogHeader>
+
+          <PixQRCode
+            chavePix={empresa?.chave_pix || ''}
+            valor={pixValue}
+            nomeRecebedor={empresa?.nome_fantasia || 'Restaurante'}
+            cidade={empresa?.endereco_completo?.split(',').pop()?.trim() || 'SAO PAULO'}
+          />
+
+          <Button onClick={() => { setShowPixModal(false); toast('Fechar'); }} className="w-full" disabled={!pixConfirmEnabled}>
+            Entendido / Fechar
+          </Button>
+        </DialogContent>
+      </Dialog>
+
       {/* Search Bar */}
       <div className="sticky top-[72px] z-40 bg-card border-b border-border shadow-sm">
         <div className="container mx-auto px-4 py-3">
@@ -782,10 +888,19 @@ export default function Menu() {
                           </Button>
                         </div>
                       ) : (
-                        <Button size="sm" onClick={() => addToCart(produto)}>
-                          <Plus className="w-4 h-4 mr-1" />
-                          Adicionar
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => addToCart(produto)}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Adicionar
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setPixValue(produto.preco);
+                            setPixConfirmEnabled(false);
+                            setShowPixModal(true);
+                          }}>
+                            PIX
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </CardContent>
