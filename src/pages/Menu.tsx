@@ -169,7 +169,11 @@ export default function Menu() {
     const markMesaOcupada = async () => {
       if (!mesaId) return;
       try {
-        await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+        const { data: mesaUpdateData, error: mesaUpdateError } = await supabase
+          .from('mesas')
+          .update({ status: 'ocupada' })
+          .eq('id', mesaId);
+        if (mesaUpdateError) console.warn('Erro ao marcar mesa como ocupada (mount):', mesaUpdateError);
       } catch (e) {
         // não bloqueia a UI se falhar
         console.warn('Não foi possível marcar mesa como ocupada:', e);
@@ -493,7 +497,11 @@ export default function Menu() {
         currentComandaId = newComanda.id;
 
         // Atualizar mesa para ocupada
-        await supabase.from("mesas").update({ status: "ocupada" }).eq("id", mesaId);
+        const { error: mesaUpdateError2 } = await supabase
+          .from('mesas')
+          .update({ status: 'ocupada' })
+          .eq('id', mesaId);
+        if (mesaUpdateError2) console.warn('Erro ao marcar mesa como ocupada (send order new comanda):', mesaUpdateError2);
 
         // Inserir os pedidos
         const pedidosToInsert = itemsToSend.map((item) => ({
@@ -539,7 +547,11 @@ export default function Menu() {
         if (updateTotalError) throw updateTotalError;
 
         // FORÇA o status da mesa para ocupada
-        await supabase.from("mesas").update({ status: "ocupada" }).eq("id", mesaId);
+        const { error: mesaUpdateError3 } = await supabase
+          .from('mesas')
+          .update({ status: 'ocupada' })
+          .eq('id', mesaId);
+        if (mesaUpdateError3) console.warn('Erro ao marcar mesa como ocupada (send order subsequent):', mesaUpdateError3);
       }
 
       // 5. Ações de Conclusão
