@@ -598,7 +598,6 @@ export default function Menu() {
             .eq("id", currentComandaId);
           if (updateTotalError) throw updateTotalError;
         }
-        if (updateTotalError) throw updateTotalError;
       }
 
       // 5. Ações de Conclusão
