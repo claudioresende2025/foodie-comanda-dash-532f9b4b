@@ -28,6 +28,7 @@ type Mesa = {
   status: MesaStatus;
   capacidade: number;
   mesa_juncao_id: string | null;
+  nome?: string | null;
 };
 
 // Config de status para tabs (igual ao KDS)
@@ -394,11 +395,22 @@ export default function Mesas() {
                       if (error) throw error;
 
                       // Atualiza também o status da mesa para 'reservada' para refletir imediatamente na UI
-                      const { error: mesaErr } = await supabase
-                        .from('mesas')
-                        .update({ status: 'reservada', nome: reserveName })
-                        .eq('id', id);
-                      if (mesaErr) throw mesaErr;
+                      try {
+                        // Tenta atualizar com `nome` (se a coluna existir no banco/schema cache)
+                        const { error: mesaErr } = await supabase
+                          .from('mesas')
+                          .update({ status: 'reservada', nome: reserveName })
+                          .eq('id', id);
+                        if (mesaErr) throw mesaErr;
+                      } catch (mesaUpdateErr) {
+                        // Fallback: tenta apenas atualizar o status (caso a coluna `nome` ainda não exista no schema cache)
+                        console.warn('Atualização de mesa com nome falhou, tentando atualizar apenas status', mesaUpdateErr);
+                        const { error: mesaErr2 } = await supabase
+                          .from('mesas')
+                          .update({ status: 'reservada' })
+                          .eq('id', id);
+                        if (mesaErr2) throw mesaErr2;
+                      }
                     }
 
                     toast.success('Mesas reservadas');
