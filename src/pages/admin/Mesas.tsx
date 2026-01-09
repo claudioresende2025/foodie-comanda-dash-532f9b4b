@@ -384,13 +384,21 @@ export default function Mesas() {
                         mesa_id: id,
                         nome_cliente: reserveName,
                         data_reserva: reserveDate || new Date().toISOString().slice(0,10),
-                        horario_reserva: reserveTime || '',
+                        // horario_reserva column is TIME NOT NULL in schema: use a safe default when not provided
+                        horario_reserva: reserveTime ? reserveTime : '00:00:00',
                         status: 'confirmada',
                         numero_pessoas: 1,
                       };
 
-                      const { error } = await supabase.from('reservas').insert(payload);
+                      const { data: inserted, error } = await supabase.from('reservas').insert(payload).select().single();
                       if (error) throw error;
+
+                      // Atualiza também o status da mesa para 'reservada' para refletir imediatamente na UI
+                      const { error: mesaErr } = await supabase
+                        .from('mesas')
+                        .update({ status: 'reservada', nome: reserveName })
+                        .eq('id', id);
+                      if (mesaErr) throw mesaErr;
                     }
 
                     toast.success('Mesas reservadas');
