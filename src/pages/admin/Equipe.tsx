@@ -100,6 +100,26 @@ export default function Equipe() {
    * - Inclui nome e email para manter dados sincronizados.
    */
   async function ensureProfileEmpresa(userId: string, empresaId: string, payload: { nome: string; email: string }) {
+    // Primeiro tenta chamar a função RPC criada no DB (requer que a função upsert_profile_empresa exista)
+    try {
+      const { error: rpcError } = await supabase.rpc('upsert_profile_empresa', {
+        p_user_id: userId,
+        p_empresa_id: empresaId,
+        p_nome: payload.nome,
+        p_email: payload.email,
+      } as any);
+
+      if (!rpcError) {
+        return; // RPC executado com sucesso
+      }
+      // se houve erro no RPC, cairá no fallback abaixo
+      console.warn('RPC upsert_profile_empresa falhou, tentando fallback:', rpcError.message || rpcError);
+    } catch (rpcEx: any) {
+      console.warn('Erro ao chamar RPC upsert_profile_empresa:', rpcEx?.message || rpcEx);
+      // continua para o fallback
+    }
+
+    // Fallback: tentativa de update/upsert via client (pode falhar se houver RLS)
     try {
       const { data: updatedRows, error: updateError } = await supabase
         .from("profiles")
@@ -119,11 +139,10 @@ export default function Equipe() {
     } catch (err: any) {
       // Captura erros de RLS e fornece orientação ao usuário/admin
       const msg = String(err?.message || err);
-      console.error('ensureProfileEmpresa error:', err);
+      console.error('ensureProfileEmpresa fallback error:', err);
       if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('violates row-level security')) {
-        // Mensagem amigável e instrução para correção do RLS/migration
         throw new Error(
-          'Falha ao atualizar o perfil do usuário devido a Row Level Security no banco. Execute as migrations de setup (criar política para permitir inserts/updates em `profiles` para o backend) ou execute o script de migração com a service role.'
+          'Falha ao atualizar o perfil do usuário devido a Row Level Security no banco. Execute a função RPC `upsert_profile_empresa` com a service role ou ajuste as policies no Supabase.'
         );
       }
 
