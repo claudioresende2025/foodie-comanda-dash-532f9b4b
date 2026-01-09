@@ -636,6 +636,7 @@ export default function Mesas() {
           mesaNumero={selectedMesaForQR.numero_mesa}
           mesaId={selectedMesaForQR.id}
           empresaId={empresaId}
+          mesaStatus={selectedMesaForQR.status}
         />
       )}
 

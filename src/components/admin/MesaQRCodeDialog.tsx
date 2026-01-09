@@ -12,6 +12,7 @@ type MesaQRCodeDialogProps = {
   mesaNumero: number;
   mesaId: string;
   empresaId: string;
+  mesaStatus?: 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
 };
 
 // URL base usando o dominio atual
@@ -26,6 +27,10 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
   useEffect(() => {
     if (!open) return;
     if (!mesaId || !empresaId) return;
+    if (mesaStatus !== 'reservada') {
+      setReservation(null);
+      return;
+    }
     let mounted = true;
     (async () => {
       try {
