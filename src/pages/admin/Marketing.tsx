@@ -565,7 +565,7 @@ export default function Marketing() {
                       </CardHeader>
                       <CardContent>
                         <p className="text-xl font-bold text-green-600">
-                          R$ {(promo.preco_promocional ?? promo.preco ?? 0).toFixed(2)}
+                          R$ {Number(promo.preco_promocional ?? promo.preco ?? 0).toFixed(2)}
                         </p>
                       </CardContent>
                     </Card>

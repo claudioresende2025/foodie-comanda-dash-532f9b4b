@@ -52,6 +52,7 @@ export default function DeliveryRestaurant() {
 
   const [metodoPagamento, setMetodoPagamento] = useState("pix");
   const [notasGerais, setNotasGerais] = useState("");
+  const [marcaCartao, setMarcaCartao] = useState("");
   const [endereco, setEndereco] = useState({
     nome_cliente: "",
     telefone: "",
@@ -262,7 +263,35 @@ export default function DeliveryRestaurant() {
         console.error('[DeliveryRestaurant] Error fetching produtos:', prodsError);
       }
       console.log('[DeliveryRestaurant] Produtos:', prods?.length || 0);
-      setProdutos(prods || []);
+      let produtosList = prods || [];
+
+      // Buscar combos e adicionar à lista de produtos exibidos (para delivery)
+      try {
+        const { data: combos } = await supabase
+          .from('combos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('ativo', true)
+          .order('created_at', { ascending: false });
+
+        if (combos && combos.length > 0) {
+          const combosMapped = combos.map((c: any) => ({
+            id: `combo:${c.id}`,
+            nome: `${c.nome} (Combo)`,
+            descricao: c.descricao || null,
+            preco: c.preco_combo || 0,
+            imagem_url: c.imagem_url || null,
+            is_combo: true,
+            combo_id: c.id,
+          }));
+
+          produtosList = [...produtosList, ...combosMapped];
+        }
+      } catch (err) {
+        console.warn('[DeliveryRestaurant] Falha ao carregar combos', err);
+      }
+
+      setProdutos(produtosList);
     } catch (err) {
       console.error('[DeliveryRestaurant] Unexpected error:', err);
     } finally {
@@ -381,7 +410,8 @@ export default function DeliveryRestaurant() {
             total: totalComDesconto,
             forma_pagamento: "pix",
             cupom_id: cupomAplicado?.id || null,
-            notas: notasGerais || null,
+            // Anexa marca do cartão de fidelidade nas notas para não depender de alteração do schema
+            notas: `${notasGerais || ''}${marcaCartao ? `\nMarca cartão fidelidade: ${marcaCartao}` : ''}` || null,
             user_id: user.id,
           })
           .select()
@@ -689,6 +719,15 @@ export default function DeliveryRestaurant() {
                     onChange={(e) => setEndereco({ ...endereco, telefone: maskPhone(e.target.value) })}
                     className="h-12 rounded-xl"
                     placeholder="(11) 99999-9999"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">Marca (cartão fidelidade) — opcional</Label>
+                  <Input
+                    value={marcaCartao}
+                    onChange={(e) => setMarcaCartao(e.target.value)}
+                    className="h-12 rounded-xl"
+                    placeholder="Ex: Mastercard, Visa"
                   />
                 </div>
               </div>

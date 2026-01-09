@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -194,30 +194,41 @@ export default function Planos() {
       {/* Header */}
       <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
-          {empresaId ? (
-            // Header para usuários logados - com seta de voltar
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold">Gerenciar Assinatura</h1>
-                <p className="text-muted-foreground text-sm">
-                  Escolha ou altere seu plano
-                </p>
-              </div>
-            </div>
-          ) : (
-            // Header para visitantes - centralizado e mais atrativo
-            <div className="text-center py-2">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                Comanda Digital Pro
-              </h1>
-              <p className="text-muted-foreground text-sm">
-                A plataforma completa para seu restaurante
-              </p>
-            </div>
-          )}
+              {/* Mostrar header mais simples quando acessado pela rota pública /planos */}
+              {(() => {
+                const loc = useLocation();
+                if (loc.pathname === '/planos') {
+                  return (
+                    <div className="text-center py-2">
+                      <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                        Foodie Comanda Pro
+                      </h1>
+                      <p className="text-muted-foreground text-sm">
+                        A plataforma completa para seu restaurante
+                      </p>
+                    </div>
+                  );
+                }
+
+                return empresaId ? (
+                  <div className="flex items-center gap-4">
+                    <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
+                      <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <div>
+                      <h1 className="text-2xl font-bold">Gerenciar Assinatura</h1>
+                      <p className="text-muted-foreground text-sm">Escolha ou altere seu plano</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-2">
+                    <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                      Comanda Digital Pro
+                    </h1>
+                    <p className="text-muted-foreground text-sm">A plataforma completa para seu restaurante</p>
+                  </div>
+                );
+              })()}
         </div>
       </header>
 

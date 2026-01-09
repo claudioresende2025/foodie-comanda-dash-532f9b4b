@@ -49,6 +49,8 @@ export default function Mesas() {
   const [selectedMesas, setSelectedMesas] = useState<string[]>([]);
   const [selectedReserveMesas, setSelectedReserveMesas] = useState<string[]>([]);
   const [reserveName, setReserveName] = useState('');
+  const [reserveDate, setReserveDate] = useState('');
+  const [reserveTime, setReserveTime] = useState('');
   
   // QR Code Dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
@@ -362,22 +364,47 @@ export default function Mesas() {
                 <Label>Nome do Cliente</Label>
                 <Input value={reserveName} onChange={(e) => setReserveName(e.target.value)} />
               </div>
+              <div className="space-y-2">
+                <Label>Data da Reserva</Label>
+                <Input type="date" value={reserveDate} onChange={(e) => setReserveDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Horário (opcional)</Label>
+                <Input type="time" value={reserveTime} onChange={(e) => setReserveTime(e.target.value)} />
+              </div>
               <div className="flex gap-2 mt-4">
                 <Button onClick={async () => {
                   if (selectedReserveMesas.length === 0) { toast.error('Selecione pelo menos uma mesa'); return; }
                   if (!reserveName) { toast.error('Informe o nome do cliente'); return; }
                   try {
+                    // Criar registros na tabela `reservas` (schema já presente no projeto)
                     for (const id of selectedReserveMesas) {
-                      await supabase.from('mesas').update({ status: 'reservada', nome: reserveName }).eq('id', id);
+                      const payload: any = {
+                        empresa_id: empresaId,
+                        mesa_id: id,
+                        nome_cliente: reserveName,
+                        data_reserva: reserveDate || new Date().toISOString().slice(0,10),
+                        horario_reserva: reserveTime || '',
+                        status: 'confirmada',
+                        numero_pessoas: 1,
+                      };
+
+                      const { error } = await supabase.from('reservas').insert(payload);
+                      if (error) throw error;
                     }
+
                     toast.success('Mesas reservadas');
                     setSelectedReserveMesas([]);
                     setReserveName('');
+                    setReserveDate('');
+                    setReserveTime('');
                     setIsReserveDialogOpen(false);
+                    // O trigger no banco deve atualizar status da mesa; invalidar queries para atualizar UI
                     queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
-                  } catch (e) {
+                    queryClient.invalidateQueries({ queryKey: ['reservas', empresaId] });
+                  } catch (e: any) {
                     console.error('Erro reservando mesas', e);
-                    toast.error('Erro ao reservar mesas');
+                    toast.error(String(e.message || 'Erro ao reservar mesas'));
                   }
                 }}>Confirmar Reserva</Button>
               </div>
