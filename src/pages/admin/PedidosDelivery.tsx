@@ -222,6 +222,10 @@ export default function PedidosDelivery() {
   const pedidosAtivos = pedidos?.filter(p => !['entregue', 'cancelado'].includes(p.status)) || [];
   const pedidosFinalizados = pedidos?.filter(p => ['entregue', 'cancelado'].includes(p.status)) || [];
 
+  const selectedStatus = selectedPedido
+    ? (statusConfig[selectedPedido.status as DeliveryStatus] ?? { label: selectedPedido.status || 'Desconhecido', color: 'bg-gray-500', icon: Clock })
+    : null;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -252,8 +256,9 @@ export default function PedidosDelivery() {
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {pedidosAtivos.map((pedido) => {
-                  const StatusIcon = statusConfig[pedido.status].icon;
-                  const nextStatus = getNextStatusLabel(pedido.status);
+                  const statusEntry = statusConfig[pedido.status as DeliveryStatus] ?? { label: pedido.status || 'Desconhecido', color: 'bg-gray-500', icon: Clock };
+                  const StatusIcon = statusEntry.icon;
+                  const nextStatus = statusOrder.includes(pedido.status) ? getNextStatusLabel(pedido.status) : null;
 
                   return (
                     <Card key={pedido.id} className="overflow-hidden">
@@ -262,9 +267,9 @@ export default function PedidosDelivery() {
                           <CardTitle className="text-base">
                             #{pedido.id.slice(0, 8)}
                           </CardTitle>
-                          <Badge className={`${statusConfig[pedido.status].color} text-white`}>
-                            <StatusIcon className="w-3 h-3 mr-1" />
-                            {statusConfig[pedido.status].label}
+                            <Badge className={`${statusEntry.color} text-white`}>
+                              <StatusIcon className="w-3 h-3 mr-1" />
+                              {statusEntry.label}
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -332,7 +337,8 @@ export default function PedidosDelivery() {
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {pedidosFinalizados.slice(0, 6).map((pedido) => {
-                  const StatusIcon = statusConfig[pedido.status].icon;
+                  const statusEntry = statusConfig[pedido.status as DeliveryStatus] ?? { label: pedido.status || 'Desconhecido', color: 'bg-gray-500', icon: Clock };
+                  const StatusIcon = statusEntry.icon;
 
                   return (
                     <Card key={pedido.id} className="overflow-hidden opacity-75">
@@ -341,9 +347,9 @@ export default function PedidosDelivery() {
                           <CardTitle className="text-base">
                             #{pedido.id.slice(0, 8)}
                           </CardTitle>
-                          <Badge className={`${statusConfig[pedido.status].color} text-white`}>
+                          <Badge className={`${statusEntry.color} text-white`}>
                             <StatusIcon className="w-3 h-3 mr-1" />
-                            {statusConfig[pedido.status].label}
+                            {statusEntry.label}
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -385,8 +391,8 @@ export default function PedidosDelivery() {
               <div className="space-y-6">
                 {/* Status */}
                 <div className="flex items-center justify-between">
-                  <Badge className={`${statusConfig[selectedPedido.status].color} text-white px-3 py-1`}>
-                    {statusConfig[selectedPedido.status].label}
+                  <Badge className={`${selectedStatus?.color || 'bg-gray-500'} text-white px-3 py-1`}>
+                    {selectedStatus?.label || selectedPedido.status}
                   </Badge>
                   <span className="text-sm text-muted-foreground">
                     {format(new Date(selectedPedido.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
