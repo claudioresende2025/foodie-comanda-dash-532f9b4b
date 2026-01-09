@@ -1,7 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, Share2, ExternalLink } from 'lucide-react';
+import { Download, Share2, ExternalLink, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
