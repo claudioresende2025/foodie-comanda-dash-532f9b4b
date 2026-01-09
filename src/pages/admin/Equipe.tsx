@@ -100,20 +100,34 @@ export default function Equipe() {
    * - Inclui nome e email para manter dados sincronizados.
    */
   async function ensureProfileEmpresa(userId: string, empresaId: string, payload: { nome: string; email: string }) {
-    const { data: updatedRows, error: updateError } = await supabase
-      .from("profiles")
-      .update({ empresa_id: empresaId, nome: payload.nome, email: payload.email })
-      .eq("id", userId)
-      .select("id"); // retorna linhas afetadas
-
-    if (updateError) throw updateError;
-
-    const noRowsUpdated = !updatedRows || updatedRows.length === 0;
-    if (noRowsUpdated) {
-      const { error: upsertError } = await supabase
+    try {
+      const { data: updatedRows, error: updateError } = await supabase
         .from("profiles")
-        .upsert({ id: userId, empresa_id: empresaId, nome: payload.nome, email: payload.email }, { onConflict: "id" });
-      if (upsertError) throw upsertError;
+        .update({ empresa_id: empresaId, nome: payload.nome, email: payload.email })
+        .eq("id", userId)
+        .select("id"); // retorna linhas afetadas
+
+      if (updateError) throw updateError;
+
+      const noRowsUpdated = !updatedRows || updatedRows.length === 0;
+      if (noRowsUpdated) {
+        const { error: upsertError } = await supabase
+          .from("profiles")
+          .upsert({ id: userId, empresa_id: empresaId, nome: payload.nome, email: payload.email }, { onConflict: "id" });
+        if (upsertError) throw upsertError;
+      }
+    } catch (err: any) {
+      // Captura erros de RLS e fornece orientação ao usuário/admin
+      const msg = String(err?.message || err);
+      console.error('ensureProfileEmpresa error:', err);
+      if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('violates row-level security')) {
+        // Mensagem amigável e instrução para correção do RLS/migration
+        throw new Error(
+          'Falha ao atualizar o perfil do usuário devido a Row Level Security no banco. Execute as migrations de setup (criar política para permitir inserts/updates em `profiles` para o backend) ou execute o script de migração com a service role.'
+        );
+      }
+
+      throw err;
     }
   }
 
