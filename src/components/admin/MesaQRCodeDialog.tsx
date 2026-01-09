@@ -1,4 +1,5 @@
 import { QRCodeSVG } from 'qrcode.react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download, Share2, ExternalLink, X } from 'lucide-react';
@@ -18,6 +19,35 @@ const BASE_CLIENT_URL = window.location.origin;
 
 export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empresaId }: MesaQRCodeDialogProps) {
   const menuUrl = `${BASE_CLIENT_URL}/menu/${empresaId}/${mesaId}`;
+
+  const [reservation, setReservation] = useState<null | { nome_cliente?: string | null; data_reserva?: string | null; horario_reserva?: string | null }>(null);
+  const [loadingReserva, setLoadingReserva] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!mesaId || !empresaId) return;
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingReserva(true);
+        const { data, error } = await supabase
+          .from('reservas')
+          .select('nome_cliente, data_reserva, horario_reserva')
+          .eq('mesa_id', mesaId)
+          .eq('empresa_id', empresaId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        if (mounted) setReservation(data as any ?? null);
+      } catch (err) {
+        console.warn('Erro ao buscar reserva:', err);
+      } finally {
+        if (mounted) setLoadingReserva(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [open, mesaId, empresaId]);
 
   const handleDownload = () => {
     const svg = document.getElementById('mesa-qr-code');
@@ -126,6 +156,18 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
           </div>
 
           <p className="text-sm text-muted-foreground text-center">Escaneie para acessar o cardapio</p>
+
+          {/* Reserva info */}
+          {loadingReserva ? (
+            <p className="text-sm text-muted-foreground text-center">Carregando reserva...</p>
+          ) : reservation ? (
+            <div className="w-full bg-muted/10 p-3 rounded-md text-sm text-muted-foreground text-center">
+              <div className="font-medium">Reserva</div>
+              <div>Nome: {reservation.nome_cliente || '—'}</div>
+              <div>Data: {reservation.data_reserva || '—'}</div>
+              <div>Horário: {reservation.horario_reserva || '—'}</div>
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap gap-2 justify-center w-full">
             <Button variant="outline" onClick={handleDownload} className="flex-1 min-w-[120px]">
