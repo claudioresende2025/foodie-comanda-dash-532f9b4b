@@ -43,6 +43,23 @@ const iconMap: Record<string, any> = {
   'Enterprise': Building2,
 };
 
+const defaultRecursosByPlan: Record<string, string[]> = {
+  'Básico': [
+    'Cardápio digital: Cardápio online responsivo com fotos, variações, preços e controle de disponibilidade por item.',
+    'Comandas: Comandas eletrônicas por mesa com histórico de pedido, edições rápidas e fechamento simplificado.',
+    'Delivery: Gestão de pedidos delivery com cálculo de taxa, confirmação de endereço e status de entrega.',
+  ],
+  'Profissional': [
+    'Tudo do Básico: Todos os recursos do plano Básico já inclusos.',
+    'Relatórios: Painel e exportação de relatórios (vendas, ticket médio, itens mais vendidos e períodos).',
+    'Suporte prioritário: Atendimento prioritário com tempos de resposta reduzidos e assistência para configuração.',
+  ],
+  'Enterprise': [
+    'Tudo do Profissional: Inclui todos os recursos do plano Profissional.',
+    'Integrações: Conectores e integrações personalizadas (ERP, gateways de pagamento, sistemas de PDV).',
+    'SLA dedicado: Gerente de conta e SLA customizado com suporte técnico prioritário e onboarding dedicado.',
+  ],
+};
 export default function Planos() {
   const navigate = useNavigate();
   const [planos, setPlanos] = useState<Plano[]>([]);
@@ -310,7 +327,7 @@ export default function Planos() {
                   <Separator className="my-6" />
 
                   <ul className="space-y-3">
-                    {plano.recursos.map((recurso, index) => (
+                    {((plano.recursos && plano.recursos.length) ? plano.recursos : (defaultRecursosByPlan[plano.nome] || [])).map((recurso, index) => (
                       <li key={index} className="flex items-start gap-3">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
                         <span className="text-sm">{recurso}</span>
