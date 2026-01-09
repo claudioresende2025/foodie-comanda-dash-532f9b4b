@@ -11,6 +11,7 @@ type Plano = {
   preco_mensal: number;
   preco_anual: number;
   recursos: string[] | string;
+  descricao?: string;
   ativo: boolean;
 };
 
@@ -43,9 +44,33 @@ export default function Planos() {
   }, []);
 
   const defaultPlans: Plano[] = [
-    { id: 'basico', nome: 'Básico', preco_mensal: 149.9, preco_anual: Math.round(149.9 * 12 * 0.9), recursos: ['Cardápio digital', 'Comandas', 'Delivery'], ativo: true },
-    { id: 'intermediario', nome: 'Intermediário', preco_mensal: 299.9, preco_anual: Math.round(299.9 * 12 * 0.9), recursos: ['Tudo do Básico', 'Relatórios', 'Suporte prioritário'], ativo: true },
-    { id: 'avancado', nome: 'Avançado', preco_mensal: 549.9, preco_anual: Math.round(549.9 * 12 * 0.9), recursos: ['Tudo do Intermediário', 'Integrações', 'SLA dedicado'], ativo: true },
+    {
+      id: 'essencial',
+      nome: 'Essencial',
+      descricao: 'Tudo que você precisa para começar: cardápio digital, comandas e delivery.',
+      preco_mensal: 149.9,
+      preco_anual: Math.round(149.9 * 12 * 0.9),
+      recursos: ['Cardápio digital', 'Comandas', 'Delivery'],
+      ativo: true,
+    },
+    {
+      id: 'profissional',
+      nome: 'Profissional',
+      descricao: 'Relatórios avançados e suporte prioritário para aumentar suas vendas.',
+      preco_mensal: 299.9,
+      preco_anual: Math.round(299.9 * 12 * 0.9),
+      recursos: ['Tudo do Essencial', 'Relatórios', 'Suporte prioritário'],
+      ativo: true,
+    },
+    {
+      id: 'premium',
+      nome: 'Premium Corporativo',
+      descricao: 'Integrações e SLA dedicado para operações maiores e multi-unidade.',
+      preco_mensal: 549.9,
+      preco_anual: Math.round(549.9 * 12 * 0.9),
+      recursos: ['Tudo do Profissional', 'Integrações', 'SLA dedicado'],
+      ativo: true,
+    },
   ];
 
   const toRender = planos.length === 0 ? defaultPlans : planos;
@@ -106,6 +131,7 @@ export default function Planos() {
                     <div>
                       <h3 className="text-xl font-bold">{pl.nome}</h3>
                       {isFeatured && <span className="text-sm text-muted-foreground">Mais popular</span>}
+                      {pl.descricao && <p className="text-sm text-muted-foreground mt-1">{pl.descricao}</p>}
                     </div>
                   </div>
                   <div className="text-right">

@@ -250,16 +250,38 @@ export default function Marketing() {
         throw new Error('Preencha todos os campos obrigatórios');
       }
 
-      const { error } = await supabase.from('promocoes').insert({
+      // Tenta inserir usando o campo esperado 'preco_promocional'.
+      // Se o banco estiver com schema diferente (coluna ausente), tenta fallback sem esse campo.
+      const payload: any = {
         empresa_id: empresaId,
         nome: promocaoNome,
         descricao: promocaoDescricao || null,
         preco_promocional: parseFloat(promocaoPreco),
         data_inicio: promocaoDataInicio || null,
         data_fim: promocaoDataFim || null,
-      });
+      };
 
-      if (error) throw error;
+      let res = await supabase.from('promocoes').insert(payload);
+      if (res.error) {
+        const msg = String(res.error.message || '').toLowerCase();
+        // Se erro indicar que a coluna não existe ou schema cache está desatualizado, tenta fallback.
+        if (msg.includes('preco_promocional') || msg.includes('schema cache')) {
+          // Retenta inserção sem o campo promocional, usando 'preco' como fallback quando possível
+          const fallback: any = {
+            empresa_id: empresaId,
+            nome: promocaoNome,
+            descricao: promocaoDescricao || null,
+            data_inicio: promocaoDataInicio || null,
+            data_fim: promocaoDataFim || null,
+          };
+          // tenta inserir como 'preco' também
+          fallback.preco = parseFloat(promocaoPreco);
+          const retry = await supabase.from('promocoes').insert(fallback);
+          if (retry.error) throw retry.error;
+        } else {
+          throw res.error;
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promocoes', empresaId] });
@@ -543,7 +565,7 @@ export default function Marketing() {
                       </CardHeader>
                       <CardContent>
                         <p className="text-xl font-bold text-green-600">
-                          R$ {promo.preco_promocional.toFixed(2)}
+                          R$ {(promo.preco_promocional ?? promo.preco ?? 0).toFixed(2)}
                         </p>
                       </CardContent>
                     </Card>
