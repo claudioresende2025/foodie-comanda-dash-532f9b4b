@@ -119,6 +119,7 @@ export default function Planos() {
         'Básico': {
           nome: 'Plano Bronze (Iniciante)',
           preco_mensal: 149.90,
+          preco_anual: 149.90 * 12,
           trial_days: 3,
           descricao: 'Público Ideal: Lanchonetes e MEI',
           recursos: [
@@ -136,6 +137,7 @@ export default function Planos() {
         'Profissional': {
           nome: 'Plano Prata (Crescimento)',
           preco_mensal: 299.90,
+          preco_anual: 299.90 * 12,
           trial_days: 3,
           descricao: 'Público Ideal: Restaurantes com Mesas',
           recursos: [
@@ -153,6 +155,7 @@ export default function Planos() {
         'Enterprise': {
           nome: 'Plano Ouro (Profissional)',
           preco_mensal: 5498.90,
+          preco_anual: 5498.90 * 12,
           trial_days: 7,
           descricao: 'Público Ideal: Operações de Alto Volume',
           recursos: [
