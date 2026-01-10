@@ -41,14 +41,19 @@ export function UpgradeModal({ open, onOpenChange, feature }: Props) {
 
           <div className="flex justify-end items-center gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Fechar</Button>
-            <Button
-              onClick={() => {
-                onOpenChange(false);
-                navigate('/planos');
-              }}
-            >
-              Fazer upgrade
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate('/planos?mode=upgrade');
+                }}
+              >
+                Fazer upgrade
+              </Button>
+              <Button variant="outline" onClick={() => { onOpenChange(false); navigate('/planos?mode=downgrade'); }}>
+                Fazer downgrade
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

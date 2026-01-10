@@ -260,7 +260,7 @@ export default function Planos() {
           planoId: plano.id,
           empresaId,
           periodo: isAnual ? 'anual' : 'mensal',
-          successUrl: `${window.location.origin}/admin?subscription=success`,
+          successUrl: `${window.location.origin}/auth?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}`,
           cancelUrl: `${window.location.origin}/planos?canceled=true`,
         },
       });
