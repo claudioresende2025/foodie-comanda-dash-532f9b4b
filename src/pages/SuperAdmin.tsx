@@ -145,6 +145,23 @@ export default function SuperAdmin() {
   const [savingOverrides, setSavingOverrides] = useState(false);
 
   useEffect(() => {
+    if (!selectedEmpresa) return;
+    (async () => {
+      try {
+        const { data } = await supabase.from('empresa_overrides').select('*').eq('empresa_id', selectedEmpresa.id).maybeSingle();
+        if (data) {
+          setEmpresaOverrides({ ...(data.overrides || {}), kds_screens_limit: data.kds_screens_limit, staff_limit: data.staff_limit });
+        } else {
+          setEmpresaOverrides({});
+        }
+      } catch (e) {
+        console.warn('Erro carregando overrides', e);
+        setEmpresaOverrides({});
+      }
+    })();
+  }, [selectedEmpresa]);
+
+  useEffect(() => {
     checkSuperAdmin();
   }, []);
 
