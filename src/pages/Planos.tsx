@@ -113,12 +113,76 @@ export default function Planos() {
       };
 
       const displayOrder = ['Básico', 'Profissional', 'Enterprise'];
+
+      // Overrides visuais conforme tabela fornecida
+      const displayOverrides: Record<string, any> = {
+        'Básico': {
+          nome: 'Plano Bronze (Iniciante)',
+          preco_mensal: 89.0,
+          trial_days: 3,
+          descricao: 'Público Ideal: Lanchonetes e MEI',
+          recursos: [
+            'Dashboard: Básico (Vendas do dia)',
+            'Mesas: ❌ Não incluso',
+            'Pedidos (KDS): ❌ Não incluso',
+            'Delivery: ✅ Básico (WhatsApp)',
+            'Estatísticas Delivery: ❌ Não incluso',
+            'Garçom (App): ❌ Não incluso',
+            'Marketing: ❌ Não incluso',
+            'Equipe / Empresa: Apenas Administrador',
+            'Caixa / Gestão: Fluxo de Caixa Simples',
+          ],
+        },
+        'Profissional': {
+          nome: 'Plano Prata (Crescimento)',
+          preco_mensal: 179.0,
+          trial_days: 3,
+          descricao: 'Público Ideal: Restaurantes com Mesas',
+          recursos: [
+            'Dashboard: Completo',
+            'Mesas: ✅ Ilimitado',
+            'Pedidos (KDS): ✅ 1 Tela',
+            'Delivery: ✅ Integrado',
+            'Estatísticas Delivery: ❌ Não incluso',
+            'Garçom (App): ✅ Até 3 usuários',
+            'Marketing: ❌ Não incluso',
+            'Equipe / Empresa: Até 5 Colaboradores',
+            'Caixa / Gestão: Completo + Estoque',
+          ],
+        },
+        'Enterprise': {
+          nome: 'Plano Ouro (Profissional)',
+          preco_mensal: 329.0,
+          trial_days: 7,
+          descricao: 'Público Ideal: Operações de Alto Volume',
+          recursos: [
+            'Dashboard: Avançado + Comparativos',
+            'Mesas: ✅ Ilimitado',
+            'Pedidos (KDS): ✅ Telas Ilimitadas',
+            'Delivery: ✅ Integrado',
+            'Estatísticas Delivery: ✅ Relatórios de Performance',
+            'Garçom (App): ✅ Usuários Ilimitados',
+            'Marketing: ✅ Cupons e Fidelidade',
+            'Equipe / Empresa: Colaboradores Ilimitados',
+            'Caixa / Gestão: Completo + Auditoria',
+          ],
+        },
+      };
+
       const planosFormatted: any[] = [];
       for (const displayName of displayOrder) {
         const p = findByCandidates(slugCandidates[displayName]);
         if (p) {
-          // sobrescreve o nome para exibição consistente
-          planosFormatted.push({ ...p, nome: displayName });
+          const override = displayOverrides[displayName] || {};
+          planosFormatted.push({
+            ...p,
+            nome: override.nome || displayName,
+            descricao: override.descricao || p.descricao,
+            preco_mensal: override.preco_mensal ?? p.preco_mensal,
+            preco_anual: override.preco_anual ?? p.preco_anual,
+            trial_days: override.trial_days ?? p.trial_days,
+            recursos: override.recursos || (p.recursos && p.recursos.length ? p.recursos : (defaultRecursosByPlan[p.nome] || [])),
+          });
         }
       }
 
