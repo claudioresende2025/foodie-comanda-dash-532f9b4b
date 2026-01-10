@@ -141,6 +141,8 @@ export default function SuperAdmin() {
   // Empresa selecionada
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa | null>(null);
   const [empresaDialogOpen, setEmpresaDialogOpen] = useState(false);
+  const [empresaOverrides, setEmpresaOverrides] = useState<any>(null);
+  const [savingOverrides, setSavingOverrides] = useState(false);
 
   useEffect(() => {
     checkSuperAdmin();
@@ -909,18 +911,69 @@ export default function SuperAdmin() {
 
               <Separator />
 
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => {
-                    toast.info('Funcionalidade em desenvolvimento');
-                    setEmpresaDialogOpen(false);
-                  }}
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  Ver Detalhes
-                </Button>
+              <div>
+                <h3 className="font-semibold">Overrides / Controles</h3>
+                <p className="text-sm text-muted-foreground">Ative ou desative recursos manualmente para esta empresa. Isso tem prioridade sobre o plano contratado.</p>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="space-y-2">
+                    <Label>Mesas</Label>
+                    <Switch checked={empresaOverrides?.mesas || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, mesas: v })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Delivery</Label>
+                    <Switch checked={empresaOverrides?.delivery || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, delivery: v })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>KDS</Label>
+                    <Switch checked={empresaOverrides?.kds || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, kds: v })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Marketing</Label>
+                    <Switch checked={empresaOverrides?.marketing || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, marketing: v })} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <Label>Limite telas KDS</Label>
+                    <Input value={empresaOverrides?.kds_screens_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, kds_screens_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                  </div>
+                  <div>
+                    <Label>Limite funcionários</Label>
+                    <Input value={empresaOverrides?.staff_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, staff_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-4">
+                  <Button variant="outline" onClick={() => { setEmpresaDialogOpen(false); }}>
+                    Fechar
+                  </Button>
+                  <Button onClick={async () => {
+                    setSavingOverrides(true);
+                    try {
+                      const payload = {
+                        empresa_id: selectedEmpresa.id,
+                        overrides: empresaOverrides || {},
+                        kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
+                        staff_limit: empresaOverrides?.staff_limit ?? null,
+                      };
+                      // upsert
+                      const { error } = await supabase.from('empresa_overrides').upsert(payload, { onConflict: 'empresa_id' });
+                      if (error) throw error;
+                      toast.success('Overrides salvos');
+                      setEmpresaDialogOpen(false);
+                      await loadEmpresas();
+                    } catch (err) {
+                      console.error('Erro salvando overrides', err);
+                      toast.error('Erro ao salvar overrides');
+                    } finally {
+                      setSavingOverrides(false);
+                    }
+                  }} disabled={savingOverrides}>
+                    {savingOverrides ? 'Salvando...' : 'Salvar Overrides'}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
