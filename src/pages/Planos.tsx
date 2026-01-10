@@ -24,77 +24,182 @@ interface Plano {
   id: string;
   nome: string;
   slug: string;
-  descricao: string;
-  preco_mensal: number;
-  preco_anual: number;
-  recursos: Record<string, boolean | string>;
-  limite_mesas: number | null;
-  staff_limit: number | null;
-  kds_screens: number | null;
-  garcom_limit: number | null;
-  trial_days: number;
-  destaque: boolean;
-  stripe_price_id_mensal: string | null;
-  stripe_price_id_anual: string | null;
-}
+      
+      // Parse recursos JSON
+      const planosAll = (data || []).map((p: any) => ({
+        ...p,
+        recursos: typeof p.recursos === 'string' ? JSON.parse(p.recursos) : p.recursos || [],
+      }));
 
-const iconMap: Record<string, any> = {
-  'bronze': Zap,
-  'prata': Crown,
-  'ouro': Building2,
-};
+      // Seleção canônica para exibir apenas 3 cartões (Básico, Profissional, Enterprise)
+      const slugCandidates: Record<string, string[]> = {
+        'Básico': ['basico', 'b-sico', 'bronze'],
+        'Profissional': ['profissional', 'prata'],
+        'Enterprise': ['enterprise', 'ouro'],
+      };
 
-// Recursos detalhados por plano para exibição
-const recursosDisplay: Record<string, { nome: string; bronze: string; prata: string; ouro: string }[]> = {
-  features: [
-    { nome: 'Dashboard', bronze: 'Básico', prata: 'Completo', ouro: 'Avançado + Comparativos' },
-    { nome: 'Mesas', bronze: 'Limite 10', prata: 'Ilimitado', ouro: 'Ilimitado' },
-    { nome: 'Pedidos (KDS)', bronze: '1 Tela', prata: '1 Tela', ouro: 'Ilimitado' },
-    { nome: 'Delivery', bronze: 'WhatsApp', prata: 'Integrado', ouro: 'Integrado' },
-    { nome: 'Estatísticas Delivery', bronze: '❌', prata: '❌', ouro: '✅' },
-    { nome: 'App Garçom', bronze: '1 usuário', prata: 'Até 3 usuários', ouro: 'Ilimitado' },
-    { nome: 'Marketing', bronze: '❌', prata: '❌', ouro: 'Cupons + Fidelidade' },
-    { nome: 'Equipe', bronze: 'Até 2 colaboradores', prata: 'Até 5 colaboradores', ouro: 'Ilimitado' },
-    { nome: 'Caixa', bronze: 'Fluxo + Estoque', prata: 'Completo + Estoque', ouro: 'Completo + Auditoria' },
-  ],
-};
+      const findByCandidates = (candidates: string[]) => {
+        for (const s of candidates) {
+          const found = planosAll.find((p: any) => (p.slug || '').toLowerCase() === s.toLowerCase());
+          if (found) return found;
+        }
+        // fallback: try by nome matching
+        for (const s of candidates) {
+          const found = planosAll.find((p: any) => (p.nome || '').toLowerCase().includes(s.toLowerCase()));
+          if (found) return found;
+        }
+        return null;
+      };
 
-export default function Planos() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const mode = searchParams.get('mode'); // 'upgrade' | 'downgrade' | null
-  
-  const [planos, setPlanos] = useState<Plano[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAnual, setIsAnual] = useState(false);
-  const [processingPlan, setProcessingPlan] = useState<string | null>(null);
-  const [empresaId, setEmpresaId] = useState<string | null>(null);
-  const [currentSubscription, setCurrentSubscription] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
+      const displayOrder = ['Básico', 'Profissional', 'Enterprise'];
 
-  useEffect(() => {
-    fetchPlanos();
-    fetchCurrentUser();
+      // Overrides visuais conforme tabela fornecida
+      const displayOverrides: Record<string, any> = {
+        'Básico': {
+            nome: 'Plano Bronze (Iniciante)',
+            preco_mensal: 149.90,
+            preco_anual: 149.90 * 12,
+            trial_days: 3,
+            descricao: 'Público Ideal: Lanchonetes e MEI',
+            recursos: [
+              'Dashboard (Básico)',
+              'Mesas (Limitado — até 10)',
+              'Pedidos (KDS) — 1 tela',
+              'Delivery (WhatsApp)',
+              'Estatísticas Delivery: Não incluso',
+              'App Garçom: 1 usuário',
+              'Marketing: Não incluso',
+              'Equipe: Até 2 colaboradores',
+              'Caixa / Gestão: Fluxo de Caixa e Estoque',
+            ],
+        },
+        'Profissional': {
+            nome: 'Plano Prata (Crescimento)',
+            preco_mensal: 299.90,
+            preco_anual: 299.90 * 12,
+            trial_days: 3,
+            descricao: 'Público Ideal: Restaurantes com Mesas',
+            recursos: [
+              'Todos os recursos do Bronze',
+              'Mesas: Ilimitado',
+              'Pedidos (KDS): 1 tela (padrão)',
+              'Delivery: Integrado',
+              'Estatísticas Delivery: Não incluso',
+              'App Garçom: Até 3 usuários',
+              'Marketing: Não incluso',
+              'Equipe: Até 5 colaboradores',
+              'Caixa / Gestão: Completo + Estoque',
+            ],
+        },
+        'Enterprise': {
+            nome: 'Plano Ouro (Profissional)',
+            preco_mensal: 549.90,
+            preco_anual: 549.90 * 12,
+            trial_days: 7,
+            descricao: 'Público Ideal: Operações de Alto Volume',
+            recursos: [
+              'ACESSO TOTAL: Todos os recursos desbloqueados',
+              'Mesas: Ilimitado',
+              'Pedidos (KDS): Telas Ilimitadas',
+              'Delivery: Integrado',
+              'Estatísticas Delivery: Relatórios de Performance',
+              'App Garçom: Usuários Ilimitados',
+              'Marketing: Cupons e Fidelidade',
+              'Equipe: Colaboradores Ilimitados',
+              'Caixa / Gestão: Completo + Auditoria',
+            ],
+        },
+      };
 
-    // Handle success redirect
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('subscription') === 'success') {
-      toast.success('Assinatura realizada com sucesso! Faça login para acessar.');
-      navigate('/auth');
-    }
-  }, []);
+      const planosFormatted: any[] = [];
+      for (const displayName of displayOrder) {
+        const p = findByCandidates(slugCandidates[displayName]);
+        if (p) {
+          const override = displayOverrides[displayName] || {};
+          planosFormatted.push({
+            ...p,
+            nome: override.nome || displayName,
+            descricao: override.descricao || p.descricao,
+            preco_mensal: override.preco_mensal ?? p.preco_mensal,
+            preco_anual: override.preco_anual ?? p.preco_anual,
+            trial_days: override.trial_days ?? p.trial_days,
+            recursos: override.recursos || (p.recursos && p.recursos.length ? p.recursos : []),
+          });
+        }
+      }
 
-  const fetchPlanos = async () => {
-    try {
-      const { data, error } = await (supabase as any)
-        .from('planos')
-        .select('*')
-        .eq('ativo', true)
-        .order('ordem', { ascending: true });
+      // Se não encontrou nenhum plano canônico, fallback para todos
+      setPlanos(planosFormatted.length ? planosFormatted : planosAll);
+            recursos: [
+              'Dashboard (Básico)',
+              'Mesas (Limitado — até 10)',
+              'Pedidos (KDS) — 1 tela',
+              'Delivery (WhatsApp)',
+              'Estatísticas Delivery: Não incluso',
+              'App Garçom: 1 usuário',
+              'Marketing: Não incluso',
+              'Equipe: Até 2 colaboradores',
+              'Caixa / Gestão: Fluxo de Caixa e Estoque',
+            ],
+        },
+        'Profissional': {
+            nome: 'Plano Prata (Crescimento)',
+            preco_mensal: 299.90,
+            preco_anual: 299.90 * 12,
+            trial_days: 3,
+            descricao: 'Público Ideal: Restaurantes com Mesas',
+            recursos: [
+              'Todos os recursos do Bronze',
+              'Mesas: Ilimitado',
+              'Pedidos (KDS): 1 tela (padrão)',
+              'Delivery: Integrado',
+              'Estatísticas Delivery: Não incluso',
+              'App Garçom: Até 3 usuários',
+              'Marketing: Não incluso',
+              'Equipe: Até 5 colaboradores',
+              'Caixa / Gestão: Completo + Estoque',
+            ],
+        },
+        'Enterprise': {
+            nome: 'Plano Ouro (Profissional)',
+            preco_mensal: 549.90,
+            preco_anual: 549.90 * 12,
+            trial_days: 7,
+            descricao: 'Público Ideal: Operações de Alto Volume',
+            recursos: [
+              'ACESSO TOTAL: Todos os recursos desbloqueados',
+              'Mesas: Ilimitado',
+              'Pedidos (KDS): Telas Ilimitadas',
+              'Delivery: Integrado',
+              'Estatísticas Delivery: Relatórios de Performance',
+              'App Garçom: Usuários Ilimitados',
+              'Marketing: Cupons e Fidelidade',
+              'Equipe: Colaboradores Ilimitados',
+              'Caixa / Gestão: Completo + Auditoria',
+            ],
+        },
+      };
 
-      if (error) throw error;
-      setPlanos(data || []);
+      const planosFormatted: any[] = [];
+      for (const displayName of displayOrder) {
+        const p = findByCandidates(slugCandidates[displayName]);
+        if (p) {
+          const override = displayOverrides[displayName] || {};
+          planosFormatted.push({
+            ...p,
+            nome: override.nome || displayName,
+            descricao: override.descricao || p.descricao,
+            preco_mensal: override.preco_mensal ?? p.preco_mensal,
+            preco_anual: override.preco_anual ?? p.preco_anual,
+            trial_days: override.trial_days ?? p.trial_days,
+            recursos: override.recursos || (p.recursos && p.recursos.length ? p.recursos : (defaultRecursosByPlan[p.nome] || [])),
+          });
+        }
+      }
+
+      // Se não encontrou nenhum plano canônico, fallback para todos
+      setPlanos(planosFormatted.length ? planosFormatted : planosAll);
+>>>>>>> 15c1ec2 (style(planos): ajustar nomes, preços e descrições dos planos (Bronze, Prata, Ouro) para combinar com o design)
     } catch (err) {
       console.error('Erro ao carregar planos:', err);
       toast.error('Erro ao carregar planos');
