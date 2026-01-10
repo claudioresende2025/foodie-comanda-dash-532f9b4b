@@ -53,6 +53,8 @@ type Empresa = {
   id: string;
   nome_fantasia: string;
   logo_url: string | null;
+  chave_pix?: string | null;
+  endereco_completo?: string | null;
 };
 
 type CartItem = {

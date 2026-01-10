@@ -118,7 +118,7 @@ export default function Planos() {
       const displayOverrides: Record<string, any> = {
         'Básico': {
           nome: 'Plano Bronze (Iniciante)',
-          preco_mensal: 89.0,
+          preco_mensal: 149.90,
           trial_days: 3,
           descricao: 'Público Ideal: Lanchonetes e MEI',
           recursos: [
@@ -135,7 +135,7 @@ export default function Planos() {
         },
         'Profissional': {
           nome: 'Plano Prata (Crescimento)',
-          preco_mensal: 179.0,
+          preco_mensal: 299.90,
           trial_days: 3,
           descricao: 'Público Ideal: Restaurantes com Mesas',
           recursos: [
@@ -152,7 +152,7 @@ export default function Planos() {
         },
         'Enterprise': {
           nome: 'Plano Ouro (Profissional)',
-          preco_mensal: 329.0,
+          preco_mensal: 5498.90,
           trial_days: 7,
           descricao: 'Público Ideal: Operações de Alto Volume',
           recursos: [
