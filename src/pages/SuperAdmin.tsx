@@ -182,7 +182,9 @@ export default function SuperAdmin() {
 
       if (!superAdmin) {
         toast.error('Acesso negado. Você não é um super administrador.');
-        navigate('/admin');
+        // Não navegamos automaticamente — exibiremos mensagem para o usuário
+        setIsSuperAdmin(false);
+        setIsLoading(false);
         return;
       }
 
@@ -191,7 +193,7 @@ export default function SuperAdmin() {
     } catch (err) {
       console.error('Erro ao verificar super admin:', err);
       toast.error('Erro ao verificar permissões');
-      navigate('/admin');
+      setIsSuperAdmin(false);
     } finally {
       setIsLoading(false);
     }
