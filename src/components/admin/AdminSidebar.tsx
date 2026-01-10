@@ -32,7 +32,9 @@ import {
   Megaphone,
   CreditCard,
 } from 'lucide-react';
+import UpgradeModal from '@/components/UpgradeModal';
 import { Button } from '@/components/ui/button';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { NotificationToggle } from '@/components/notifications/NotificationToggle';
 
@@ -107,6 +109,9 @@ export function AdminSidebar() {
     }
   };
 
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
+
   // Mapear permissões para cada item do menu
   const permissionMap: Record<MenuItemKey, boolean> = {
     dashboard: canAccessDashboard,
@@ -124,8 +129,8 @@ export function AdminSidebar() {
     configuracoes: canAccessConfiguracoes,
   };
 
-  // Filtrar menu items baseado nas permissões
-  const visibleMenuItems = allMenuItems.filter(item => permissionMap[item.key]);
+  // Exibir todos os itens, mas desabilitar os que não tiver permissão
+  const visibleMenuItems = allMenuItems;
 
   if (isRoleLoading) {
     return (
@@ -169,25 +174,42 @@ export function AdminSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {visibleMenuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                    <NavLink 
-                      to={item.url} 
-                      end={item.url === '/admin'}
-                      className="flex items-center gap-3"
-                      onClick={handleMenuClick}
-                    >
-                      <item.icon className="w-5 h-5" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {visibleMenuItems.map((item) => {
+                const allowed = permissionMap[item.key];
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                      {allowed ? (
+                        <NavLink 
+                          to={item.url} 
+                          end={item.url === '/admin'}
+                          className="flex items-center gap-3"
+                          onClick={handleMenuClick}
+                        >
+                          <item.icon className="w-5 h-5" />
+                          <span>{item.title}</span>
+                        </NavLink>
+                      ) : (
+                        <button
+                          onClick={() => { setUpgradeFeature(item.title); setUpgradeOpen(true); }}
+                          className="flex items-center gap-3 text-muted-foreground"
+                          title="Recurso bloqueado"
+                        >
+                          <item.icon className="w-5 h-5 opacity-50" />
+                          <span>{item.title}</span>
+                          <span className="ml-auto text-xs text-muted-foreground">🔒</span>
+                        </button>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
 
       <SidebarFooter className="p-4">
         <div className="flex items-center gap-3 p-3 rounded-lg bg-sidebar-accent/50">
