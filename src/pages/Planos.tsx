@@ -87,12 +87,43 @@ export default function Planos() {
       if (error) throw error;
       
       // Parse recursos JSON
-      const planosFormatted = (data || []).map((p: any) => ({
+      const planosAll = (data || []).map((p: any) => ({
         ...p,
         recursos: typeof p.recursos === 'string' ? JSON.parse(p.recursos) : p.recursos || [],
       }));
-      
-      setPlanos(planosFormatted);
+
+      // Seleção canônica para exibir apenas 3 cartões (Básico, Profissional, Enterprise)
+      const slugCandidates: Record<string, string[]> = {
+        'Básico': ['basico', 'b-sico', 'bronze'],
+        'Profissional': ['profissional', 'prata'],
+        'Enterprise': ['enterprise', 'ouro'],
+      };
+
+      const findByCandidates = (candidates: string[]) => {
+        for (const s of candidates) {
+          const found = planosAll.find((p: any) => (p.slug || '').toLowerCase() === s.toLowerCase());
+          if (found) return found;
+        }
+        // fallback: try by nome matching
+        for (const s of candidates) {
+          const found = planosAll.find((p: any) => (p.nome || '').toLowerCase().includes(s.toLowerCase()));
+          if (found) return found;
+        }
+        return null;
+      };
+
+      const displayOrder = ['Básico', 'Profissional', 'Enterprise'];
+      const planosFormatted: any[] = [];
+      for (const displayName of displayOrder) {
+        const p = findByCandidates(slugCandidates[displayName]);
+        if (p) {
+          // sobrescreve o nome para exibição consistente
+          planosFormatted.push({ ...p, nome: displayName });
+        }
+      }
+
+      // Se não encontrou nenhum plano canônico, fallback para todos
+      setPlanos(planosFormatted.length ? planosFormatted : planosAll);
     } catch (err) {
       console.error('Erro ao carregar planos:', err);
       toast.error('Erro ao carregar planos');
