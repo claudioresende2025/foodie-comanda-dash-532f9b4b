@@ -72,6 +72,24 @@ export default function Planos() {
   useEffect(() => {
     fetchPlanos();
     fetchCurrentUser();
+
+    // Se voltamos do checkout com sucesso, desloga o usuário para forçar re-login
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('subscription') === 'success') {
+        (async () => {
+          try {
+            await supabase.auth.signOut();
+            toast.success('Compra realizada. Faça login novamente para aplicar o novo plano.');
+            navigate('/auth');
+          } catch (e) {
+            console.warn('Erro ao deslogar após subscribe', e);
+          }
+        })();
+      }
+    } catch (e) {
+      // ignore
+    }
   }, []);
 
   const fetchPlanos = async () => {
