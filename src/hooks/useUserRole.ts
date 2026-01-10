@@ -88,7 +88,89 @@ export function useUserRole(): UserRoleData {
       try {
         const overrides = overridesData.data || null;
         const assinatura = assinaturaData.data || null;
-        (window as any).__empresaFeatureCache = { overrides, assinatura, isSuperAdmin };
+
+        // Default plan resources mapping (fallback when plano.recursos missing)
+        const defaultPlanResources: Record<string, any> = {
+          bronze: {
+            recursos: {
+              dashboard: true,
+              cardapio: true,
+              delivery: true,
+              empresa: true,
+              configuracoes: true,
+              mesas: true,
+              kds: true,
+              estatisticas: false,
+              marketing: false,
+              garcom: true,
+              caixa: true,
+              equipe: false,
+              pedidos: true,
+            },
+            kds_screens: 1,
+            staff_limit: 1,
+            mesas_limit: 10,
+          },
+          prata: {
+            recursos: {
+              dashboard: true,
+              cardapio: true,
+              delivery: true,
+              empresa: true,
+              configuracoes: true,
+              mesas: true,
+              kds: true,
+              estatisticas: false,
+              marketing: false,
+              garcom: true,
+              caixa: true,
+              equipe: true,
+              pedidos: true,
+            },
+            kds_screens: 1,
+            staff_limit: 5,
+            mesas_limit: null,
+          },
+          ouro: {
+            recursos: {
+              dashboard: true,
+              cardapio: true,
+              delivery: true,
+              empresa: true,
+              configuracoes: true,
+              mesas: true,
+              kds: true,
+              estatisticas: true,
+              marketing: true,
+              garcom: true,
+              caixa: true,
+              equipe: true,
+              pedidos: true,
+            },
+            kds_screens: null,
+            staff_limit: null,
+            mesas_limit: null,
+          },
+        };
+
+        // Determine planoRecursos: prefer assinatura.plano.recursos, fall back to defaults by slug
+        let planoRecursos: any = {};
+        let planoSlug = (assinatura && assinatura.plano && (assinatura.plano.slug || (assinatura.plano.nome || '').toLowerCase())) || null;
+        if (assinatura && assinatura.plano && assinatura.plano.recursos) {
+          planoRecursos = assinatura.plano.recursos;
+        } else if (planoSlug) {
+          const key = planoSlug.toLowerCase();
+          if (defaultPlanResources[key]) {
+            planoRecursos = defaultPlanResources[key].recursos;
+          }
+        }
+
+        // expose computed limits
+        const computedKdsScreens = overrides?.kds_screens_limit ?? assinatura?.plano?.recursos?.kds_screens ?? (planoSlug ? defaultPlanResources[planoSlug?.toLowerCase()]?.kds_screens : null);
+        const computedStaffLimit = overrides?.staff_limit ?? assinatura?.plano?.recursos?.equipe_limit ?? (planoSlug ? defaultPlanResources[planoSlug?.toLowerCase()]?.staff_limit : null);
+        const computedMesasLimit = overrides?.mesas_limit ?? assinatura?.plano?.recursos?.mesas_limit ?? (planoSlug ? defaultPlanResources[planoSlug?.toLowerCase()]?.mesas_limit : null);
+
+        (window as any).__empresaFeatureCache = { overrides, assinatura, isSuperAdmin, planoRecursos, computedKdsScreens, computedStaffLimit, computedMesasLimit };
       } catch (e) {
         console.warn('Could not cache empresa features', e);
       }
@@ -115,14 +197,14 @@ export function useUserRole(): UserRoleData {
   // read plan and overrides from cache if available
   const cache = (window as any).__empresaFeatureCache || {};
   const overrides = cache.overrides?.overrides || {};
-  const planoRecursos = cache.assinatura?.plano?.recursos || {};
+  const planoRecursosCached = cache.planoRecursos || cache.assinatura?.plano?.recursos || {};
 
   const resolveFeature = (key: string) => {
     // override trumps plan
     if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) {
       return overrides[key];
     }
-    return planoRecursos?.[key] ?? false;
+    return planoRecursosCached?.[key] ?? false;
   };
 
   return {
@@ -150,8 +232,9 @@ export function useUserRole(): UserRoleData {
     canAccessEmpresa: isAdmin || resolveFeature('empresa'),
     canAccessConfiguracoes: isAdmin || resolveFeature('configuracoes'),
     // limits
-    kdsScreensLimit: cache.overrides?.kds_screens_limit ?? cache.assinatura?.plano?.recursos?.kds_screens ?? null,
-    equipeLimit: cache.overrides?.staff_limit ?? cache.assinatura?.plano?.recursos?.equipe_limit ?? null,
+    kdsScreensLimit: cache.computedKdsScreens ?? null,
+    equipeLimit: cache.computedStaffLimit ?? null,
+    mesasLimit: cache.computedMesasLimit ?? null,
     refetch: fetchRole,
   };
 }
