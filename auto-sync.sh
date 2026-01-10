@@ -1,71 +1,79 @@
 #!/bin/bash
 
-# Script de sincronização automática com GitHub
-# Monitora mudanças e faz commit/push automaticamente
+# Auto-sync melhorado: usa inotifywait quando disponível para minimizar latência
+# Fallback para polling com intervalo configurável (AUTOSYNC_INTERVAL em segundos)
 
-cd /workspaces/foodie-comanda-dash-532f9b4b
+set -u
 
-echo "🔄 Iniciando sincronização automática com GitHub..."
-echo "📁 Monitorando: /workspaces/foodie-comanda-dash-532f9b4b"
-echo "⏰ Verificando mudanças a cada 30 segundos"
-echo "🛑 Pressione Ctrl+C para parar"
-echo ""
+REPO_DIR="/workspaces/foodie-comanda-dash-532f9b4b"
+cd "$REPO_DIR" || exit 1
 
-# Configurações locais para evitar erros de commit/push automatizados
-# Use variáveis de ambiente se fornecidas, senão use valores seguros
+echo "🔄 Iniciando auto-sync (pasta: $REPO_DIR)"
+
+# Configurações
 GIT_NAME=${AUTOSYNC_GIT_NAME:-"Auto Sync Bot"}
 GIT_EMAIL=${AUTOSYNC_GIT_EMAIL:-"auto-sync@localhost"}
+INTERVAL=${AUTOSYNC_INTERVAL:-5}
+INOTIFYWAIT=$(command -v inotifywait || true)
 
-# Apply local git config to avoid GPG/signing/author errors
+# Config git local para evitar erros automáticos
 git config user.name "$GIT_NAME" >/dev/null 2>&1 || true
 git config user.email "$GIT_EMAIL" >/dev/null 2>&1 || true
 git config commit.gpgSign false >/dev/null 2>&1 || true
 
-# Handle Ctrl+C gracefully
-trap "echo; echo '🛑 Auto-sync interrompido pelo usuário'; exit 0" SIGINT SIGTERM
+trap "echo; echo '🛑 Auto-sync interrompido'; exit 0" SIGINT SIGTERM
 
-while true; do
-        # Verificar se há mudanças
-        if [[ -n $(git status --porcelain) ]]; then
-                echo "📝 Mudanças detectadas em $(date '+%Y-%m-%d %H:%M:%S')"
+run_sync() {
+    # Debounce curto para agrupar mudanças rápidas
+    sleep 1
 
-                # Adicionar todas as mudanças
-                git add -A
-
-                # Criar commit com timestamp (ignora se não houver alterações a commitar)
-                TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-                if git commit -m "Auto-sync: $TIMESTAMP" --no-verify --quiet 2>/dev/null; then
-                    echo "✔️  Commit criado: $TIMESTAMP"
-                else
-                    echo "ℹ️  Nada para commitar (commit falhou ou não houve alterações)"
-                fi
-
-                # Detectar branch atual (fallback para main)
-                BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-
-                # Push para o GitHub com tratamento de conflitos
-                echo "⬆️  Tentando push para origin/$BRANCH..."
-                if git push origin "$BRANCH" --quiet 2>&1; then
-                        echo "✅ Sincronizado com sucesso (branch: $BRANCH)!"
-                else
-                        echo "❌ Push falhou, tentando atualizar e re-push..."
-                        git fetch origin --quiet
-                        if git rev-parse --verify origin/$BRANCH >/dev/null 2>&1; then
-                            echo "🔁 Rebase com origin/$BRANCH"
-                            if git pull --rebase origin "$BRANCH" --quiet; then
-                                git push origin "$BRANCH" --quiet && echo "✅ Sincronizado após rebase!" || echo "⚠️ Push ainda falhou após rebase"
-                            else
-                                echo "⚠️ Falha no rebase; criando backup local e abortando push attempt"
-                                git rebase --abort >/dev/null 2>&1 || true
-                            fi
-                        else
-                            echo "⚠️ Branch remoto origin/$BRANCH não existe; criando branch remoto"
-                            git push -u origin "$BRANCH" --quiet && echo "✅ Branch criado e sincronizado"
-                        fi
-                fi
-                echo ""
+    if [[ -n $(git status --porcelain) ]]; then
+        echo "📝 Mudanças detectadas em $(date '+%Y-%m-%d %H:%M:%S')"
+        git add -A
+        TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+        if git commit -m "Auto-sync: $TIMESTAMP" --no-verify --quiet 2>/dev/null; then
+            echo "✔️  Commit criado: $TIMESTAMP"
+        else
+            echo "ℹ️  Nenhum commit criado (possivelmente sem mudanças staged)"
         fi
-    
-    # Aguardar 30 segundos antes da próxima verificação
-    sleep 30
-done
+
+        BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+        echo "⬆️  Tentando push para origin/$BRANCH..."
+        if git push origin "$BRANCH" --quiet 2>&1; then
+            echo "✅ Sincronizado com sucesso (branch: $BRANCH)!"
+        else
+            echo "❌ Push falhou, tentando pull --rebase e re-push..."
+            git fetch origin --quiet
+            if git rev-parse --verify origin/$BRANCH >/dev/null 2>&1; then
+                if git pull --rebase origin "$BRANCH" --quiet; then
+                    git push origin "$BRANCH" --quiet && echo "✅ Sincronizado após rebase!" || echo "⚠️ Push ainda falhou após rebase"
+                else
+                    echo "⚠️ Falha no rebase; abortando rebase";
+                    git rebase --abort >/dev/null 2>&1 || true
+                fi
+            else
+                echo "⚠️ Branch remoto origin/$BRANCH não existe; criando branch remoto"
+                git push -u origin "$BRANCH" --quiet && echo "✅ Branch criado e sincronizado"
+            fi
+        fi
+        echo ""
+    fi
+}
+
+if [[ -n "$INOTIFYWAIT" ]]; then
+    echo "⚡ inotifywait encontrado — usando modo reativo (debounce ${INTERVAL}s)."
+    # monitorar mudanças excluindo .git e node_modules
+    while true; do
+        # aguarda evento (criação, modificação, remoção, renomeio)
+        $INOTIFYWAIT -r -e modify,create,delete,move --exclude '(^|/)\.git/|node_modules' . >/dev/null 2>&1 || true
+        run_sync
+        # evitar excesso de triggers: aguardar INTERVAL segundos antes de reentrar
+        sleep "$INTERVAL"
+    done
+else
+    echo "⏱ inotifywait não encontrado — usando polling a cada ${INTERVAL}s (defina AUTOSYNC_INTERVAL para ajustar)."
+    while true; do
+        run_sync
+        sleep "$INTERVAL"
+    done
+fi
