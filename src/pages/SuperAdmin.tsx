@@ -963,6 +963,22 @@ export default function SuperAdmin() {
                     <Label>Marketing</Label>
                     <Switch checked={empresaOverrides?.marketing || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, marketing: v })} />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Cardápio</Label>
+                    <Switch checked={empresaOverrides?.cardapio || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, cardapio: v })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Dashboard</Label>
+                    <Switch checked={empresaOverrides?.dashboard || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, dashboard: v })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Garçom (App)</Label>
+                    <Switch checked={empresaOverrides?.garcom || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, garcom: v })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Equipe</Label>
+                    <Switch checked={empresaOverrides?.equipe || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, equipe: v })} />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mt-4">
