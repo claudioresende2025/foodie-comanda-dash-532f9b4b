@@ -189,10 +189,12 @@ export function useUserRole(): UserRoleData {
       const overrides = overridesResult.data || null;
       const assinatura = assinaturaResult.data || null;
 
+<<<<<<< HEAD
       // Determine plano slug and recursos
       let planoSlug = assinatura?.plano?.slug?.toLowerCase() || assinatura?.plano?.nome?.toLowerCase() || null;
       let planoNome = assinatura?.plano?.nome || null;
       let planoRecursos: Record<string, boolean | string> = {};
+>>>>>>> d2d2349 (wip: sync)
 
       // Get recursos from plano or use defaults
       if (assinatura?.plano?.recursos) {
