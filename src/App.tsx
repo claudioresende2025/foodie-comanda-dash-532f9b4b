@@ -116,8 +116,17 @@ function SubscriptionHandler() {
       if (params.get('subscription') === 'success') {
         (async () => {
           try {
+            const planoId = params.get('planoId');
+            const periodo = params.get('periodo');
+            // store pending plan so onboarding/signup can link company
+            if (planoId) {
+              try {
+                localStorage.setItem('post_subscribe_plan', JSON.stringify({ planoId, periodo }));
+              } catch (e) {
+                console.warn('Erro salvando post_subscribe_plan', e);
+              }
+            }
             // force sign out so user logs in again and gets updated roles
-            // import supabase dynamically to avoid circular import here
             const { supabase } = await import('@/integrations/supabase/client');
             await supabase.auth.signOut();
             // send user to auth

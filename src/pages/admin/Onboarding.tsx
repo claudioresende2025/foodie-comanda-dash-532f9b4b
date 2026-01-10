@@ -101,6 +101,31 @@ export default function Onboarding() {
           role: 'proprietario',
         });
 
+      // If we have a pending post-subscribe plan in localStorage, create assinaturas record (best-effort)
+      try {
+        const pending = localStorage.getItem('post_subscribe_plan');
+        if (pending) {
+          const parsed = JSON.parse(pending);
+          if (parsed?.planoId) {
+            try {
+              await supabase.from('assinaturas').insert({
+                empresa_id: empresa.id,
+                plano_id: parsed.planoId,
+                status: 'active',
+                periodo: parsed.periodo || 'mensal',
+                created_at: new Date().toISOString(),
+              });
+              // clear pending
+              localStorage.removeItem('post_subscribe_plan');
+            } catch (e) {
+              console.warn('Não foi possível criar assinaturas automaticamente:', e);
+            }
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+
       if (roleError) throw roleError;
 
       toast.success('Empresa cadastrada com sucesso!');
