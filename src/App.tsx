@@ -1,5 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -54,6 +56,7 @@ const App = () => (
       <UpdateNotification />
       <BrowserRouter>
         <AuthProvider>
+          <SubscriptionHandler />
           <PWAManifestHandler />
           <ErrorBoundary>
             <Routes>
@@ -104,5 +107,31 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
+
+function SubscriptionHandler() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('subscription') === 'success') {
+        (async () => {
+          try {
+            // force sign out so user logs in again and gets updated roles
+            // import supabase dynamically to avoid circular import here
+            const { supabase } = await import('@/integrations/supabase/client');
+            await supabase.auth.signOut();
+            // send user to auth
+            navigate('/auth');
+          } catch (e) {
+            console.warn('Erro ao deslogar após subscribe', e);
+          }
+        })();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [navigate]);
+  return null;
+}
 
 export default App;
