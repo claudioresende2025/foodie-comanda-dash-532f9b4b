@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { UserPlus, Users, Trash2, Loader2 } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
 import type { Database } from "@/integrations/supabase/types";
 import { membroEquipeSchema, validateForm } from "@/utils/validation";
 
@@ -93,6 +94,8 @@ export default function Equipe() {
     },
     enabled: !!profile?.empresa_id,
   });
+
+  const userRole = useUserRole();
 
   /**
    * Helper: garante que o perfil do novo usuário possua empresa_id.
@@ -201,6 +204,16 @@ export default function Equipe() {
     setIsCreating(true);
 
     try {
+      // Verifica limite de equipe (se configurado) antes de criar
+      const equipeLimit = userRole.equipeLimit;
+      const staffCount =
+        members?.filter((m) => Array.isArray(m.user_roles) && !(m.user_roles || []).some((r) => r.role === "proprietario")).length || 0;
+
+      if (equipeLimit !== null && equipeLimit !== undefined && staffCount >= equipeLimit) {
+        toast.error(`Limite de membros atingido para seu plano (${equipeLimit}). Faça upgrade para adicionar mais membros.`);
+        return;
+      }
+
       // Salvar sessão atual (do proprietário/gerente) antes do signUp
       const {
         data: { session: currentSession },
@@ -312,7 +325,7 @@ export default function Equipe() {
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+              <Button disabled={Boolean(userRole.equipeLimit !== null && userRole.equipeLimit !== undefined && ((members?.filter((m) => Array.isArray(m.user_roles) && !(m.user_roles || []).some((r) => r.role === "proprietario")).length || 0) >= userRole.equipeLimit))} title={userRole.equipeLimit ? `Limite ${userRole.equipeLimit} membros` : undefined}>
               <UserPlus className="w-4 h-4 mr-2" />
               Adicionar Membro
             </Button>
