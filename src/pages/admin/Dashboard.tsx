@@ -441,10 +441,10 @@ export default function Dashboard() {
                   >
                     <div>
                       <p className="font-medium">
-                        Mesa {order.comanda?.mesa?.numero_mesa || '-'}
+                        Mesa {(order.comanda as any)?.mesa?.numero_mesa || '-'}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {order.produto?.nome} • {formatCurrency(order.subtotal)}
+                        {(order.produto as any)?.nome} • {formatCurrency(order.subtotal)}
                       </p>
                     </div>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusConfig[order.status_cozinha]?.color || ''}`}>

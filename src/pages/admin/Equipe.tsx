@@ -205,12 +205,12 @@ export default function Equipe() {
 
     try {
       // Verifica limite de equipe (se configurado) antes de criar
-      const equipeLimit = userRole.equipeLimit;
+      const staffLimitValue = userRole.staffLimit;
       const staffCount =
         members?.filter((m) => Array.isArray(m.user_roles) && !(m.user_roles || []).some((r) => r.role === "proprietario")).length || 0;
 
-      if (equipeLimit !== null && equipeLimit !== undefined && staffCount >= equipeLimit) {
-        toast.error(`Limite de membros atingido para seu plano (${equipeLimit}). Faça upgrade para adicionar mais membros.`);
+      if (staffLimitValue !== null && staffLimitValue !== undefined && staffCount >= staffLimitValue) {
+        toast.error(`Limite de membros atingido para seu plano (${staffLimitValue}). Faça upgrade para adicionar mais membros.`);
         return;
       }
 
@@ -325,7 +325,7 @@ export default function Equipe() {
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-              <Button disabled={Boolean(userRole.equipeLimit !== null && userRole.equipeLimit !== undefined && ((members?.filter((m) => Array.isArray(m.user_roles) && !(m.user_roles || []).some((r) => r.role === "proprietario")).length || 0) >= userRole.equipeLimit))} title={userRole.equipeLimit ? `Limite ${userRole.equipeLimit} membros` : undefined}>
+              <Button disabled={Boolean(userRole.staffLimit !== null && userRole.staffLimit !== undefined && ((members?.filter((m) => Array.isArray(m.user_roles) && !(m.user_roles || []).some((r) => r.role === "proprietario")).length || 0) >= userRole.staffLimit))} title={userRole.staffLimit ? `Limite ${userRole.staffLimit} membros` : undefined}>
               <UserPlus className="w-4 h-4 mr-2" />
               Adicionar Membro
             </Button>

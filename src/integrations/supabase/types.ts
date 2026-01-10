@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      assinaturas: {
+        Row: {
+          created_at: string | null
+          data_fim: string | null
+          data_inicio: string | null
+          empresa_id: string
+          id: string
+          periodo: string
+          plano_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_fim: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          empresa_id: string
+          id?: string
+          periodo?: string
+          plano_id: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_fim?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          empresa_id?: string
+          id?: string
+          periodo?: string
+          plano_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_fim?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assinaturas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assinaturas_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "planos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       avaliacoes: {
         Row: {
           comentario: string | null
@@ -551,6 +611,50 @@ export type Database = {
           },
         ]
       }
+      empresa_overrides: {
+        Row: {
+          created_at: string | null
+          empresa_id: string
+          garcom_limit: number | null
+          id: string
+          kds_screens_limit: number | null
+          mesas_limit: number | null
+          overrides: Json | null
+          staff_limit: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          empresa_id: string
+          garcom_limit?: number | null
+          id?: string
+          kds_screens_limit?: number | null
+          mesas_limit?: number | null
+          overrides?: Json | null
+          staff_limit?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          empresa_id?: string
+          garcom_limit?: number | null
+          id?: string
+          kds_screens_limit?: number | null
+          mesas_limit?: number | null
+          overrides?: Json | null
+          staff_limit?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "empresa_overrides_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           chave_pix: string | null
@@ -1063,6 +1167,78 @@ export type Database = {
           },
         ]
       }
+      planos: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          descricao: string | null
+          destaque: boolean | null
+          garcom_limit: number | null
+          id: string
+          kds_screens: number | null
+          limite_mesas: number | null
+          limite_pedidos_mes: number | null
+          limite_usuarios: number | null
+          nome: string
+          ordem: number | null
+          preco_anual: number
+          preco_mensal: number
+          recursos: Json | null
+          slug: string
+          staff_limit: number | null
+          stripe_price_id_anual: string | null
+          stripe_price_id_mensal: string | null
+          trial_days: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          destaque?: boolean | null
+          garcom_limit?: number | null
+          id?: string
+          kds_screens?: number | null
+          limite_mesas?: number | null
+          limite_pedidos_mes?: number | null
+          limite_usuarios?: number | null
+          nome: string
+          ordem?: number | null
+          preco_anual?: number
+          preco_mensal?: number
+          recursos?: Json | null
+          slug: string
+          staff_limit?: number | null
+          stripe_price_id_anual?: string | null
+          stripe_price_id_mensal?: string | null
+          trial_days?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          destaque?: boolean | null
+          garcom_limit?: number | null
+          id?: string
+          kds_screens?: number | null
+          limite_mesas?: number | null
+          limite_pedidos_mes?: number | null
+          limite_usuarios?: number | null
+          nome?: string
+          ordem?: number | null
+          preco_anual?: number
+          preco_mensal?: number
+          recursos?: Json | null
+          slug?: string
+          staff_limit?: number | null
+          stripe_price_id_anual?: string | null
+          stripe_price_id_mensal?: string | null
+          trial_days?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       produtos: {
         Row: {
           ativo: boolean | null
@@ -1310,6 +1486,27 @@ export type Database = {
           },
         ]
       }
+      super_admins: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1364,6 +1561,17 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      upsert_empresa_overrides: {
+        Args: {
+          p_empresa_id: string
+          p_garcom_limit?: number
+          p_kds_screens_limit?: number
+          p_mesas_limit?: number
+          p_overrides: Json
+          p_staff_limit?: number
+        }
+        Returns: undefined
       }
       user_belongs_to_empresa: {
         Args: { _empresa_id: string; _user_id: string }
