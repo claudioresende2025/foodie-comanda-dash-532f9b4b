@@ -43,18 +43,40 @@ export function useUserRole(): UserRoleData {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('empresa_id', profile.empresa_id)
-        .maybeSingle();
+      const [{ data: roleData }, { data: overridesData }, { data: assinaturaData }] = await Promise.all([
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('empresa_id', profile.empresa_id)
+          .maybeSingle(),
+        supabase
+          .from('empresa_overrides')
+          .select('overrides,kds_screens_limit,staff_limit')
+          .eq('empresa_id', profile.empresa_id)
+          .maybeSingle(),
+        (supabase as any)
+          .from('assinaturas')
+          .select('*, plano:planos(*)')
+          .eq('empresa_id', profile.empresa_id)
+          .maybeSingle(),
+      ]);
 
-      if (error) {
-        console.error('Error fetching user role:', error);
+      if (roleData.error) {
+        console.error('Error fetching user role:', roleData.error);
         setRole(null);
       } else {
-        setRole(data?.role as AppRole || null);
+        setRole(roleData.data?.role as AppRole || null);
+      }
+
+      // Store overrides and plano recursos in local state via profile (avoid adding new state: attach to profile object if present)
+      // We will attach to window.__empresaFeatureCache for simple access by UI (ephemeral)
+      try {
+        const overrides = overridesData.data || null;
+        const assinatura = assinaturaData.data || null;
+        (window as any).__empresaFeatureCache = { overrides, assinatura };
+      } catch (e) {
+        console.warn('Could not cache empresa features', e);
       }
     } catch (err) {
       console.error('Error fetching user role:', err);
@@ -76,6 +98,19 @@ export function useUserRole(): UserRoleData {
   // Permissões por role
   const isAdmin = isProprietario || isGerente;
 
+  // read plan and overrides from cache if available
+  const cache = (window as any).__empresaFeatureCache || {};
+  const overrides = cache.overrides?.overrides || {};
+  const planoRecursos = cache.assinatura?.plano?.recursos || {};
+
+  const resolveFeature = (key: string) => {
+    // override trumps plan
+    if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) {
+      return overrides[key];
+    }
+    return planoRecursos?.[key] ?? false;
+  };
+
   return {
     role,
     isLoading,
@@ -86,20 +121,23 @@ export function useUserRole(): UserRoleData {
     // Permissões gerais
     canManageTeam: isProprietario,
     canManageCompany: isAdmin,
-    canManageMenu: isAdmin,
+    canManageMenu: isAdmin || resolveFeature('cardapio'),
     canManageCategories: isAdmin, // Garçom só visualiza
     canEditPixKey: isProprietario, // Só proprietário edita PIX
-    // Acesso às páginas
-    canAccessDashboard: isAdmin || isCaixa,
-    canAccessMesas: isAdmin || isGarcom || isCaixa,
-    canAccessPedidos: isAdmin || isGarcom,
-    canAccessDelivery: isAdmin || isCaixa,
-    canAccessDeliveryStats: isAdmin || isCaixa,
-    canAccessGarcom: isAdmin || isGarcom || isCaixa,
-    canAccessCaixa: isAdmin || isCaixa,
-    canAccessEquipe: isAdmin,
-    canAccessEmpresa: isAdmin,
-    canAccessConfiguracoes: isAdmin,
+    // Acesso às páginas (combine role + plan/overrides)
+    canAccessDashboard: isAdmin || isCaixa || resolveFeature('dashboard'),
+    canAccessMesas: isAdmin || isGarcom || isCaixa || resolveFeature('mesas'),
+    canAccessPedidos: isAdmin || isGarcom || resolveFeature('kds') || resolveFeature('pedidos'),
+    canAccessDelivery: isAdmin || isCaixa || resolveFeature('delivery'),
+    canAccessDeliveryStats: isAdmin || resolveFeature('estatisticas'),
+    canAccessGarcom: isAdmin || isGarcom || isCaixa || resolveFeature('garcom'),
+    canAccessCaixa: isAdmin || isCaixa || resolveFeature('caixa'),
+    canAccessEquipe: isAdmin || resolveFeature('equipe'),
+    canAccessEmpresa: isAdmin || resolveFeature('empresa'),
+    canAccessConfiguracoes: isAdmin || resolveFeature('configuracoes'),
+    // limits
+    kdsScreensLimit: cache.overrides?.kds_screens_limit ?? cache.assinatura?.plano?.recursos?.kds_screens ?? null,
+    equipeLimit: cache.overrides?.staff_limit ?? cache.assinatura?.plano?.recursos?.equipe_limit ?? null,
     refetch: fetchRole,
   };
 }
