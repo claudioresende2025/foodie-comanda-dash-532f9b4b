@@ -18,7 +18,7 @@ type MesaQRCodeDialogProps = {
 // URL base usando o dominio atual
 const BASE_CLIENT_URL = window.location.origin;
 
-export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empresaId }: MesaQRCodeDialogProps) {
+export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empresaId, mesaStatus }: MesaQRCodeDialogProps) {
   const menuUrl = `${BASE_CLIENT_URL}/menu/${empresaId}/${mesaId}`;
 
   const [reservation, setReservation] = useState<null | { nome_cliente?: string | null; data_reserva?: string | null; horario_reserva?: string | null }>(null);
@@ -52,7 +52,7 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
       }
     })();
     return () => { mounted = false; };
-  }, [open, mesaId, empresaId]);
+  }, [open, mesaId, empresaId, mesaStatus]);
 
   const handleDownload = () => {
     const svg = document.getElementById('mesa-qr-code');
