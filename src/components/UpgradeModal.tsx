@@ -3,12 +3,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
+import { useNavigate } from 'react-router-dom';
+
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  feature?: string | null;
 };
 
-export function UpgradeModal({ open, onOpenChange }: Props) {
+export function UpgradeModal({ open, onOpenChange, feature }: Props) {
+  const navigate = useNavigate();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -16,7 +20,9 @@ export function UpgradeModal({ open, onOpenChange }: Props) {
           <DialogTitle>Recurso indisponível</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <p>Este recurso não está disponível no seu plano atual. Entre em contato com o suporte ou faça o upgrade para liberar.</p>
+          <p>
+            Este recurso{feature ? ` (${feature})` : ''} não está disponível no seu plano atual. Faça o upgrade para liberar o acesso.
+          </p>
 
           <div className="grid grid-cols-3 gap-4">
             <Card className="p-4">
@@ -33,8 +39,16 @@ export function UpgradeModal({ open, onOpenChange }: Props) {
             </Card>
           </div>
 
-          <div className="flex justify-end">
-            <Button onClick={() => onOpenChange(false)}>Fechar</Button>
+          <div className="flex justify-end items-center gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>Fechar</Button>
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+                navigate('/planos');
+              }}
+            >
+              Fazer upgrade
+            </Button>
           </div>
         </div>
       </DialogContent>

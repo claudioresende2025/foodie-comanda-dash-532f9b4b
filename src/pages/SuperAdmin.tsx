@@ -148,7 +148,7 @@ export default function SuperAdmin() {
     if (!selectedEmpresa) return;
     (async () => {
       try {
-        const { data } = await supabase.from('empresa_overrides').select('*').eq('empresa_id', selectedEmpresa.id).maybeSingle();
+        const { data } = await (supabase as any).from('empresa_overrides').select('*').eq('empresa_id', selectedEmpresa.id).maybeSingle();
         if (data) {
           setEmpresaOverrides({ ...(data.overrides || {}), kds_screens_limit: data.kds_screens_limit, staff_limit: data.staff_limit });
         } else {
@@ -975,9 +975,25 @@ export default function SuperAdmin() {
                         kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
                         staff_limit: empresaOverrides?.staff_limit ?? null,
                       };
-                      // upsert
-                      const { error } = await supabase.from('empresa_overrides').upsert(payload, { onConflict: 'empresa_id' });
-                      if (error) throw error;
+
+                      // Check if an overrides row exists for this empresa
+                      const { data: existing, error: selError } = await (supabase as any)
+                        .from('empresa_overrides')
+                        .select('id')
+                        .eq('empresa_id', selectedEmpresa.id)
+                        .maybeSingle();
+
+                      if (selError) throw selError;
+
+                      let res;
+                      if (existing && existing.id) {
+                        res = await (supabase as any).from('empresa_overrides').update(payload).eq('empresa_id', selectedEmpresa.id);
+                      } else {
+                        res = await (supabase as any).from('empresa_overrides').insert(payload);
+                      }
+
+                      if (res.error) throw res.error;
+
                       toast.success('Overrides salvos');
                       setEmpresaDialogOpen(false);
                       await loadEmpresas();

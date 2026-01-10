@@ -1,7 +1,6 @@
 // Este arquivo é para criar e exportar a instância do cliente Supabase.
 
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./types"; // Assumindo que você tem um arquivo de tipagem
 
 // As variáveis VITE_ são lidas automaticamente se você estiver usando frameworks como Vite, Next.js, etc.
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -15,7 +14,9 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
 }
 
 // 2. Cria o cliente Supabase
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+// Criamos o cliente sem o genérico `Database` para evitar erros de "instanciação de tipo muito profunda"
+// Remova esse comentário se preferir tipar o cliente novamente após gerar tipos mais leves.
+export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     // Define o armazenamento local para persistir a sessão do usuário
     storage: localStorage,

@@ -192,10 +192,10 @@ export function AdminSidebar() {
                       ) : (
                         <button
                           onClick={() => { setUpgradeFeature(item.title); setUpgradeOpen(true); }}
-                          className="flex items-center gap-3 text-muted-foreground"
+                          className="flex items-center gap-3 text-sidebar-foreground"
                           title="Recurso bloqueado"
                         >
-                          <item.icon className="w-5 h-5 opacity-50" />
+                          <item.icon className="w-5 h-5 opacity-60" />
                           <span>{item.title}</span>
                           <span className="ml-auto text-xs text-muted-foreground">🔒</span>
                         </button>
@@ -209,7 +209,7 @@ export function AdminSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} feature={upgradeFeature} />
 
       <SidebarFooter className="p-4">
         <div className="flex items-center gap-3 p-3 rounded-lg bg-sidebar-accent/50">

@@ -33,6 +33,7 @@ interface UserRoleData {
 export function useUserRole(): UserRoleData {
   const { user, profile } = useAuth();
   const [role, setRole] = useState<AppRole | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchRole = useCallback(async () => {
@@ -62,6 +63,19 @@ export function useUserRole(): UserRoleData {
           .maybeSingle(),
       ]);
 
+      // Additionally check if this user is a global super admin (no empresa context required)
+      try {
+        const { data: saData } = await supabase
+          .from('super_admins')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .eq('ativo', true)
+          .maybeSingle();
+        setIsSuperAdmin(Boolean(saData && saData.user_id));
+      } catch (e) {
+        setIsSuperAdmin(false);
+      }
+
       if (roleData.error) {
         console.error('Error fetching user role:', roleData.error);
         setRole(null);
@@ -74,7 +88,7 @@ export function useUserRole(): UserRoleData {
       try {
         const overrides = overridesData.data || null;
         const assinatura = assinaturaData.data || null;
-        (window as any).__empresaFeatureCache = { overrides, assinatura };
+        (window as any).__empresaFeatureCache = { overrides, assinatura, isSuperAdmin };
       } catch (e) {
         console.warn('Could not cache empresa features', e);
       }
@@ -96,7 +110,7 @@ export function useUserRole(): UserRoleData {
   const isCaixa = role === 'caixa';
 
   // Permissões por role
-  const isAdmin = isProprietario || isGerente;
+  const isAdmin = isProprietario || isGerente || isSuperAdmin;
 
   // read plan and overrides from cache if available
   const cache = (window as any).__empresaFeatureCache || {};

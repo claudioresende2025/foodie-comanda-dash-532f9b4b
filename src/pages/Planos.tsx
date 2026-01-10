@@ -76,7 +76,7 @@ export default function Planos() {
 
   const fetchPlanos = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('planos')
         .select('*')
         .eq('ativo', true)
