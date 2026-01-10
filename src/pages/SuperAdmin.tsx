@@ -999,14 +999,36 @@ export default function SuperAdmin() {
                   <Button onClick={async () => {
                     setSavingOverrides(true);
                     try {
+                      const overridesPayload = empresaOverrides || {};
+
+                      // Prefer calling RPC upsert_empresa_overrides (runs as security definer)
+                      try {
+                        const { error: rpcError } = await supabase.rpc('upsert_empresa_overrides', {
+                          p_empresa_id: selectedEmpresa.id,
+                          p_overrides: overridesPayload,
+                          p_kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
+                          p_staff_limit: empresaOverrides?.staff_limit ?? null,
+                        } as any);
+
+                        if (rpcError) throw rpcError;
+
+                        toast.success('Overrides salvos');
+                        setEmpresaDialogOpen(false);
+                        await loadEmpresas();
+                        return;
+                      } catch (rpcErr) {
+                        console.warn('RPC upsert_empresa_overrides failed, falling back to direct write:', rpcErr);
+                        // continue to fallback below
+                      }
+
+                      // Fallback: attempt select -> insert/update (may fail if RLS blocks)
                       const payload = {
                         empresa_id: selectedEmpresa.id,
-                        overrides: empresaOverrides || {},
+                        overrides: overridesPayload,
                         kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
                         staff_limit: empresaOverrides?.staff_limit ?? null,
                       };
 
-                      // Check if an overrides row exists for this empresa
                       const { data: existing, error: selError } = await (supabase as any)
                         .from('empresa_overrides')
                         .select('id')
@@ -1027,9 +1049,15 @@ export default function SuperAdmin() {
                       toast.success('Overrides salvos');
                       setEmpresaDialogOpen(false);
                       await loadEmpresas();
-                    } catch (err) {
+                    } catch (err: any) {
                       console.error('Erro salvando overrides', err);
-                      toast.error('Erro ao salvar overrides');
+                      // Detect common RLS error and show actionable hint
+                      const msg = String(err?.message || err);
+                      if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('violates row-level security') || msg.includes('403')) {
+                        toast.error('Erro ao salvar overrides: privilégios insuficientes. Execute a função RPC `upsert_empresa_overrides` com a service role ou ajuste as policies no Supabase.');
+                      } else {
+                        toast.error('Erro ao salvar overrides');
+                      }
                     } finally {
                       setSavingOverrides(false);
                     }
