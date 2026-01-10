@@ -431,7 +431,19 @@ export default function SuperAdmin() {
   }
 
   if (!isSuperAdmin) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="max-w-lg w-full bg-white rounded-lg shadow p-8 text-center">
+          <AlertTriangle className="w-12 h-12 mx-auto text-yellow-500 mb-4" />
+          <h2 className="text-xl font-bold mb-2">Acesso negado</h2>
+          <p className="text-sm text-muted-foreground mb-6">Você não possui permissões de Super Admin para acessar este painel.</p>
+          <div className="flex justify-center gap-3">
+            <Button variant="outline" onClick={() => navigate('/admin')}>Ir para painél</Button>
+            <Button onClick={() => navigate('/')}>Home</Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
