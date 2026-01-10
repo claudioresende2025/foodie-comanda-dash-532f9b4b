@@ -94,7 +94,9 @@ export function AdminSidebar() {
     canAccessEquipe,
     canAccessEmpresa,
     canAccessConfiguracoes,
+    canAccessMarketing,
     isGarcom,
+    planoSlug,
   } = useUserRole();
 
   const handleLogout = async () => {
@@ -116,16 +118,16 @@ export function AdminSidebar() {
   const permissionMap: Record<MenuItemKey, boolean> = {
     dashboard: canAccessDashboard,
     mesas: canAccessMesas,
-    cardapio: canManageMenu || isGarcom, // Garçom acessa mas só visualiza categorias
+    cardapio: canManageMenu || isGarcom,
     pedidos: canAccessPedidos,
     delivery: canAccessDelivery,
     deliveryStats: canAccessDeliveryStats,
-    marketing: canAccessEmpresa || canAccessDelivery, // Proprietário/gerente
+    marketing: canAccessMarketing,
     garcom: canAccessGarcom,
     caixa: canAccessCaixa,
     equipe: canAccessEquipe,
     empresa: canAccessEmpresa,
-    assinatura: canAccessEmpresa, // Só proprietário pode gerenciar assinatura
+    assinatura: canAccessEmpresa,
     configuracoes: canAccessConfiguracoes,
   };
 

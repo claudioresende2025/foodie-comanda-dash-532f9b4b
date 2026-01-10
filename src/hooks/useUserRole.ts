@@ -5,13 +5,14 @@ import { supabase } from '@/integrations/supabase/client';
 // Tipos válidos do enum app_role no banco de dados
 export type AppRole = 'proprietario' | 'gerente' | 'garcom' | 'caixa';
 
-interface UserRoleData {
+export interface UserRoleData {
   role: AppRole | null;
   isLoading: boolean;
   isProprietario: boolean;
   isGerente: boolean;
   isGarcom: boolean;
   isCaixa: boolean;
+  isSuperAdmin: boolean;
   canManageTeam: boolean;
   canManageCompany: boolean;
   canManageMenu: boolean;
@@ -26,15 +27,114 @@ interface UserRoleData {
   canAccessEquipe: boolean;
   canAccessEmpresa: boolean;
   canAccessConfiguracoes: boolean;
+  canAccessMarketing: boolean;
   canEditPixKey: boolean;
+  // Limites do plano
+  kdsScreensLimit: number | null;
+  staffLimit: number | null;
+  mesasLimit: number | null;
+  garcomLimit: number | null;
+  // Plano atual
+  planoSlug: string | null;
+  planoNome: string | null;
   refetch: () => Promise<void>;
 }
+
+// Recursos padrão por plano
+const defaultPlanResources: Record<string, {
+  recursos: Record<string, boolean | string>;
+  kds_screens: number | null;
+  staff_limit: number | null;
+  mesas_limit: number | null;
+  garcom_limit: number | null;
+}> = {
+  bronze: {
+    recursos: {
+      dashboard: true,
+      cardapio: true,
+      delivery: 'whatsapp', // WhatsApp básico
+      empresa: true,
+      configuracoes: true,
+      mesas: true,
+      kds: true,
+      estatisticas: false,
+      marketing: false,
+      garcom: true,
+      caixa: true,
+      equipe: false, // Não incluso no bronze
+      pedidos: true,
+    },
+    kds_screens: 1,
+    staff_limit: 2,
+    mesas_limit: 10,
+    garcom_limit: 1,
+  },
+  prata: {
+    recursos: {
+      dashboard: true,
+      cardapio: true,
+      delivery: true,
+      empresa: true,
+      configuracoes: true,
+      mesas: true,
+      kds: true,
+      estatisticas: false,
+      marketing: false,
+      garcom: true,
+      caixa: true,
+      equipe: true,
+      pedidos: true,
+    },
+    kds_screens: 1,
+    staff_limit: 5,
+    mesas_limit: null, // ilimitado
+    garcom_limit: 3,
+  },
+  ouro: {
+    recursos: {
+      dashboard: true,
+      cardapio: true,
+      delivery: true,
+      empresa: true,
+      configuracoes: true,
+      mesas: true,
+      kds: true,
+      estatisticas: true,
+      marketing: true,
+      garcom: true,
+      caixa: true,
+      equipe: true,
+      pedidos: true,
+    },
+    kds_screens: null, // ilimitado
+    staff_limit: null, // ilimitado
+    mesas_limit: null, // ilimitado
+    garcom_limit: null, // ilimitado
+  },
+};
 
 export function useUserRole(): UserRoleData {
   const { user, profile } = useAuth();
   const [role, setRole] = useState<AppRole | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [planData, setPlanData] = useState<{
+    planoSlug: string | null;
+    planoNome: string | null;
+    recursos: Record<string, boolean | string>;
+    kdsScreensLimit: number | null;
+    staffLimit: number | null;
+    mesasLimit: number | null;
+    garcomLimit: number | null;
+  }>({
+    planoSlug: null,
+    planoNome: null,
+    recursos: {},
+    kdsScreensLimit: null,
+    staffLimit: null,
+    mesasLimit: null,
+    garcomLimit: null,
+  });
 
   const fetchRole = useCallback(async () => {
     if (!user?.id || !profile?.empresa_id) {
@@ -44,16 +144,17 @@ export function useUserRole(): UserRoleData {
     }
 
     try {
-      const [{ data: roleData }, { data: overridesData }, { data: assinaturaData }] = await Promise.all([
+      // Buscar role, overrides e assinatura em paralelo
+      const [roleResult, overridesResult, assinaturaResult] = await Promise.all([
         supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id)
           .eq('empresa_id', profile.empresa_id)
           .maybeSingle(),
-        supabase
+        (supabase as any)
           .from('empresa_overrides')
-          .select('overrides,kds_screens_limit,staff_limit')
+          .select('overrides,kds_screens_limit,staff_limit,mesas_limit,garcom_limit')
           .eq('empresa_id', profile.empresa_id)
           .maybeSingle(),
         (supabase as any)
@@ -63,117 +164,80 @@ export function useUserRole(): UserRoleData {
           .maybeSingle(),
       ]);
 
-      // Additionally check if this user is a global super admin (no empresa context required)
+      // Check super admin status
       try {
-        const { data: saData } = await supabase
+        const { data: saData } = await (supabase as any)
           .from('super_admins')
           .select('user_id')
           .eq('user_id', user.id)
           .eq('ativo', true)
           .maybeSingle();
-        setIsSuperAdmin(Boolean(saData && saData.user_id));
+        setIsSuperAdmin(Boolean(saData?.user_id));
       } catch (e) {
         setIsSuperAdmin(false);
       }
 
-      if (roleData.error) {
-        console.error('Error fetching user role:', roleData.error);
+      // Set role
+      if (roleResult.error) {
+        console.error('Error fetching user role:', roleResult.error);
         setRole(null);
       } else {
-        setRole(roleData.data?.role as AppRole || null);
+        setRole(roleResult.data?.role as AppRole || null);
       }
 
-      // Store overrides and plano recursos in local state via profile (avoid adding new state: attach to profile object if present)
-      // We will attach to window.__empresaFeatureCache for simple access by UI (ephemeral)
-      try {
-        const overrides = overridesData.data || null;
-        const assinatura = assinaturaData.data || null;
+      // Process overrides and plan data
+      const overrides = overridesResult.data || null;
+      const assinatura = assinaturaResult.data || null;
 
-        // Default plan resources mapping (fallback when plano.recursos missing)
-        const defaultPlanResources: Record<string, any> = {
-          bronze: {
-            recursos: {
-              dashboard: true,
-              cardapio: true,
-              delivery: true,
-              empresa: true,
-              configuracoes: true,
-              mesas: true,
-              kds: true,
-              estatisticas: false,
-              marketing: false,
-              garcom: true,
-              caixa: true,
-              equipe: false,
-              pedidos: true,
-            },
-            kds_screens: 1,
-            staff_limit: 1,
-            mesas_limit: 10,
-          },
-          prata: {
-            recursos: {
-              dashboard: true,
-              cardapio: true,
-              delivery: true,
-              empresa: true,
-              configuracoes: true,
-              mesas: true,
-              kds: true,
-              estatisticas: false,
-              marketing: false,
-              garcom: true,
-              caixa: true,
-              equipe: true,
-              pedidos: true,
-            },
-            kds_screens: 1,
-            staff_limit: 5,
-            mesas_limit: null,
-          },
-          ouro: {
-            recursos: {
-              dashboard: true,
-              cardapio: true,
-              delivery: true,
-              empresa: true,
-              configuracoes: true,
-              mesas: true,
-              kds: true,
-              estatisticas: true,
-              marketing: true,
-              garcom: true,
-              caixa: true,
-              equipe: true,
-              pedidos: true,
-            },
-            kds_screens: null,
-            staff_limit: null,
-            mesas_limit: null,
-          },
-        };
+      // Determine plano slug and recursos
+      let planoSlug = assinatura?.plano?.slug?.toLowerCase() || assinatura?.plano?.nome?.toLowerCase() || null;
+      let planoNome = assinatura?.plano?.nome || null;
+      let planoRecursos: Record<string, boolean | string> = {};
 
-        // Determine planoRecursos: prefer assinatura.plano.recursos, fall back to defaults by slug
-        let planoRecursos: any = {};
-        let planoSlug = (assinatura && assinatura.plano && (assinatura.plano.slug || (assinatura.plano.nome || '').toLowerCase())) || null;
-        if (assinatura && assinatura.plano && assinatura.plano.recursos) {
-          planoRecursos = assinatura.plano.recursos;
-        } else if (planoSlug) {
-          const key = planoSlug.toLowerCase();
-          if (defaultPlanResources[key]) {
-            planoRecursos = defaultPlanResources[key].recursos;
-          }
-        }
-
-        // expose computed limits
-        const computedKdsScreens = overrides?.kds_screens_limit ?? assinatura?.plano?.recursos?.kds_screens ?? (planoSlug ? defaultPlanResources[planoSlug?.toLowerCase()]?.kds_screens : null);
-        const computedStaffLimit = overrides?.staff_limit ?? assinatura?.plano?.recursos?.equipe_limit ?? (planoSlug ? defaultPlanResources[planoSlug?.toLowerCase()]?.staff_limit : null);
-        const computedMesasLimit = overrides?.mesas_limit ?? assinatura?.plano?.recursos?.mesas_limit ?? (planoSlug ? defaultPlanResources[planoSlug?.toLowerCase()]?.mesas_limit : null);
-
-        (window as any).__empresaFeatureCache = { overrides, assinatura, isSuperAdmin, planoRecursos, computedKdsScreens, computedStaffLimit, computedMesasLimit };
-      } catch (e) {
-        console.warn('Could not cache empresa features', e);
+      // Get recursos from plano or use defaults
+      if (assinatura?.plano?.recursos) {
+        planoRecursos = assinatura.plano.recursos;
+      } else if (planoSlug && defaultPlanResources[planoSlug]) {
+        planoRecursos = defaultPlanResources[planoSlug].recursos;
       }
+
+      // Merge overrides with plan recursos (overrides take precedence)
+      const overridesRecursos = overrides?.overrides || {};
+      const mergedRecursos = { ...planoRecursos, ...overridesRecursos };
+
+      // Calculate limits (overrides > plano > defaults)
+      const defaultLimits = planoSlug && defaultPlanResources[planoSlug] 
+        ? defaultPlanResources[planoSlug] 
+        : { kds_screens: null, staff_limit: null, mesas_limit: null, garcom_limit: null };
+
+      const kdsScreensLimit = overrides?.kds_screens_limit ?? assinatura?.plano?.kds_screens ?? defaultLimits.kds_screens;
+      const staffLimit = overrides?.staff_limit ?? assinatura?.plano?.staff_limit ?? defaultLimits.staff_limit;
+      const mesasLimit = overrides?.mesas_limit ?? assinatura?.plano?.limite_mesas ?? defaultLimits.mesas_limit;
+      const garcomLimit = overrides?.garcom_limit ?? assinatura?.plano?.garcom_limit ?? defaultLimits.garcom_limit;
+
+      setPlanData({
+        planoSlug,
+        planoNome,
+        recursos: mergedRecursos,
+        kdsScreensLimit,
+        staffLimit,
+        mesasLimit,
+        garcomLimit,
+      });
+
+      // Cache for other components
+      (window as any).__empresaFeatureCache = {
+        overrides,
+        assinatura,
+        isSuperAdmin,
+        planoRecursos: mergedRecursos,
+        computedKdsScreens: kdsScreensLimit,
+        computedStaffLimit: staffLimit,
+        computedMesasLimit: mesasLimit,
+        computedGarcomLimit: garcomLimit,
+        planoSlug,
+        planoNome,
+      };
     } catch (err) {
       console.error('Error fetching user role:', err);
       setRole(null);
@@ -194,17 +258,12 @@ export function useUserRole(): UserRoleData {
   // Permissões por role
   const isAdmin = isProprietario || isGerente || isSuperAdmin;
 
-  // read plan and overrides from cache if available
-  const cache = (window as any).__empresaFeatureCache || {};
-  const overrides = cache.overrides?.overrides || {};
-  const planoRecursosCached = cache.planoRecursos || cache.assinatura?.plano?.recursos || {};
-
-  const resolveFeature = (key: string) => {
-    // override trumps plan
-    if (overrides && Object.prototype.hasOwnProperty.call(overrides, key)) {
-      return overrides[key];
-    }
-    return planoRecursosCached?.[key] ?? false;
+  // Helper to resolve feature access
+  const resolveFeature = (key: string): boolean => {
+    const value = planData.recursos[key];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value !== 'false' && value !== '';
+    return false;
   };
 
   return {
@@ -214,12 +273,13 @@ export function useUserRole(): UserRoleData {
     isGerente,
     isGarcom,
     isCaixa,
+    isSuperAdmin,
     // Permissões gerais
     canManageTeam: isProprietario,
     canManageCompany: isAdmin,
     canManageMenu: isAdmin || resolveFeature('cardapio'),
-    canManageCategories: isAdmin, // Garçom só visualiza
-    canEditPixKey: isProprietario, // Só proprietário edita PIX
+    canManageCategories: isAdmin,
+    canEditPixKey: isProprietario,
     // Acesso às páginas (combine role + plan/overrides)
     canAccessDashboard: isAdmin || isCaixa || resolveFeature('dashboard'),
     canAccessMesas: isAdmin || isGarcom || isCaixa || resolveFeature('mesas'),
@@ -231,10 +291,15 @@ export function useUserRole(): UserRoleData {
     canAccessEquipe: isAdmin || resolveFeature('equipe'),
     canAccessEmpresa: isAdmin || resolveFeature('empresa'),
     canAccessConfiguracoes: isAdmin || resolveFeature('configuracoes'),
-    // limits
-    kdsScreensLimit: cache.computedKdsScreens ?? null,
-    equipeLimit: cache.computedStaffLimit ?? null,
-    mesasLimit: cache.computedMesasLimit ?? null,
+    canAccessMarketing: isAdmin || resolveFeature('marketing'),
+    // Limites
+    kdsScreensLimit: planData.kdsScreensLimit,
+    staffLimit: planData.staffLimit,
+    mesasLimit: planData.mesasLimit,
+    garcomLimit: planData.garcomLimit,
+    // Plano
+    planoSlug: planData.planoSlug,
+    planoNome: planData.planoNome,
     refetch: fetchRole,
   };
 }
