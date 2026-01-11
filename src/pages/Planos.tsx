@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { 
-  Check, 
+  Check, X,
   Loader2, 
   Crown, 
   Zap, 
@@ -148,13 +148,15 @@ export default function Planos() {
           descricao: 'Plano Iniciante - Ideal para lanchonetes e MEI',
           destaque: false,
           recursos: [
-            'Dashboard (Básico)',
-            'Cardápio',
-            'Mesas (Limite 10)',
-            'Pedidos (KDS) (1 Tela)',
-            'Delivery (WhatsApp)',
-            'Caixa (Fluxo + Estoque)',
-            'App Garçom (1 usuário)',
+            { label: 'Dashboard (Básico)', included: true },
+            { label: 'Cardápio', included: true },
+            { label: 'Mesas (Limite 10)', included: true },
+            { label: 'Pedidos (KDS) (1 Tela)', included: true },
+            { label: 'Delivery (WhatsApp)', included: true },
+            { label: 'Estatísticas Delivery', included: false },
+            { label: 'App Garçom (1 usuário)', included: true },
+            { label: 'Marketing', included: false },
+            { label: 'Equipe (Até 2 colaboradores)', included: false },
           ],
         },
         'Profissional': {
@@ -165,13 +167,15 @@ export default function Planos() {
           descricao: 'Plano Crescimento - Ideal para restaurantes com mesas',
           destaque: true,
           recursos: [
-            'Dashboard (Completo)',
-            'Cardápio',
-            'Mesas (Ilimitado)',
-            'Pedidos (KDS) (1 Tela)',
-            'Delivery (Integrado)',
-            'Caixa (Completo + Estoque)',
-            'App Garçom (Até 3 usuários)',
+            { label: 'Dashboard (Completo)', included: true },
+            { label: 'Cardápio', included: true },
+            { label: 'Mesas (Ilimitado)', included: true },
+            { label: 'Pedidos (KDS) (1 Tela)', included: true },
+            { label: 'Delivery (Integrado)', included: true },
+            { label: 'Estatísticas Delivery', included: false },
+            { label: 'App Garçom (Até 3 usuários)', included: true },
+            { label: 'Marketing', included: false },
+            { label: 'Equipe (Até 5 colaboradores)', included: true },
           ],
         },
         'Enterprise': {
@@ -182,15 +186,15 @@ export default function Planos() {
           descricao: 'Plano Profissional - Operações de Alto Volume',
           destaque: false,
           recursos: [
-            'Dashboard (Avançado + Comparativos)',
-            'Cardápio',
-            'Mesas (Ilimitado)',
-            'Pedidos (KDS) (Ilimitado)',
-            'Delivery (Integrado)',
-            'Caixa (Completo + Auditoria)',
-            'App Garçom (Ilimitado)',
-            'Marketing (Cupons + Fidelidade)',
-            'Equipe (Ilimitado)',
+            { label: 'Dashboard (Avançado + Comparativos)', included: true },
+            { label: 'Cardápio', included: true },
+            { label: 'Mesas (Ilimitado)', included: true },
+            { label: 'Pedidos (KDS) (Ilimitado)', included: true },
+            { label: 'Delivery (Integrado)', included: true },
+            { label: 'Estatísticas Delivery', included: true },
+            { label: 'App Garçom (Ilimitado)', included: true },
+            { label: 'Marketing (Cupons + Fidelidade)', included: true },
+            { label: 'Equipe (Ilimitado)', included: true },
           ],
         },
       };
@@ -467,12 +471,19 @@ export default function Planos() {
                   <Separator className="my-6" />
 
                   <ul className="space-y-3">
-                    {((plano.recursos && plano.recursos.length) ? plano.recursos : (defaultRecursosByPlan[plano.nome] || [])).map((recurso, index) => (
-                      <li key={index} className="flex items-start gap-3">
-                        <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm">{recurso}</span>
-                      </li>
-                    ))}
+                    {(((plano.recursos && plano.recursos.length) ? plano.recursos : (defaultRecursosByPlan[plano.nome] || [])) as any[]).map((recurso, index) => {
+                      const item = typeof recurso === 'string' ? { label: recurso, included: true } : recurso;
+                      return (
+                        <li key={index} className="flex items-start gap-3">
+                          {item.included ? (
+                            <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <X className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                          )}
+                          <span className={`text-sm ${!item.included ? 'text-muted-foreground' : ''}`}>{item.label}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </CardContent>
 
