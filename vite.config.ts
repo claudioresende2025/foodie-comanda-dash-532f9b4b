@@ -1,18 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(async ({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
   },
   plugins: [
     react(),
-    mode === "development" && componentTagger(),
+    // Carrega `lovable-tagger` dinamicamente apenas em desenvolvimento para
+    // evitar resolver dependências nativas no ambiente de build do Lovable.
+    mode === "development" ? (await import('lovable-tagger')).componentTagger() : false,
     VitePWA({
       registerType: "prompt",
       includeAssets: ["pwa-icon.png", "pwa-icon-192.png", "pwa-icon-512.png", "apple-touch-icon.png"],
