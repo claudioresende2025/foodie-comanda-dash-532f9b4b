@@ -35,6 +35,7 @@ interface Plano {
   destaque: boolean;
   stripe_price_id_mensal: string | null;
   stripe_price_id_anual: string | null;
+  trial_days?: number;
 }
 
 const iconMap: Record<string, any> = {
