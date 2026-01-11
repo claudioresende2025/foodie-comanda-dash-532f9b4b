@@ -88,11 +88,14 @@ export default function Equipe() {
             console.error("Erro buscando roles do usuário", p.id, rolesError);
           }
 
-          return { ...p, user_roles: roles || [] };
+          // Só retorna membros que realmente têm roles válidas
+          if (!roles || roles.length === 0) return null;
+          return { ...p, user_roles: roles };
         })
       );
 
-      return profilesWithRoles;
+      // Remove nulos (sem roles)
+      return profilesWithRoles.filter(Boolean);
     },
     enabled: !!profile?.empresa_id,
   });
@@ -177,8 +180,9 @@ export default function Equipe() {
       const { error: authError } = await supabase.auth.admin.deleteUser(userId);
       if (authError) throw authError;
     },
-    onSuccess: () => {
-      // Invalida com a mesma chave usada no useQuery
+    onSuccess: async () => {
+      // Pequeno delay para garantir que o Supabase reflita a exclusão
+      await new Promise((r) => setTimeout(r, 500));
       queryClient.invalidateQueries({ queryKey: ["team-members", profile?.empresa_id] });
       toast.success("Membro removido com sucesso!");
     },
