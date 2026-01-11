@@ -1008,6 +1008,8 @@ export default function SuperAdmin() {
                           p_overrides: overridesPayload,
                           p_kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
                           p_staff_limit: empresaOverrides?.staff_limit ?? null,
+                          p_mesas_limit: empresaOverrides?.mesas_limit ?? null,
+                          p_garcom_limit: empresaOverrides?.garcom_limit ?? null,
                         } as any);
 
                         if (rpcError) throw rpcError;
@@ -1027,6 +1029,8 @@ export default function SuperAdmin() {
                         overrides: overridesPayload,
                         kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
                         staff_limit: empresaOverrides?.staff_limit ?? null,
+                        mesas_limit: empresaOverrides?.mesas_limit ?? null,
+                        garcom_limit: empresaOverrides?.garcom_limit ?? null,
                       };
 
                       const { data: existing, error: selError } = await (supabase as any)
