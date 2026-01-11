@@ -392,4 +392,4 @@ export default function Planos() {
     </div>
   );
 }
-            Escolha o plano ideal para seu negócio
+ 
