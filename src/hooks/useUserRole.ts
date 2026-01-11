@@ -190,15 +190,31 @@ export function useUserRole(): UserRoleData {
       const assinatura = assinaturaResult.data || null;
 
       // Determine plano slug and recursos
-      let planoSlug = assinatura?.plano?.slug?.toLowerCase() || assinatura?.plano?.nome?.toLowerCase() || null;
+      const rawSlug = assinatura?.plano?.slug?.toLowerCase() || assinatura?.plano?.nome?.toLowerCase() || '';
+      // Normalize slug - extract base plan name (bronze, prata, ouro)
+      let planoSlug: string | null = null;
+      if (rawSlug.includes('bronze') || rawSlug.includes('iniciante') || rawSlug.includes('basico') || rawSlug.includes('básico')) {
+        planoSlug = 'bronze';
+      } else if (rawSlug.includes('prata') || rawSlug.includes('profissional')) {
+        planoSlug = 'prata';
+      } else if (rawSlug.includes('ouro') || rawSlug.includes('enterprise') || rawSlug.includes('gold')) {
+        planoSlug = 'ouro';
+      }
+      
       let planoNome = assinatura?.plano?.nome || null;
       let planoRecursos: Record<string, boolean | string> = {};
 
-      // Get recursos from plano or use defaults
-      if (assinatura?.plano?.recursos) {
+      // Get recursos from plano or use defaults based on normalized slug
+      if (assinatura?.plano?.recursos && Object.keys(assinatura.plano.recursos).length > 0) {
         planoRecursos = assinatura.plano.recursos;
       } else if (planoSlug && defaultPlanResources[planoSlug]) {
         planoRecursos = defaultPlanResources[planoSlug].recursos;
+      }
+
+      // If still empty and has assinatura, default to bronze
+      if (Object.keys(planoRecursos).length === 0 && assinatura) {
+        planoRecursos = defaultPlanResources['bronze'].recursos;
+        planoSlug = planoSlug || 'bronze';
       }
 
       // Merge overrides with plan recursos (overrides take precedence)
