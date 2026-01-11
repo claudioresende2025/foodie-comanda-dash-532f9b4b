@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { MesaQRCodeDialog } from '@/components/admin/MesaQRCodeDialog';
 
 type MesaStatus = 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
@@ -41,6 +42,7 @@ const statusConfig: Record<MesaStatus, { label: string; color: string; borderCol
 
 export default function Mesas() {
   const { profile } = useAuth();
+  const { mesasLimit } = useUserRole();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<MesaStatus | 'todas'>('todas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -156,6 +158,12 @@ export default function Mesas() {
       return;
     }
 
+    // Checagem de limite de mesas
+    if (mesasLimit != null && mesas.length >= mesasLimit) {
+      toast.error('Limite de mesas atingido pelo seu plano');
+      return;
+    }
+
     const numero = parseInt(newMesa.numero_mesa);
     if (isNaN(numero) || numero <= 0) {
       toast.error('Número da mesa inválido');
@@ -182,9 +190,15 @@ export default function Mesas() {
       setNewMesa({ numero_mesa: '', capacidade: '4' });
       setIsDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating mesa:', error);
-      toast.error('Erro ao criar mesa');
+      // Se o backend retornar mensagem amigável, exibe ela
+      const msg = error?.message || error?.error_description || error?.msg;
+      if (msg && msg.toLowerCase().includes('limite de mesas')) {
+        toast.error(msg);
+      } else {
+        toast.error('Limite de mesa atingido');
+      }
     }
   };
 
@@ -466,9 +480,14 @@ export default function Mesas() {
                     onChange={(e) => setNewMesa({ ...newMesa, capacidade: e.target.value })}
                   />
                 </div>
-                <Button onClick={handleCreateMesa} className="w-full">
+                <Button onClick={handleCreateMesa} className="w-full" disabled={mesasLimit != null && mesas.length >= mesasLimit}>
                   Criar Mesa
                 </Button>
+                {(mesasLimit != null && mesas.length >= mesasLimit) && (
+                  <span style={{ color: 'red', display: 'block', marginTop: 8 }}>
+                    Limite de mesas atingido pelo seu plano
+                  </span>
+                )}
               </div>
             </DialogContent>
           </Dialog>
