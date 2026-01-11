@@ -108,8 +108,18 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
   const planoId = session.metadata?.plano_id;
   const periodo = session.metadata?.periodo || "mensal";
 
+  console.log("[handleCheckoutCompleted] Metadata recebido:", { empresaId, planoId, periodo });
+  console.log("[handleCheckoutCompleted] Session metadata completo:", session.metadata);
+  console.log("[handleCheckoutCompleted] Subscription data metadata:", (session as any).subscription_data?.metadata);
+
   if (!empresaId) {
-    console.error("empresa_id não encontrado no metadata");
+    console.error("empresa_id não encontrado no metadata - checkout de novo usuário?");
+    // Para novos usuários, o plano será aplicado no Onboarding via localStorage
+    return;
+  }
+
+  if (!planoId) {
+    console.error("plano_id não encontrado no metadata!");
     return;
   }
 
@@ -261,20 +271,52 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
   // Buscar plano_id dos metadados da subscription ou do price
   let planoId = subscription.metadata?.plano_id;
   
-  // Se não tem nos metadados, tentar buscar do primeiro item
+  // Se não tem nos metadados, tentar buscar do primeiro item pelo price_id
   if (!planoId && subscription.items?.data?.length > 0) {
     const priceId = subscription.items.data[0].price?.id;
     if (priceId) {
-      // Buscar plano pelo stripe_price_id
-      const { data: plano } = await supabase
+      console.log("Buscando plano pelo price_id:", priceId);
+      
+      // Buscar plano pelo stripe_price_id (mensal ou anual)
+      const { data: planoMensal } = await supabase
         .from("planos")
         .select("id")
-        .or(`stripe_price_id_mensal.eq.${priceId},stripe_price_id_anual.eq.${priceId}`)
+        .eq("stripe_price_id_mensal", priceId)
         .maybeSingle();
       
-      if (plano?.id) {
-        planoId = plano.id;
-        console.log("Plano encontrado via price_id:", planoId);
+      if (planoMensal?.id) {
+        planoId = planoMensal.id;
+        console.log("Plano encontrado via price_id mensal:", planoId);
+      } else {
+        // Tentar buscar por price_id anual
+        const { data: planoAnual } = await supabase
+          .from("planos")
+          .select("id")
+          .eq("stripe_price_id_anual", priceId)
+          .maybeSingle();
+        
+        if (planoAnual?.id) {
+          planoId = planoAnual.id;
+          console.log("Plano encontrado via price_id anual:", planoId);
+        }
+      }
+      
+      // Se ainda não encontrou, tentar buscar pelo product metadata
+      if (!planoId) {
+        const productId = subscription.items.data[0].price?.product;
+        if (productId && typeof productId === 'string') {
+          // O product metadata pode ter o plano_id
+          const { data: planoByProduct } = await supabase
+            .from("planos")
+            .select("id")
+            .eq("stripe_product_id", productId)
+            .maybeSingle();
+          
+          if (planoByProduct?.id) {
+            planoId = planoByProduct.id;
+            console.log("Plano encontrado via product_id:", planoId);
+          }
+        }
       }
     }
   }

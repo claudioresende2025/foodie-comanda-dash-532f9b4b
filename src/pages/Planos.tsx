@@ -265,24 +265,41 @@ export default function Planos() {
     setProcessingPlan(plano.id);
 
     try {
-      // Salvar plano pendente para aplicar ao registrar/login (caso o usuário não esteja autenticado ainda)
+      // Verificar se é upgrade de plano existente
+      if (currentSubscription && currentSubscription.plano_id !== plano.id) {
+        console.log('[Planos] Detectado upgrade/mudança de plano:', {
+          planoAtual: currentSubscription.plano_id,
+          novoPlano: plano.id
+        });
+      }
+
+      // Salvar plano pendente para aplicar ao registrar/login
       try {
-        localStorage.setItem('post_subscribe_plan', JSON.stringify({ planoId: plano.id, periodo: isAnual ? 'anual' : 'mensal', empresaId }));
+        localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
+          planoId: plano.id, 
+          periodo: isAnual ? 'anual' : 'mensal', 
+          empresaId,
+          isUpgrade: !!currentSubscription 
+        }));
       } catch (e) {
         // ignore localStorage errors
       }
-      const successUrl = `${window.location.origin}/auth?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+      
+      // URL de sucesso vai para admin com parâmetros para atualizar assinatura
+      const successUrl = `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
 
       const body: any = {
         planoId: plano.id,
         periodo: isAnual ? 'anual' : 'mensal',
         successUrl,
         cancelUrl: `${window.location.origin}/planos?canceled=true`,
-        trial_days: plano.trial_days ?? 3,
+        trial_days: currentSubscription ? 0 : (plano.trial_days ?? 3), // Sem trial para upgrades
       };
 
-      // Se estivermos logados e tivermos empresaId, envie também
+      // Sempre enviar empresaId se disponível
       if (empresaId) body.empresaId = empresaId;
+
+      console.log('[Planos] Chamando create-subscription-checkout:', body);
 
       const { data, error } = await supabase.functions.invoke('create-subscription-checkout', { body });
 

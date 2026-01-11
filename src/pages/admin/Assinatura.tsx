@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -77,6 +77,7 @@ interface Pagamento {
 
 export default function Assinatura() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [assinatura, setAssinatura] = useState<Assinatura | null>(null);
@@ -87,6 +88,54 @@ export default function Assinatura() {
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [refundMotivo, setRefundMotivo] = useState('');
   const [isRequestingRefund, setIsRequestingRefund] = useState(false);
+
+  // Handler para processar sucesso do checkout (upgrade/novo plano)
+  useEffect(() => {
+    const handleSubscriptionSuccess = async () => {
+      const subscriptionSuccess = searchParams.get('subscription');
+      const planoId = searchParams.get('planoId');
+      const sessionId = searchParams.get('session_id');
+      
+      if (subscriptionSuccess === 'success' && planoId && profile?.empresa_id) {
+        console.log('[Assinatura] Processando sucesso do checkout:', { planoId, sessionId });
+        
+        try {
+          // Atualizar a assinatura com o novo plano
+          const { error } = await (supabase as any)
+            .from('assinaturas')
+            .update({
+              plano_id: planoId,
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('empresa_id', profile.empresa_id);
+
+          if (error) {
+            console.error('[Assinatura] Erro ao atualizar plano:', error);
+            toast.error('Erro ao atualizar plano. Entre em contato com o suporte.');
+          } else {
+            toast.success('Plano atualizado com sucesso!');
+            // Limpar localStorage
+            try {
+              localStorage.removeItem('post_subscribe_plan');
+            } catch (e) {}
+          }
+        } catch (err) {
+          console.error('[Assinatura] Erro:', err);
+        }
+        
+        // Limpar parâmetros da URL
+        setSearchParams({});
+        
+        // Recarregar dados
+        await fetchData();
+      }
+    };
+    
+    if (profile?.empresa_id) {
+      handleSubscriptionSuccess();
+    }
+  }, [searchParams, profile?.empresa_id]);
 
   useEffect(() => {
     if (profile?.empresa_id) {

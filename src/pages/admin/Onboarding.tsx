@@ -108,34 +108,62 @@ export default function Onboarding() {
         const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // 3 dias de trial
         const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 dias
         
+        console.log('[Onboarding] Verificando plano pendente:', pending);
+        
         if (pending) {
           const parsed = JSON.parse(pending);
+          console.log('[Onboarding] Plano parsed:', parsed);
+          
           if (parsed?.planoId) {
-            // Usar plano escolhido no checkout
-            await (supabase as any).from('assinaturas').insert({
-              empresa_id: empresa.id,
-              plano_id: parsed.planoId,
-              status: 'active',
-              periodo: parsed.periodo || 'mensal',
-              trial_start: now.toISOString(),
-              trial_end: trialEnd.toISOString(),
-              current_period_start: now.toISOString(),
-              current_period_end: periodEnd.toISOString(),
-              created_at: now.toISOString(),
-              updated_at: now.toISOString(),
-            });
-            localStorage.removeItem('post_subscribe_plan');
+            // Verificar se o plano existe
+            const { data: planoExists } = await (supabase as any)
+              .from('planos')
+              .select('id, nome')
+              .eq('id', parsed.planoId)
+              .single();
+            
+            if (planoExists) {
+              console.log('[Onboarding] Criando assinatura com plano:', planoExists.nome);
+              
+              // Usar plano escolhido no checkout
+              const { error: assinaturaError } = await (supabase as any).from('assinaturas').insert({
+                empresa_id: empresa.id,
+                plano_id: parsed.planoId,
+                status: parsed.isUpgrade ? 'active' : 'trialing',
+                periodo: parsed.periodo || 'mensal',
+                trial_start: now.toISOString(),
+                trial_end: trialEnd.toISOString(),
+                current_period_start: now.toISOString(),
+                current_period_end: parsed.isUpgrade ? periodEnd.toISOString() : trialEnd.toISOString(),
+                created_at: now.toISOString(),
+                updated_at: now.toISOString(),
+              });
+              
+              if (assinaturaError) {
+                console.error('[Onboarding] Erro ao criar assinatura:', assinaturaError);
+              } else {
+                console.log('[Onboarding] Assinatura criada com sucesso!');
+              }
+              
+              localStorage.removeItem('post_subscribe_plan');
+            } else {
+              console.warn('[Onboarding] Plano não encontrado:', parsed.planoId);
+            }
           }
         } else {
           // Criar trial automático com plano Bronze
+          console.log('[Onboarding] Nenhum plano pendente, criando trial Bronze');
+          
           const { data: planoBronze } = await (supabase as any)
             .from('planos')
-            .select('id')
-            .or('slug.eq.bronze,nome.ilike.%bronze%')
+            .select('id, nome')
+            .or('slug.eq.bronze,nome.ilike.%bronze%,nome.ilike.%iniciante%')
             .limit(1)
             .single();
 
           if (planoBronze?.id) {
+            console.log('[Onboarding] Criando trial com plano:', planoBronze.nome);
+            
             await (supabase as any).from('assinaturas').insert({
               empresa_id: empresa.id,
               plano_id: planoBronze.id,
