@@ -197,7 +197,7 @@ export default function Mesas() {
       if (msg && msg.toLowerCase().includes('limite de mesas')) {
         toast.error(msg);
       } else {
-        toast.error('Limite de mesa atingido');
+        toast.error('Erro ao criar mesa');
       }
     }
   };
