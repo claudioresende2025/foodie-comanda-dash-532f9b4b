@@ -26,10 +26,10 @@ serve(async (req) => {
       apiVersion: "2023-10-16",
     });
 
-    const { planoId, empresaId, periodo, successUrl, cancelUrl } = await req.json();
+    const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days } = await req.json();
 
-    if (!planoId || !empresaId) {
-      throw new Error("planoId e empresaId são obrigatórios");
+    if (!planoId) {
+      throw new Error("planoId é obrigatório");
     }
 
     // Buscar plano
@@ -61,14 +61,14 @@ serve(async (req) => {
       .eq("empresa_id", empresaId)
       .single();
 
-    // Verificar se já tem um customer no Stripe
+    // Verificar se já tem um customer no Stripe (somente se empresaId for fornecida)
     let stripeCustomerId = assinatura?.stripe_customer_id;
 
-    if (!stripeCustomerId) {
-      // Criar customer no Stripe
+    if (empresaId && !stripeCustomerId) {
+      // Criar customer no Stripe usando dados da empresa
       const customer = await stripe.customers.create({
-        email: empresa.email,
-        name: empresa.nome_fantasia,
+        email: empresa?.email,
+        name: empresa?.nome_fantasia,
         metadata: {
           empresa_id: empresaId,
         },
@@ -130,8 +130,15 @@ serve(async (req) => {
     }
 
     // Criar sessão de checkout
+    const subscriptionMetadata: any = {
+      plano_id: planoId,
+      periodo,
+    };
+    if (empresaId) subscriptionMetadata.empresa_id = empresaId;
+
     const session = await stripe.checkout.sessions.create({
-      customer: stripeCustomerId,
+      // Se temos customer id, definir customer, caso contrário deixar Stripe coletar e criar
+      ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
       payment_method_types: ["card"],
       mode: "subscription",
       line_items: [
@@ -141,20 +148,12 @@ serve(async (req) => {
         },
       ],
       subscription_data: {
-        trial_period_days: 3, // 3 dias de trial
-        metadata: {
-          empresa_id: empresaId,
-          plano_id: planoId,
-          periodo,
-        },
+        trial_period_days: trial_days ?? plano.trial_days ?? 3,
+        metadata: subscriptionMetadata,
       },
-      success_url: successUrl || `${req.headers.get("origin")}/admin?subscription=success`,
+      success_url: successUrl || `${req.headers.get("origin")}/admin?subscription=success&planoId=${planoId}`,
       cancel_url: cancelUrl || `${req.headers.get("origin")}/planos?canceled=true`,
-      metadata: {
-        empresa_id: empresaId,
-        plano_id: planoId,
-        periodo,
-      },
+      metadata: subscriptionMetadata,
       allow_promotion_codes: true,
       billing_address_collection: "required",
       locale: "pt-BR",

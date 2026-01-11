@@ -271,15 +271,20 @@ export default function Planos() {
       } catch (e) {
         // ignore localStorage errors
       }
-      const { data, error } = await supabase.functions.invoke('create-subscription-checkout', {
-        body: {
-          planoId: plano.id,
-          empresaId,
-          periodo: isAnual ? 'anual' : 'mensal',
-          successUrl: `${window.location.origin}/auth?subscription=success&planoId=${plano.id}&empresaId=${empresaId}&periodo=${isAnual ? 'anual' : 'mensal'}`,
-          cancelUrl: `${window.location.origin}/planos?canceled=true`,
-        },
-      });
+      const successUrl = `${window.location.origin}/auth?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+
+      const body: any = {
+        planoId: plano.id,
+        periodo: isAnual ? 'anual' : 'mensal',
+        successUrl,
+        cancelUrl: `${window.location.origin}/planos?canceled=true`,
+        trial_days: plano.trial_days ?? 3,
+      };
+
+      // Se estivermos logados e tivermos empresaId, envie também
+      if (empresaId) body.empresaId = empresaId;
+
+      const { data, error } = await supabase.functions.invoke('create-subscription-checkout', { body });
 
       if (error) throw error;
 
