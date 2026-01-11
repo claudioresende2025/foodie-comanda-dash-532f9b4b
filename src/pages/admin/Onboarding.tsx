@@ -101,29 +101,57 @@ export default function Onboarding() {
           role: 'proprietario',
         });
 
-      // If we have a pending post-subscribe plan in localStorage, create assinaturas record (best-effort)
+      // Criar assinatura trial automática ou usar plano pendente
       try {
         const pending = localStorage.getItem('post_subscribe_plan');
+        const now = new Date();
+        const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // 3 dias de trial
+        const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 dias
+        
         if (pending) {
           const parsed = JSON.parse(pending);
           if (parsed?.planoId) {
-            try {
-              await supabase.from('assinaturas').insert({
-                empresa_id: empresa.id,
-                plano_id: parsed.planoId,
-                status: 'active',
-                periodo: parsed.periodo || 'mensal',
-                created_at: new Date().toISOString(),
-              });
-              // clear pending
-              localStorage.removeItem('post_subscribe_plan');
-            } catch (e) {
-              console.warn('Não foi possível criar assinaturas automaticamente:', e);
-            }
+            // Usar plano escolhido no checkout
+            await (supabase as any).from('assinaturas').insert({
+              empresa_id: empresa.id,
+              plano_id: parsed.planoId,
+              status: 'active',
+              periodo: parsed.periodo || 'mensal',
+              trial_start: now.toISOString(),
+              trial_end: trialEnd.toISOString(),
+              current_period_start: now.toISOString(),
+              current_period_end: periodEnd.toISOString(),
+              created_at: now.toISOString(),
+              updated_at: now.toISOString(),
+            });
+            localStorage.removeItem('post_subscribe_plan');
+          }
+        } else {
+          // Criar trial automático com plano Bronze
+          const { data: planoBronze } = await (supabase as any)
+            .from('planos')
+            .select('id')
+            .or('slug.eq.bronze,nome.ilike.%bronze%')
+            .limit(1)
+            .single();
+
+          if (planoBronze?.id) {
+            await (supabase as any).from('assinaturas').insert({
+              empresa_id: empresa.id,
+              plano_id: planoBronze.id,
+              status: 'trialing',
+              periodo: 'mensal',
+              trial_start: now.toISOString(),
+              trial_end: trialEnd.toISOString(),
+              current_period_start: now.toISOString(),
+              current_period_end: trialEnd.toISOString(),
+              created_at: now.toISOString(),
+              updated_at: now.toISOString(),
+            });
           }
         }
       } catch (e) {
-        // ignore
+        console.warn('Não foi possível criar assinatura automaticamente:', e);
       }
 
       if (roleError) throw roleError;
