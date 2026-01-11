@@ -170,8 +170,12 @@ export default function Equipe() {
 
       // Remover vínculo do perfil com a empresa
       const { error: profileError } = await supabase.from("profiles").update({ empresa_id: null }).eq("id", userId);
-
       if (profileError) throw profileError;
+
+      // Remover usuário do Authenticator (Supabase Auth)
+      // Requer service role ou endpoint customizado
+      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+      if (authError) throw authError;
     },
     onSuccess: () => {
       // Invalida com a mesma chave usada no useQuery
