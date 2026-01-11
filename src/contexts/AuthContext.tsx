@@ -38,6 +38,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     if (!error && data) {
       setProfile(data);
+      // Aplicar associação pendente (ex: usuário veio via e-mail pós-checkout)
+      try {
+        if (!data.empresa_id && typeof window !== 'undefined') {
+          const pending = localStorage.getItem('post_subscribe_plan');
+          if (pending) {
+            const parsed = JSON.parse(pending);
+            if (parsed?.empresaId) {
+              await supabase.from('profiles').update({ empresa_id: parsed.empresaId }).eq('id', userId);
+              // tentar criar user_role como proprietario se não existir
+              try {
+                await supabase.from('user_roles').upsert({ user_id: userId, empresa_id: parsed.empresaId, role: 'proprietario' }, { onConflict: ['user_id','empresa_id'] });
+              } catch (e) {
+                console.warn('Não foi possível criar user_role automaticamente', e);
+              }
+              localStorage.removeItem('post_subscribe_plan');
+              // atualizar profile localmente
+              const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', userId).single();
+              if (refreshed) setProfile(refreshed as Profile);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao aplicar associação pendente:', e);
+      }
     }
   };
 

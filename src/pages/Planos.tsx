@@ -255,12 +255,18 @@ export default function Planos() {
     setProcessingPlan(plano.id);
 
     try {
+      // Salvar plano pendente para aplicar ao registrar/login (caso o usuário não esteja autenticado ainda)
+      try {
+        localStorage.setItem('post_subscribe_plan', JSON.stringify({ planoId: plano.id, periodo: isAnual ? 'anual' : 'mensal', empresaId }));
+      } catch (e) {
+        // ignore localStorage errors
+      }
       const { data, error } = await supabase.functions.invoke('create-subscription-checkout', {
         body: {
           planoId: plano.id,
           empresaId,
           periodo: isAnual ? 'anual' : 'mensal',
-          successUrl: `${window.location.origin}/auth?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}`,
+          successUrl: `${window.location.origin}/auth?subscription=success&planoId=${plano.id}&empresaId=${empresaId}&periodo=${isAnual ? 'anual' : 'mensal'}`,
           cancelUrl: `${window.location.origin}/planos?canceled=true`,
         },
       });

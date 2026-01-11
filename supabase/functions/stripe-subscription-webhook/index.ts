@@ -158,6 +158,78 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
   }
 
   console.log("Checkout concluído para empresa:", empresaId);
+  // Enviar e-mail para o cliente (se disponível) com link para login/cadastro
+  try {
+    let email = session.customer_details?.email || (session.customer_email as string | undefined);
+
+    if (!email && session.customer) {
+      const customer = await stripe.customers.retrieve(session.customer as string) as any;
+      email = customer?.email;
+    }
+
+    const sendgridKey = Deno.env.get("SENDGRID_API_KEY");
+    const frontendUrl = Deno.env.get("FRONTEND_URL") || "https://" + (Deno.env.get("SUPABASE_PROJECT_REF") || "your-frontend.example");
+
+    if (email) {
+      const loginLink = `${frontendUrl.replace(/\/$/, '')}/auth?from=subscription&empresa=${encodeURIComponent(empresaId)}&plano=${encodeURIComponent(planoId ?? '')}`;
+
+      // Registrar envio no banco
+      try {
+        await supabase.from('email_logs').insert({
+          to: email,
+          subject: 'Seu acesso à Foodie Comanda',
+          template: 'subscription_welcome',
+          metadata: { empresa_id: empresaId, plano_id: planoId },
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('Não foi possível registrar email_logs:', e);
+      }
+
+      if (sendgridKey) {
+        const body = {
+          personalizations: [
+            {
+              to: [{ email }],
+              subject: 'Ative seu acesso - Foodie Comanda',
+            },
+          ],
+          from: { email: 'no-reply@foodiecomanda.com.br', name: 'Foodie Comanda' },
+          content: [
+            {
+              type: 'text/html',
+              value: `
+                <p>Olá,</p>
+                <p>Obrigado por assinar o plano. Para finalizar seu acesso, crie sua conta ou faça login:</p>
+                <p><a href="${loginLink}">Acessar / Cadastrar</a></p>
+                <p>Se precisar de ajuda, responda este e-mail.</p>
+              `,
+            },
+          ],
+        };
+
+        try {
+          await fetch('https://api.sendgrid.com/v3/mail/send', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${sendgridKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+          });
+          console.log('E-mail de boas-vindas enviado para', email);
+        } catch (err) {
+          console.error('Erro ao enviar e-mail via SendGrid:', err);
+        }
+      } else {
+        console.log('SENDGRID_API_KEY não configurada — e-mail não enviado automaticamente. Destinatário:', email, 'Link:', loginLink);
+      }
+    } else {
+      console.log('Nenhum e-mail encontrado na sessão do checkout para empresa', empresaId);
+    }
+  } catch (err) {
+    console.error('Erro no envio de e-mail após checkout:', err);
+  }
 }
 
 // Handler: Assinatura atualizada
