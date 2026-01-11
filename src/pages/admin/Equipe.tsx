@@ -64,7 +64,7 @@ export default function Equipe() {
     queryFn: async (): Promise<ProfileWithRoles[]> => {
       if (!profile?.empresa_id) return [];
 
-      // 1) Buscar perfis da empresa
+      // Buscar perfis da empresa que realmente estão vinculados
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("*")
@@ -72,9 +72,12 @@ export default function Equipe() {
 
       if (profilesError) throw profilesError;
 
-      // 2) Buscar roles de cada perfil (N+1 simples e compatível)
+      // Filtra apenas perfis que ainda possuem empresa_id igual ao da empresa
+      const filteredProfiles = (profiles || []).filter((p) => p.empresa_id === profile.empresa_id);
+
+      // Buscar roles de cada perfil
       const profilesWithRoles: ProfileWithRoles[] = await Promise.all(
-        (profiles || []).map(async (p) => {
+        filteredProfiles.map(async (p) => {
           const { data: roles, error: rolesError } = await supabase
             .from("user_roles")
             .select("role")
@@ -82,12 +85,11 @@ export default function Equipe() {
             .eq("empresa_id", profile.empresa_id!);
 
           if (rolesError) {
-            // Se der erro em roles, não quebramos a listagem inteira
             console.error("Erro buscando roles do usuário", p.id, rolesError);
           }
 
           return { ...p, user_roles: roles || [] };
-        }),
+        })
       );
 
       return profilesWithRoles;
