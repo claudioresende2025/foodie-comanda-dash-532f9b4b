@@ -258,13 +258,16 @@ export function useUserRole(): UserRoleData {
   // Permissões por role
   const isAdmin = isProprietario || isGerente || isSuperAdmin;
 
-  // Helper to resolve feature access
+  // Helper to resolve feature access from plan
   const resolveFeature = (key: string): boolean => {
     const value = planData.recursos[key];
     if (typeof value === 'boolean') return value;
     if (typeof value === 'string') return value !== 'false' && value !== '';
     return false;
   };
+
+  // Super admin tem acesso total, outros respeitam o plano
+  const hasFullAccess = isSuperAdmin;
 
   return {
     role,
@@ -275,23 +278,23 @@ export function useUserRole(): UserRoleData {
     isCaixa,
     isSuperAdmin,
     // Permissões gerais
-    canManageTeam: isProprietario,
+    canManageTeam: isProprietario && resolveFeature('equipe'),
     canManageCompany: isAdmin,
-    canManageMenu: isAdmin || resolveFeature('cardapio'),
-    canManageCategories: isAdmin,
+    canManageMenu: (isAdmin || resolveFeature('cardapio')) && resolveFeature('cardapio'),
+    canManageCategories: isAdmin && resolveFeature('cardapio'),
     canEditPixKey: isProprietario,
-    // Acesso às páginas (combine role + plan/overrides)
-    canAccessDashboard: isAdmin || isCaixa || resolveFeature('dashboard'),
-    canAccessMesas: isAdmin || isGarcom || isCaixa || resolveFeature('mesas'),
-    canAccessPedidos: isAdmin || isGarcom || resolveFeature('kds') || resolveFeature('pedidos'),
-    canAccessDelivery: isAdmin || isCaixa || resolveFeature('delivery'),
-    canAccessDeliveryStats: isAdmin || resolveFeature('estatisticas'),
-    canAccessGarcom: isAdmin || isGarcom || isCaixa || resolveFeature('garcom'),
-    canAccessCaixa: isAdmin || isCaixa || resolveFeature('caixa'),
-    canAccessEquipe: isAdmin || resolveFeature('equipe'),
-    canAccessEmpresa: isAdmin || resolveFeature('empresa'),
-    canAccessConfiguracoes: isAdmin || resolveFeature('configuracoes'),
-    canAccessMarketing: isAdmin || resolveFeature('marketing'),
+    // Acesso às páginas - respeita o plano (exceto super admin)
+    canAccessDashboard: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('dashboard')),
+    canAccessMesas: hasFullAccess || ((isAdmin || isGarcom || isCaixa) && resolveFeature('mesas')),
+    canAccessPedidos: hasFullAccess || ((isAdmin || isGarcom) && (resolveFeature('kds') || resolveFeature('pedidos'))),
+    canAccessDelivery: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('delivery')),
+    canAccessDeliveryStats: hasFullAccess || (isAdmin && resolveFeature('estatisticas')),
+    canAccessGarcom: hasFullAccess || ((isAdmin || isGarcom || isCaixa) && resolveFeature('garcom')),
+    canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('caixa')),
+    canAccessEquipe: hasFullAccess || (isAdmin && resolveFeature('equipe')),
+    canAccessEmpresa: hasFullAccess || (isAdmin && resolveFeature('empresa')),
+    canAccessConfiguracoes: hasFullAccess || (isAdmin && resolveFeature('configuracoes')),
+    canAccessMarketing: hasFullAccess || (isAdmin && resolveFeature('marketing')),
     // Limites
     kdsScreensLimit: planData.kdsScreensLimit,
     staffLimit: planData.staffLimit,
