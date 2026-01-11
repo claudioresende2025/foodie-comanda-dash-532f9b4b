@@ -190,9 +190,15 @@ export default function Mesas() {
       setNewMesa({ numero_mesa: '', capacidade: '4' });
       setIsDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating mesa:', error);
-      toast.error('Erro ao criar mesa');
+      // Se o backend retornar mensagem amigável, exibe ela
+      const msg = error?.message || error?.error_description || error?.msg;
+      if (msg && msg.toLowerCase().includes('limite de mesas')) {
+        toast.error(msg);
+      } else {
+        toast.error('Erro ao criar mesa');
+      }
     }
   };
 
