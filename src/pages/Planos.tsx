@@ -38,6 +38,9 @@ interface Plano {
 }
 
 const iconMap: Record<string, any> = {
+  'Bronze': Zap,
+  'Prata': Crown,
+  'Ouro': Building2,
   'Básico': Zap,
   'Profissional': Crown,
   'Enterprise': Building2,
@@ -73,19 +76,21 @@ export default function Planos() {
     fetchPlanos();
     fetchCurrentUser();
 
-    // Se voltamos do checkout com sucesso, desloga o usuário para forçar re-login
+    // Se voltamos do checkout com sucesso, atualiza a assinatura localmente (não desloga)
     try {
       const params = new URLSearchParams(window.location.search);
       if (params.get('subscription') === 'success') {
         (async () => {
           try {
-            await supabase.auth.signOut();
-            toast.success('Compra realizada. Faça login novamente para aplicar o novo plano.');
-            navigate('/auth');
+            await fetchCurrentUser();
+            toast.success('Compra realizada. Assinatura atualizada.');
+            navigate('/admin');
           } catch (e) {
-            console.warn('Erro ao deslogar após subscribe', e);
+            console.warn('Erro ao atualizar após subscribe', e);
           }
         })();
+      } else if (params.get('canceled') === 'true') {
+        toast.error('Assinatura cancelada.');
       }
     } catch (e) {
       // ignore
@@ -132,60 +137,54 @@ export default function Planos() {
 
       const displayOrder = ['Básico', 'Profissional', 'Enterprise'];
 
-      // Overrides visuais conforme tabela fornecida
+      // Overrides visuais conforme imagem fornecida
       const displayOverrides: Record<string, any> = {
         'Básico': {
-          nome: 'Plano Bronze (Iniciante)',
+          nome: 'Bronze',
           preco_mensal: 149.90,
           preco_anual: 149.90 * 12,
           trial_days: 3,
-          descricao: 'Público Ideal: Lanchonetes e MEI',
+          descricao: '',
+          destaque: false,
           recursos: [
-            'Dashboard: Básico (Vendas do dia)',
-            'Mesas: ❌ Não incluso',
-            'Pedidos (KDS): ❌ Não incluso',
-            'Delivery: ✅ Básico (WhatsApp)',
-            'Estatísticas Delivery: ❌ Não incluso',
-            'Garçom (App): ❌ Não incluso',
-            'Marketing: ❌ Não incluso',
-            'Equipe / Empresa: Apenas Administrador',
-            'Caixa / Gestão: Fluxo de Caixa Simples',
+            'Dashboard (Básico)',
+            'Cardápio',
+            'Mesas (Limite 10)',
+            'Delivery (WhatsApp)',
+            'Caixa (Fluxo + Estoque)',
+            'App Garçom (1 usuário)',
           ],
         },
         'Profissional': {
-          nome: 'Plano Prata (Crescimento)',
+          nome: 'Prata',
           preco_mensal: 299.90,
           preco_anual: 299.90 * 12,
           trial_days: 3,
-          descricao: 'Público Ideal: Restaurantes com Mesas',
+          descricao: '',
+          destaque: true,
           recursos: [
-            'Dashboard: Completo',
-            'Mesas: ✅ Ilimitado',
-            'Pedidos (KDS): ✅ 1 Tela',
-            'Delivery: ✅ Integrado',
-            'Estatísticas Delivery: ❌ Não incluso',
-            'Garçom (App): ✅ Até 3 usuários',
-            'Marketing: ❌ Não incluso',
-            'Equipe / Empresa: Até 5 Colaboradores',
-            'Caixa / Gestão: Completo + Estoque',
+            'Dashboard (Completo)',
+            'Cardápio',
+            'Mesas (Ilimitado)',
+            'Delivery (Integrado)',
+            'Caixa (Completo + Estoque)',
+            'App Garçom (Até 3 usuários)',
           ],
         },
         'Enterprise': {
-          nome: 'Plano Ouro (Profissional)',
-          preco_mensal: 5498.90,
-          preco_anual: 5498.90 * 12,
+          nome: 'Ouro',
+          preco_mensal: 549.90,
+          preco_anual: 549.90 * 12,
           trial_days: 7,
-          descricao: 'Público Ideal: Operações de Alto Volume',
+          descricao: '',
+          destaque: false,
           recursos: [
-            'Dashboard: Avançado + Comparativos',
-            'Mesas: ✅ Ilimitado',
-            'Pedidos (KDS): ✅ Telas Ilimitadas',
-            'Delivery: ✅ Integrado',
-            'Estatísticas Delivery: ✅ Relatórios de Performance',
-            'Garçom (App): ✅ Usuários Ilimitados',
-            'Marketing: ✅ Cupons e Fidelidade',
-            'Equipe / Empresa: Colaboradores Ilimitados',
-            'Caixa / Gestão: Completo + Auditoria',
+            'Dashboard (Avançado + Comparativos)',
+            'Cardápio',
+            'Mesas (Ilimitado)',
+            'Delivery (Integrado)',
+            'Caixa (Completo + Auditoria)',
+            'App Garçom (Ilimitado)',
           ],
         },
       };
@@ -198,11 +197,12 @@ export default function Planos() {
           planosFormatted.push({
             ...p,
             nome: override.nome || displayName,
-            descricao: override.descricao || p.descricao,
+            descricao: override.descricao ?? p.descricao ?? '',
             preco_mensal: override.preco_mensal ?? p.preco_mensal,
             preco_anual: override.preco_anual ?? p.preco_anual,
-            trial_days: override.trial_days ?? p.trial_days,
+            trial_days: override.trial_days ?? p.trial_days ?? 3,
             recursos: override.recursos || (p.recursos && p.recursos.length ? p.recursos : (defaultRecursosByPlan[p.nome] || [])),
+            destaque: override.destaque ?? p.destaque ?? false,
           });
         }
       }
@@ -428,7 +428,7 @@ export default function Planos() {
                     <Icon className="w-8 h-8" />
                   </div>
                   <CardTitle className="text-2xl">{plano.nome}</CardTitle>
-                  <CardDescription>{plano.descricao}</CardDescription>
+                  {plano.descricao ? <CardDescription>{plano.descricao}</CardDescription> : null}
                 </CardHeader>
 
                 <CardContent className="flex-1">
@@ -449,6 +449,7 @@ export default function Planos() {
                         </Badge>
                       </div>
                     )}
+                    <p className="text-sm text-muted-foreground mt-1">Trial de {plano.trial_days ?? 3} dias</p>
                   </div>
 
                   <Separator className="my-6" />
@@ -483,7 +484,7 @@ export default function Planos() {
                       </>
                     ) : (
                       <>
-                        Começar Trial Grátis
+                        Selecionar
                       </>
                     )}
                   </Button>
