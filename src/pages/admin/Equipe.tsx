@@ -407,9 +407,9 @@ export default function Equipe() {
       {/* Estatísticas por função */}
       <div className="grid gap-4 md:grid-cols-4">
         {Object.entries(roleLabels).map(([role, label]) => {
+          // Só conta membros que realmente possuem a role vinculada
           const count =
-            members?.filter((m) => Array.isArray(m.user_roles) && m.user_roles.some((r) => r.role === role)).length ||
-            0;
+            members?.filter((m) => Array.isArray(m.user_roles) && m.user_roles.some((r) => r.role === role)).length || 0;
 
           return (
             <Card key={role}>
