@@ -162,22 +162,39 @@ export default function Equipe() {
     mutationFn: async (userId: string) => {
       if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
 
+      // Buscar o e-mail do usuário antes de deletar
+      const { data: userProfile, error: userProfileError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", userId)
+        .single();
+      if (userProfileError) throw userProfileError;
+      const email = userProfile?.email;
+
+      // Buscar o usuário no Auth pelo e-mail
+      let authUserId = userId;
+      if (email) {
+        const { data: userByEmail, error: userByEmailError } = await supabase.auth.admin.listUsers({ email });
+        if (userByEmailError) throw userByEmailError;
+        if (userByEmail?.users?.length > 0) {
+          authUserId = userByEmail.users[0].id;
+        }
+      }
+
       // Remover roles somente desta empresa
       const { error: roleError } = await supabase
         .from("user_roles")
         .delete()
         .eq("user_id", userId)
         .eq("empresa_id", profile.empresa_id);
-
       if (roleError) throw roleError;
 
       // Remover vínculo do perfil com a empresa
       const { error: profileError } = await supabase.from("profiles").update({ empresa_id: null }).eq("id", userId);
       if (profileError) throw profileError;
 
-      // Remover usuário do Authenticator (Supabase Auth)
-      // Requer service role ou endpoint customizado
-      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+      // Remover usuário do Authenticator (Supabase Auth) pelo UUID correto
+      const { error: authError } = await supabase.auth.admin.deleteUser(authUserId);
       if (authError) throw authError;
     },
     onSuccess: async () => {
