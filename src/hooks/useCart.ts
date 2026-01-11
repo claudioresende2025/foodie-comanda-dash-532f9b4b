@@ -51,11 +51,19 @@ export function useCart(taxaEntrega: number = 0) {
   }, [cart]);
 
   const subtotal = useMemo(() => 
-    cart.reduce((sum, item) => sum + item.produto.preco * item.quantidade, 0),
+    cart.reduce((sum, item) => {
+      const preco = Number(item.produto.preco) || 0;
+      const qtd = Number(item.quantidade) || 0;
+      return sum + (preco * qtd);
+    }, 0),
     [cart]
   );
 
-  const total = useMemo(() => subtotal + taxaEntrega, [subtotal, taxaEntrega]);
+  const total = useMemo(() => {
+    const sub = Number(subtotal) || 0;
+    const taxa = Number(taxaEntrega) || 0;
+    return sub + taxa;
+  }, [subtotal, taxaEntrega]);
 
   const itemCount = useMemo(() => 
     cart.reduce((sum, item) => sum + item.quantidade, 0),

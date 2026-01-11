@@ -1,8 +1,9 @@
-
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,8 +41,17 @@ type PagamentoItem = {
 };
 
 export default function Caixa() {
+  const navigate = useNavigate();
   const { profile } = useAuth();
+  const { canAccessCaixa, isLoading: isRoleLoading, isGarcom } = useUserRole();
   const queryClient = useQueryClient();
+
+  // Proteção de rota: GARÇOM não pode acessar Caixa
+  if (!isRoleLoading && !canAccessCaixa) {
+    toast.error('Acesso negado. Você não tem permissão para acessar o Caixa.');
+    navigate('/admin');
+    return null;
+  }
 
   // Carrega configurações do localStorage
   const getSettings = () => {

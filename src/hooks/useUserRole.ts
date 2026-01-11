@@ -306,8 +306,8 @@ export function useUserRole(): UserRoleData {
     canAccessDelivery: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('delivery')),
     canAccessDeliveryStats: hasFullAccess || (isAdmin && resolveFeature('estatisticas')),
     canAccessGarcom: hasFullAccess || ((isAdmin || isGarcom || isCaixa) && resolveFeature('garcom')),
-    canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('caixa')),
-    canAccessEquipe: hasFullAccess || (isAdmin && resolveFeature('equipe')),
+canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('caixa')), // GARÇOM não tem acesso
+    canAccessEquipe: hasFullAccess || (isAdmin && resolveFeature('equipe')), // Apenas admin
     canAccessEmpresa: hasFullAccess || (isAdmin && resolveFeature('empresa')),
     canAccessConfiguracoes: hasFullAccess || (isAdmin && resolveFeature('configuracoes')),
     canAccessMarketing: hasFullAccess || (isAdmin && resolveFeature('marketing')),

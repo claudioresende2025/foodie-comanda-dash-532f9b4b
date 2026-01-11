@@ -258,18 +258,47 @@ async function handleSubscriptionUpdated(supabase: any, subscription: Stripe.Sub
 async function updateSubscriptionInDB(supabase: any, empresaId: string, subscription: Stripe.Subscription) {
   const status = mapStripeStatus(subscription.status);
 
+  // Buscar plano_id dos metadados da subscription ou do price
+  let planoId = subscription.metadata?.plano_id;
+  
+  // Se não tem nos metadados, tentar buscar do primeiro item
+  if (!planoId && subscription.items?.data?.length > 0) {
+    const priceId = subscription.items.data[0].price?.id;
+    if (priceId) {
+      // Buscar plano pelo stripe_price_id
+      const { data: plano } = await supabase
+        .from("planos")
+        .select("id")
+        .or(`stripe_price_id_mensal.eq.${priceId},stripe_price_id_anual.eq.${priceId}`)
+        .maybeSingle();
+      
+      if (plano?.id) {
+        planoId = plano.id;
+        console.log("Plano encontrado via price_id:", planoId);
+      }
+    }
+  }
+
+  const updateData: Record<string, any> = {
+    status,
+    current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+    cancel_at_period_end: subscription.cancel_at_period_end,
+    canceled_at: subscription.canceled_at 
+      ? new Date(subscription.canceled_at * 1000).toISOString() 
+      : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Atualizar plano_id se encontrado (upgrade/downgrade)
+  if (planoId) {
+    updateData.plano_id = planoId;
+    console.log("Atualizando plano_id para:", planoId);
+  }
+
   await supabase
     .from("assinaturas")
-    .update({
-      status,
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-      cancel_at_period_end: subscription.cancel_at_period_end,
-      canceled_at: subscription.canceled_at 
-        ? new Date(subscription.canceled_at * 1000).toISOString() 
-        : null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq("empresa_id", empresaId);
 
   // Atualizar empresa
