@@ -141,7 +141,7 @@ export default function Planos() {
       // Overrides visuais conforme imagem fornecida
       const displayOverrides: Record<string, any> = {
         'Básico': {
-          nome: 'Bronze',
+          nome: 'Plano Iniciante (Bronze)',
           preco_mensal: 149.90,
           preco_anual: 149.90 * 12,
           trial_days: 3,
@@ -158,7 +158,7 @@ export default function Planos() {
           ],
         },
         'Profissional': {
-          nome: 'Prata',
+          nome: 'Plano Profissional (Prata)',
           preco_mensal: 299.90,
           preco_anual: 299.90 * 12,
           trial_days: 3,
@@ -175,7 +175,7 @@ export default function Planos() {
           ],
         },
         'Enterprise': {
-          nome: 'Ouro',
+          nome: 'Plano Enteerprise (Ouro)',
           preco_mensal: 549.90,
           preco_anual: 549.90 * 12,
           trial_days: 7,
