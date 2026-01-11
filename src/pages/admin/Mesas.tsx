@@ -152,6 +152,18 @@ export default function Mesas() {
   };
 
   // Handlers
+  // Exemplo de exclusão de membro (adapte conforme sua lógica real)
+  const handleDeleteMember = async (memberId: string) => {
+    try {
+      // Exemplo: await supabase.from('team_members').delete().eq('id', memberId);
+      // Substitua pela sua lógica real de exclusão
+      toast.success('Membro excluído com sucesso!');
+      // Atualiza a lista de membros na tela
+      queryClient.invalidateQueries({ queryKey: ['team-members', empresaId] });
+    } catch (error) {
+      toast.error('Erro ao excluir membro');
+    }
+  } 
   const handleCreateMesa = async () => {
     if (!empresaId) {
       toast.error('Configure sua empresa primeiro');
