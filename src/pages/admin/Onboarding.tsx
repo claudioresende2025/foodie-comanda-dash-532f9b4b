@@ -217,26 +217,6 @@ export default function Onboarding() {
       });
     }
   };
-              created_at: now.toISOString(),
-              updated_at: now.toISOString(),
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('Não foi possível criar assinatura automaticamente:', e);
-      }
-
-      if (roleError) throw roleError;
-
-      toast.success('Empresa cadastrada com sucesso!');
-      navigate('/admin');
-    } catch (error: any) {
-      console.error('Error creating empresa:', error);
-      toast.error('Erro ao cadastrar empresa. Tente novamente.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
