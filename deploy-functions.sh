@@ -32,6 +32,8 @@ echo "📤 Fazendo deploy das funções..."
 supabase functions deploy create-delivery-checkout
 supabase functions deploy verify-delivery-payment  
 supabase functions deploy complete-delivery-order
+supabase functions deploy create-subscription-checkout
+supabase functions deploy stripe-subscription-webhook
 
 echo ""
 echo "✅ Deploy concluído!"

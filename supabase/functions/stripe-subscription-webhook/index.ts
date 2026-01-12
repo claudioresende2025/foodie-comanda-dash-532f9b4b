@@ -101,7 +101,7 @@ serve(async (req) => {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = event.data.object as any;
-        await handleSubscriptionUpdated(supabase, subscription);
+        await handleSubscriptionUpdated(supabase, stripeRequest, subscription);
         break;
       }
 
@@ -203,7 +203,7 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
   }
 
   try {
-    await updateSubscriptionInDB(supabase, empresaId, subscription, planoId);
+    await updateSubscriptionInDB(supabase, stripeRequest, empresaId, subscription, planoId);
   } catch (err: any) {
     console.error('Erro ao atualizar assinatura via updateSubscriptionInDB:', err);
   }
@@ -288,7 +288,7 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
 }
 
 // Handler: Assinatura atualizada
-async function handleSubscriptionUpdated(supabase: any, subscription: any) {
+async function handleSubscriptionUpdated(supabase: any, stripeRequest: any, subscription: any) {
   const empresaId = subscription.metadata?.empresa_id;
 
   if (!empresaId) {
@@ -304,13 +304,13 @@ async function handleSubscriptionUpdated(supabase: any, subscription: any) {
       return;
     }
 
-    await updateSubscriptionInDB(supabase, assinatura.empresa_id, subscription);
+    await updateSubscriptionInDB(supabase, stripeRequest, assinatura.empresa_id, subscription);
   } else {
-    await updateSubscriptionInDB(supabase, empresaId, subscription);
+    await updateSubscriptionInDB(supabase, stripeRequest, empresaId, subscription);
   }
 }
 
-async function updateSubscriptionInDB(supabase: any, empresaId: string, subscription: any, forcePlanoId?: string) {
+async function updateSubscriptionInDB(supabase: any, stripeRequest: any, empresaId: string, subscription: any, forcePlanoId?: string) {
   const status = mapStripeStatus(subscription.status);
 
   // Logs extras para depuração
@@ -371,6 +371,53 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
             planoId = planoByProduct.id;
             console.log("Plano encontrado via product_id:", planoId);
           }
+        }
+      }
+
+      // NOVO: Se ainda não encontrou e temos priceId, buscar no Stripe e atualizar DB
+      if (!planoId && priceId) {
+        console.log("Plano não encontrado no DB. Buscando no Stripe para price_id:", priceId);
+        try {
+          const price = await stripeRequest(`prices/${priceId}`);
+          if (price && price.product) {
+            const productId = typeof price.product === 'string' ? price.product : price.product.id;
+            const priceType = price.recurring?.interval === 'year' ? 'anual' : 'mensal';
+            
+            console.log(`Preço encontrado no Stripe: Product=${productId}, Type=${priceType}`);
+            
+            // 1. Tentar encontrar plano pelo product_id
+            const { data: planoByProduct } = await supabase
+              .from("planos")
+              .select("id")
+              .eq("stripe_product_id", productId)
+              .maybeSingle();
+
+            if (planoByProduct?.id) {
+              console.log("Plano encontrado pelo stripe_product_id! Atualizando price_id faltante...");
+              // Atualizar o price_id no plano
+              const updateField = priceType === 'anual' 
+                ? { stripe_price_id_anual: priceId }
+                : { stripe_price_id_mensal: priceId };
+              
+              await supabase.from("planos").update(updateField).eq("id", planoByProduct.id);
+              planoId = planoByProduct.id;
+            } else {
+              // 2. Tentar encontrar pelo metadata do produto/preço
+              const metadataPlanoId = price.metadata?.plano_id || (await stripeRequest(`products/${productId}`)).metadata?.plano_id;
+              if (metadataPlanoId) {
+                 console.log("Plano encontrado via metadata do Stripe:", metadataPlanoId);
+                 // Atualizar dados do plano
+                 const updateField: any = { stripe_product_id: productId };
+                 if (priceType === 'anual') updateField.stripe_price_id_anual = priceId;
+                 else updateField.stripe_price_id_mensal = priceId;
+
+                 await supabase.from("planos").update(updateField).eq("id", metadataPlanoId);
+                 planoId = metadataPlanoId;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Erro ao tentar recuperar/atualizar plano via Stripe:", e);
         }
       }
     }

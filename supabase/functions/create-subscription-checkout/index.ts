@@ -163,13 +163,17 @@ serve(async (req) => {
       'payment_method_types[]': 'card',
       'line_items[0][price]': stripePriceId,
       'line_items[0][quantity]': '1',
-      'subscription_data[trial_period_days]': String(trial_days ?? plano.trial_days ?? 3),
       success_url: successUrl || `${req.headers.get('origin')}/admin?subscription=success&planoId=${planoId}`,
       cancel_url: cancelUrl || `${req.headers.get('origin')}/planos?canceled=true`,
       allow_promotion_codes: 'true',
       billing_address_collection: 'required',
       locale: 'pt-BR'
     };
+
+    const days = trial_days ?? plano.trial_days ?? 3;
+    if (days > 0) {
+      sessionPayload['subscription_data[trial_period_days]'] = String(days);
+    }
 
     // metadata
     sessionPayload['metadata[plano_id]'] = planoId;
