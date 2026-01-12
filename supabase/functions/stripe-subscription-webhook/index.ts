@@ -76,8 +76,15 @@ serve(async (req) => {
           console.error('Assinatura do webhook inválida');
           try {
             // Persistir o payload para depuração mesmo com assinatura inválida
-            const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
-            await supabase.from('webhook_logs').insert({ event: 'invalid_signature', referencia: null, empresa_id: null, payload: parsed });
+              const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
+              await supabase.from('webhook_logs').insert({
+                event: 'invalid_signature',
+                referencia: null,
+                empresa_id: null,
+                payload: parsed,
+                stripe_signature: signature || null,
+                raw_body: (body && body.length > 1000) ? body.slice(0, 1000) : body,
+              });
           } catch (e) {
             console.error('Erro ao gravar webhook_logs para assinatura inválida:', e);
           }
@@ -190,12 +197,14 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
   }
 
   // Tentar gravar um log leve no banco para ajudar na depuração (não falha o fluxo)
-  try {
+    try {
     await supabase.from('webhook_logs').insert({
       event: 'checkout.session.completed',
       referencia: subscription.id,
       empresa_id: empresaId || null,
       payload: JSON.stringify({ session: session, subscription: subscription }),
+      stripe_signature: signature || null,
+      raw_body: (body && body.length > 1000) ? body.slice(0, 1000) : body,
       created_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -404,6 +413,8 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
       referencia: subscription.id,
       empresa_id: empresaId || null,
       payload: JSON.stringify({ subscription }),
+      stripe_signature: null,
+      raw_body: null,
       created_at: new Date().toISOString(),
     });
   } catch (e) {
