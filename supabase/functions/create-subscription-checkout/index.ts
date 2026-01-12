@@ -80,8 +80,8 @@ serve(async (req) => {
         payload: JSON.stringify({ requestBody }),
         created_at: new Date().toISOString(),
       });
-    } catch (e) {
-      console.warn('Erro ao gravar create_checkout_request em webhook_logs:', e?.message || e);
+    } catch (e: unknown) {
+      console.warn('Erro ao gravar create_checkout_request em webhook_logs:', e instanceof Error ? e.message : e);
     }
 
     // Buscar plano
@@ -119,15 +119,15 @@ serve(async (req) => {
     if (stripeCustomerId) {
       try {
         await stripeRequest(`customers/${stripeCustomerId}`);
-      } catch (err) {
-        console.warn('[create-subscription-checkout] stored stripe customer not found, will recreate:', stripeCustomerId, err?.message || err);
+      } catch (err: unknown) {
+        console.warn('[create-subscription-checkout] stored stripe customer not found, will recreate:', stripeCustomerId, err instanceof Error ? err.message : err);
         // Clear local reference so we create a fresh customer below
         try {
           if (assinatura) {
             await supabase.from('assinaturas').update({ stripe_customer_id: null }).eq('id', assinatura.id);
           }
-        } catch (upErr) {
-          console.warn('Failed to clear stale stripe_customer_id in DB:', upErr?.message || upErr);
+        } catch (upErr: unknown) {
+          console.warn('Failed to clear stale stripe_customer_id in DB:', upErr instanceof Error ? upErr.message : upErr);
         }
         stripeCustomerId = undefined;
       }
@@ -217,18 +217,19 @@ serve(async (req) => {
     let session: any;
     try {
       session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
-    } catch (e) {
-      console.error('Erro ao criar session no Stripe:', e?.message || e);
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error('Erro ao criar session no Stripe:', errMsg);
       try {
         await supabase.from('webhook_logs').insert({
           event: 'create_checkout_error',
           referencia: null,
           empresa_id: empresaId || null,
-          payload: JSON.stringify({ error: (e?.message||String(e)), sessionPayload }),
+          payload: JSON.stringify({ error: errMsg, sessionPayload }),
           created_at: new Date().toISOString(),
         });
-      } catch (ee) {
-        console.warn('Não foi possível inserir create_checkout_error em webhook_logs:', ee?.message || ee);
+      } catch (ee: unknown) {
+        console.warn('Não foi possível inserir create_checkout_error em webhook_logs:', ee instanceof Error ? ee.message : ee);
       }
       throw e;
     }

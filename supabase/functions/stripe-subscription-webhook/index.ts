@@ -205,8 +205,8 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
   const subscription = await (async () => {
     try {
       return await stripeRequest(`subscriptions/${subscriptionId}`);
-    } catch (e) {
-      console.error('Erro ao recuperar subscription via Stripe API:', e?.message || e);
+    } catch (e: unknown) {
+      console.error('Erro ao recuperar subscription via Stripe API:', e instanceof Error ? e.message : e);
       throw e;
     }
   })();
@@ -220,18 +220,16 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
   }
 
   // Tentar gravar um log leve no banco para ajudar na depuração (não falha o fluxo)
-    try {
+  try {
     await supabase.from('webhook_logs').insert({
       event: 'checkout.session.completed',
       referencia: subscription.id,
       empresa_id: empresaId || null,
       payload: JSON.stringify({ session: session, subscription: subscription }),
-      stripe_signature: signature || null,
-      raw_body: (body && body.length > 1000) ? body.slice(0, 1000) : body,
       created_at: new Date().toISOString(),
     });
-  } catch (e) {
-    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', e?.message || e);
+  } catch (e: unknown) {
+    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', e instanceof Error ? e.message : e);
   }
 
   try {
@@ -249,8 +247,8 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
       try {
         const customer = await stripeRequest(`customers/${session.customer}`);
         email = customer?.email;
-      } catch (e) {
-        console.warn('Erro ao recuperar customer via Stripe API:', e?.message || e);
+      } catch (e: unknown) {
+        console.warn('Erro ao recuperar customer via Stripe API:', e instanceof Error ? e.message : e);
       }
     }
 
@@ -440,8 +438,8 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
       raw_body: null,
       created_at: new Date().toISOString(),
     });
-  } catch (e) {
-    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', e?.message || e);
+  } catch (e: unknown) {
+    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', e instanceof Error ? e.message : e);
   }
 
   // Atualizar empresa
