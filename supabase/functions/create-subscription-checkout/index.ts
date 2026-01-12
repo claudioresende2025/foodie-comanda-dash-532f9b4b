@@ -53,35 +53,15 @@ serve(async (req) => {
       }
 
       const resp = await fetch(url, { method, headers, body: bodyData });
-      const text = await resp.text();
-      let json: any = null;
-      try { json = JSON.parse(text); } catch { json = { raw: text }; }
-      if (!resp.ok) {
-        console.error('[stripeRequest] non-ok response', { path, status: resp.status, body: json });
-        throw new Error(json.error?.message || JSON.stringify(json));
-      }
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error?.message || JSON.stringify(json));
       return json;
     };
 
-    const requestBody = await req.json();
-    const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days } = requestBody;
+    const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days } = await req.json();
 
     if (!planoId) {
       throw new Error("planoId é obrigatório");
-    }
-
-    // Persist request for debugging
-    try {
-      console.log('[create-subscription-checkout] request body:', JSON.stringify(requestBody));
-      await supabase.from('webhook_logs').insert({
-        event: 'create_checkout_request',
-        referencia: null,
-        empresa_id: empresaId || null,
-        payload: JSON.stringify({ requestBody }),
-        created_at: new Date().toISOString(),
-      });
-    } catch (e: unknown) {
-      console.warn('Erro ao gravar create_checkout_request em webhook_logs:', e instanceof Error ? e.message : e);
     }
 
     // Buscar plano
@@ -115,23 +95,6 @@ serve(async (req) => {
 
     // Verificar se já tem um customer no Stripe (somente se empresaId for fornecida)
     let stripeCustomerId = assinatura?.stripe_customer_id;
-    // If we have a stored customer id, validate it exists in Stripe. If it doesn't, clear it so we recreate.
-    if (stripeCustomerId) {
-      try {
-        await stripeRequest(`customers/${stripeCustomerId}`);
-      } catch (err: unknown) {
-        console.warn('[create-subscription-checkout] stored stripe customer not found, will recreate:', stripeCustomerId, err instanceof Error ? err.message : err);
-        // Clear local reference so we create a fresh customer below
-        try {
-          if (assinatura) {
-            await supabase.from('assinaturas').update({ stripe_customer_id: null }).eq('id', assinatura.id);
-          }
-        } catch (upErr: unknown) {
-          console.warn('Failed to clear stale stripe_customer_id in DB:', upErr instanceof Error ? upErr.message : upErr);
-        }
-        stripeCustomerId = undefined;
-      }
-    }
 
     if (empresaId && !stripeCustomerId) {
       // Criar customer no Stripe usando dados da empresa
@@ -188,9 +151,6 @@ serve(async (req) => {
         .eq("id", planoId);
     }
 
-    // Garantir um origin válido (fallback para variáveis de ambiente)
-    const origin = req.headers.get('origin') || Deno.env.get('FRONTEND_URL') || Deno.env.get('APP_URL') || 'https://foodie-comanda-dash.lovable.app';
-
     // Criar sessão de checkout
     const subscriptionMetadata: any = {
       plano_id: planoId,
@@ -203,18 +163,13 @@ serve(async (req) => {
       'payment_method_types[]': 'card',
       'line_items[0][price]': stripePriceId,
       'line_items[0][quantity]': '1',
-      success_url: successUrl || `${origin}/admin?subscription=success&planoId=${planoId}`,
-      cancel_url: cancelUrl || `${origin}/planos?canceled=true`,
+      'subscription_data[trial_period_days]': String(trial_days ?? plano.trial_days ?? 3),
+      success_url: successUrl || `${req.headers.get('origin')}/admin?subscription=success&planoId=${planoId}`,
+      cancel_url: cancelUrl || `${req.headers.get('origin')}/planos?canceled=true`,
       allow_promotion_codes: 'true',
       billing_address_collection: 'required',
       locale: 'pt-BR'
     };
-
-    // Trial days: if explicit `trial_days` provided and >0, include it. If 0 provided, omit (no trial).
-    const requestedTrial = typeof trial_days !== 'undefined' ? Number(trial_days) : (plano.trial_days ?? 3);
-    if (requestedTrial > 0) {
-      sessionPayload['subscription_data[trial_period_days]'] = String(requestedTrial);
-    }
 
     // metadata
     sessionPayload['metadata[plano_id]'] = planoId;
@@ -222,31 +177,7 @@ serve(async (req) => {
     if (empresaId) sessionPayload['metadata[empresa_id]'] = empresaId;
     if (stripeCustomerId) sessionPayload['customer'] = stripeCustomerId;
 
-    // Garantia adicional: success_url e cancel_url devem ser URLs absolutas
-    const ensureAbsoluteUrl = (u: any) => (typeof u === 'string' && /^https?:\/\//i.test(u)) ? u : null;
-    if (!ensureAbsoluteUrl(successUrl || `${origin}/admin?subscription=success&planoId=${planoId}`)) {
-      console.warn('[create-subscription-checkout] success_url inválida:', successUrl);
-    }
-
-    let session: any;
-    try {
-      session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
-    } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      console.error('Erro ao criar session no Stripe:', errMsg);
-      try {
-        await supabase.from('webhook_logs').insert({
-          event: 'create_checkout_error',
-          referencia: null,
-          empresa_id: empresaId || null,
-          payload: JSON.stringify({ error: errMsg, sessionPayload }),
-          created_at: new Date().toISOString(),
-        });
-      } catch (ee: unknown) {
-        console.warn('Não foi possível inserir create_checkout_error em webhook_logs:', ee instanceof Error ? ee.message : ee);
-      }
-      throw e;
-    }
+    const session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
 
     return new Response(
       JSON.stringify({ url: session.url, sessionId: session.id }),
