@@ -430,6 +430,9 @@ async function updateSubscriptionInDB(supabase: any, stripeRequest: any, empresa
   }
 
   const updateData: Record<string, any> = {
+    empresa_id: empresaId,
+    stripe_subscription_id: subscription.id,
+    stripe_customer_id: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id,
     status,
     current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
     current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
@@ -446,10 +449,15 @@ async function updateSubscriptionInDB(supabase: any, stripeRequest: any, empresa
     console.log("Atualizando plano_id para:", planoId);
   }
 
-  await supabase
+  // Usar upsert para garantir que crie a assinatura se não existir
+  const { error: upsertError } = await supabase
     .from("assinaturas")
-    .update(updateData)
-    .eq("empresa_id", empresaId);
+    .upsert(updateData, { onConflict: 'empresa_id' });
+
+  if (upsertError) {
+    console.error("Erro ao fazer upsert da assinatura:", upsertError);
+    throw upsertError;
+  }
 
   // Tentar gravar um log leve no banco para depuração (não obrigatório)
   try {
