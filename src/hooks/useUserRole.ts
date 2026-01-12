@@ -205,10 +205,13 @@ export function useUserRole(): UserRoleData {
       let planoRecursos: Record<string, boolean | string> = {};
 
       // Get recursos from plano or use defaults based on normalized slug
-      if (assinatura?.plano?.recursos && Object.keys(assinatura.plano.recursos).length > 0) {
-        planoRecursos = assinatura.plano.recursos;
-      } else if (planoSlug && defaultPlanResources[planoSlug]) {
+      // IGNORAMOS recursos do banco se for array (apenas strings de exibição)
+      // Usamos os recursos definidos hardcoded no código para garantir as permissões corretas
+      if (planoSlug && defaultPlanResources[planoSlug]) {
         planoRecursos = defaultPlanResources[planoSlug].recursos;
+      } else if (assinatura?.plano?.recursos && !Array.isArray(assinatura.plano.recursos) && Object.keys(assinatura.plano.recursos).length > 0) {
+        // Fallback: se tiver recursos no banco e NÃO for array (ex: JSON de configs), usa eles
+        planoRecursos = assinatura.plano.recursos;
       }
 
       // If still empty and has assinatura, default to bronze

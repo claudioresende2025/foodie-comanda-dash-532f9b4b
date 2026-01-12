@@ -57,11 +57,14 @@ export const UpdateNotification = () => {
           }
         }).catch(() => {});
 
-        // Verifica atualizações a cada 15 segundos (se houver registration obtida)
+        // Verifica atualizações a cada 10 segundos (se houver registration obtida)
         const interval = setInterval(async () => {
           const reg = await navigator.serviceWorker.getRegistration();
-          if (reg) reg.update();
-        }, 15 * 1000);
+          if (reg) {
+            await reg.update();
+            console.log('[AutoUpdate] Verificando atualizações...');
+          }
+        }, 10 * 1000);
 
         return () => clearInterval(interval);
       } catch (error) {
