@@ -53,15 +53,35 @@ serve(async (req) => {
       }
 
       const resp = await fetch(url, { method, headers, body: bodyData });
-      const json = await resp.json();
-      if (!resp.ok) throw new Error(json.error?.message || JSON.stringify(json));
+      const text = await resp.text();
+      let json: any = null;
+      try { json = JSON.parse(text); } catch { json = { raw: text }; }
+      if (!resp.ok) {
+        console.error('[stripeRequest] non-ok response', { path, status: resp.status, body: json });
+        throw new Error(json.error?.message || JSON.stringify(json));
+      }
       return json;
     };
 
-    const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days } = await req.json();
+    const requestBody = await req.json();
+    const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days } = requestBody;
 
     if (!planoId) {
       throw new Error("planoId é obrigatório");
+    }
+
+    // Persist request for debugging
+    try {
+      console.log('[create-subscription-checkout] request body:', JSON.stringify(requestBody));
+      await supabase.from('webhook_logs').insert({
+        event: 'create_checkout_request',
+        referencia: null,
+        empresa_id: empresaId || null,
+        payload: JSON.stringify({ requestBody }),
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Erro ao gravar create_checkout_request em webhook_logs:', e?.message || e);
     }
 
     // Buscar plano
@@ -95,6 +115,23 @@ serve(async (req) => {
 
     // Verificar se já tem um customer no Stripe (somente se empresaId for fornecida)
     let stripeCustomerId = assinatura?.stripe_customer_id;
+    // If we have a stored customer id, validate it exists in Stripe. If it doesn't, clear it so we recreate.
+    if (stripeCustomerId) {
+      try {
+        await stripeRequest(`customers/${stripeCustomerId}`);
+      } catch (err) {
+        console.warn('[create-subscription-checkout] stored stripe customer not found, will recreate:', stripeCustomerId, err?.message || err);
+        // Clear local reference so we create a fresh customer below
+        try {
+          if (assinatura) {
+            await supabase.from('assinaturas').update({ stripe_customer_id: null }).eq('id', assinatura.id);
+          }
+        } catch (upErr) {
+          console.warn('Failed to clear stale stripe_customer_id in DB:', upErr?.message || upErr);
+        }
+        stripeCustomerId = undefined;
+      }
+    }
 
     if (empresaId && !stripeCustomerId) {
       // Criar customer no Stripe usando dados da empresa
@@ -177,7 +214,24 @@ serve(async (req) => {
     if (empresaId) sessionPayload['metadata[empresa_id]'] = empresaId;
     if (stripeCustomerId) sessionPayload['customer'] = stripeCustomerId;
 
-    const session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
+    let session: any;
+    try {
+      session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
+    } catch (e) {
+      console.error('Erro ao criar session no Stripe:', e?.message || e);
+      try {
+        await supabase.from('webhook_logs').insert({
+          event: 'create_checkout_error',
+          referencia: null,
+          empresa_id: empresaId || null,
+          payload: JSON.stringify({ error: (e?.message||String(e)), sessionPayload }),
+          created_at: new Date().toISOString(),
+        });
+      } catch (ee) {
+        console.warn('Não foi possível inserir create_checkout_error em webhook_logs:', ee?.message || ee);
+      }
+      throw e;
+    }
 
     return new Response(
       JSON.stringify({ url: session.url, sessionId: session.id }),
