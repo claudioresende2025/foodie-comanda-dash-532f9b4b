@@ -429,17 +429,20 @@ async function updateSubscriptionInDB(supabase: any, stripeRequest: any, empresa
     if (planoId) console.log("Plano obtido via subscription.metadata:", planoId);
   }
 
+  const toISO = (timestamp: any) => {
+    if (!timestamp || isNaN(Number(timestamp))) return null;
+    return new Date(Number(timestamp) * 1000).toISOString();
+  };
+
   const updateData: Record<string, any> = {
     empresa_id: empresaId,
     stripe_subscription_id: subscription.id,
     stripe_customer_id: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id,
     status,
-    current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-    current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+    current_period_start: toISO(subscription.current_period_start),
+    current_period_end: toISO(subscription.current_period_end),
     cancel_at_period_end: subscription.cancel_at_period_end,
-    canceled_at: subscription.canceled_at 
-      ? new Date(subscription.canceled_at * 1000).toISOString() 
-      : null,
+    canceled_at: toISO(subscription.canceled_at),
     updated_at: new Date().toISOString(),
   };
 
