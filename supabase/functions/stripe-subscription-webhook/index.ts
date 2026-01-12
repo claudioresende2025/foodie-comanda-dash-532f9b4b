@@ -68,29 +68,6 @@ serve(async (req) => {
     const body = await req.text();
     const signature = req.headers.get('stripe-signature');
 
-    // Log signature and a short preview of the raw body for debugging
-    try {
-      console.log('stripe-signature header:', signature);
-      console.log('raw body preview:', (body && body.length > 1000) ? body.slice(0, 1000) : body);
-    } catch (e) {
-      console.warn('Erro ao logar signature/raw body preview:', e);
-    }
-
-    // Insert an immediate debug row so we capture the header and raw body regardless of verification outcome
-    try {
-      await supabase.from('webhook_logs').insert({
-        event: 'received_debug',
-        referencia: null,
-        empresa_id: null,
-        payload: JSON.stringify({ received_at: new Date().toISOString() }),
-        stripe_signature: signature || null,
-        raw_body: (body && body.length > 2000) ? body.slice(0, 2000) : body,
-        created_at: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn('Erro ao inserir debug em webhook_logs:', e);
-    }
-
     let event: any;
     // Verificar assinatura do webhook (se configurado)
       if (stripeWebhookSecret && signature) {
@@ -99,15 +76,8 @@ serve(async (req) => {
           console.error('Assinatura do webhook inválida');
           try {
             // Persistir o payload para depuração mesmo com assinatura inválida
-              const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
-              await supabase.from('webhook_logs').insert({
-                event: 'invalid_signature',
-                referencia: null,
-                empresa_id: null,
-                payload: parsed,
-                stripe_signature: signature || null,
-                raw_body: (body && body.length > 1000) ? body.slice(0, 1000) : body,
-              });
+            const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
+            await supabase.from('webhook_logs').insert({ event: 'invalid_signature', referencia: null, empresa_id: null, payload: parsed });
           } catch (e) {
             console.error('Erro ao gravar webhook_logs para assinatura inválida:', e);
           }
@@ -220,14 +190,12 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
   }
 
   // Tentar gravar um log leve no banco para ajudar na depuração (não falha o fluxo)
-    try {
+  try {
     await supabase.from('webhook_logs').insert({
       event: 'checkout.session.completed',
       referencia: subscription.id,
       empresa_id: empresaId || null,
       payload: JSON.stringify({ session: session, subscription: subscription }),
-      stripe_signature: signature || null,
-      raw_body: (body && body.length > 1000) ? body.slice(0, 1000) : body,
       created_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -436,8 +404,6 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
       referencia: subscription.id,
       empresa_id: empresaId || null,
       payload: JSON.stringify({ subscription }),
-      stripe_signature: null,
-      raw_body: null,
       created_at: new Date().toISOString(),
     });
   } catch (e) {
