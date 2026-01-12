@@ -149,7 +149,7 @@ serve(async (req) => {
     };
 
     // metadata
-    const meta = {
+    const meta: Record<string, string> = {
       empresaId: orderData.empresaId,
       enderecoId: orderData.enderecoId,
       userId: orderData.userId,
