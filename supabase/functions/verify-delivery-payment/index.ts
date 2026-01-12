@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
+// Evitar uso do SDK do Stripe (esm.sh) para não depender de shims Node
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
@@ -29,10 +29,38 @@ serve(async (req) => {
       throw new Error("Configuração do Supabase não encontrada.");
     }
 
-    const stripe = new Stripe(stripeKey, {
-      apiVersion: "2024-12-18.acacia",
-      httpClient: Stripe.createFetchHttpClient(),
-    });
+    const stripeSecret = stripeKey;
+
+    const stripeRequest = async (path: string, method = 'GET', body?: Record<string, any>) => {
+      const url = `https://api.stripe.com/v1/${path}`;
+      const headers: Record<string,string> = {
+        Authorization: `Bearer ${stripeSecret}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      };
+      let bodyData: string | undefined;
+      if (body) {
+        const params = new URLSearchParams();
+        const build = (obj: any, prefix = '') => {
+          for (const key of Object.keys(obj || {})) {
+            const val = obj[key];
+            const name = prefix ? `${prefix}[${key}]` : key;
+            if (val === undefined || val === null) continue;
+            if (typeof val === 'object' && !(val instanceof Date)) {
+              build(val, name);
+            } else {
+              params.append(name, String(val));
+            }
+          }
+        };
+        build(body);
+        bodyData = params.toString();
+      }
+      const resp = await fetch(url, { method, headers, body: bodyData });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error?.message || JSON.stringify(json));
+      return json;
+    };
 
     // Criar cliente Supabase
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -99,24 +127,20 @@ serve(async (req) => {
     const validatedTotal = order.total;
     console.log(`[VERIFY-PAYMENT] Total validado: R$ ${validatedTotal}`);
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [{
-        price_data: {
-          currency: "brl",
-          product_data: { name: `Pedido #${orderId.slice(0, 8)}` },
-          unit_amount: Math.round(validatedTotal * 100), // Usar total validado
-        },
-        quantity: 1,
-      }],
-      mode: "payment",
-      success_url: `${req.headers.get("origin")}/delivery?success=true`,
-      cancel_url: `${req.headers.get("origin")}/delivery?canceled=true`,
-      metadata: { 
-        orderId,
-        validatedTotal: validatedTotal.toString() // Salvar nos metadados
-      },
-    });
+    const sessionPayload: any = {
+      mode: 'payment',
+      'payment_method_types[]': 'card',
+      'line_items[0][price_data][currency]': 'brl',
+      'line_items[0][price_data][product_data][name]': `Pedido #${orderId.slice(0,8)}`,
+      'line_items[0][price_data][unit_amount]': String(Math.round(validatedTotal * 100)),
+      'line_items[0][quantity]': '1',
+      success_url: `${req.headers.get('origin')}/delivery?success=true`,
+      cancel_url: `${req.headers.get('origin')}/delivery?canceled=true`,
+    };
+    sessionPayload['metadata[orderId]'] = orderId;
+    sessionPayload['metadata[validatedTotal]'] = validatedTotal.toString();
+
+    const session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
 
     console.log("Sessão do Stripe criada com sucesso!");
     return new Response(JSON.stringify({ url: session.url }), {

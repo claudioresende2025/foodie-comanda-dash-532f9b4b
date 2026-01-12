@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
+// Evitar uso do SDK do Stripe (esm.sh) para não depender de shims Node
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -179,77 +179,93 @@ serve(async (req) => {
     // Se for pagamento via Stripe e temos o payment_intent, processar automaticamente
     if (stripeSecretKey && stripePaymentIntentId && metodoOriginal === 'card') {
       try {
-        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2023-10-16" });
+        const stripeSecret = stripeSecretKey;
+        const stripeRequest = async (path: string, method = 'GET', body?: Record<string, any>) => {
+          const url = `https://api.stripe.com/v1/${path}`;
+          const headers: Record<string,string> = {
+            Authorization: `Bearer ${stripeSecret}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          };
+          let bodyData: string | undefined;
+          if (body) {
+            const params = new URLSearchParams();
+            const build = (obj: any, prefix = '') => {
+              for (const key of Object.keys(obj || {})) {
+                const val = obj[key];
+                const name = prefix ? `${prefix}[${key}]` : key;
+                if (val === undefined || val === null) continue;
+                if (typeof val === 'object' && !(val instanceof Date)) {
+                  build(val, name);
+                } else {
+                  params.append(name, String(val));
+                }
+              }
+            };
+            build(body);
+            bodyData = params.toString();
+          }
+          const resp = await fetch(url, { method, headers, body: bodyData });
+          const json = await resp.json();
+          if (!resp.ok) throw new Error(json.error?.message || JSON.stringify(json));
+          return json;
+        };
 
-        // Criar reembolso no Stripe
-        const refund = await stripe.refunds.create({
+        // Criar reembolso via a API REST do Stripe
+        const refund = await stripeRequest('refunds', 'POST', {
           payment_intent: stripePaymentIntentId,
-          amount: Math.round(valor * 100), // Converter para centavos
-          reason: "requested_by_customer",
-          metadata: {
-            reembolso_id: reembolso.id,
-            tipo,
-            empresa_id: empresaId,
-          },
+          amount: Math.round(valor * 100),
+          reason: 'requested_by_customer',
+          metadata: { reembolso_id: reembolso.id, tipo, empresa_id: empresaId }
         });
 
         // Atualizar status do reembolso
         await supabase
-          .from("reembolsos")
+          .from('reembolsos')
           .update({
-            status: refund.status === "succeeded" ? "succeeded" : "processing",
+            status: refund.status === 'succeeded' ? 'succeeded' : 'processing',
             stripe_refund_id: refund.id,
             updated_at: new Date().toISOString(),
           })
-          .eq("id", reembolso.id);
+          .eq('id', reembolso.id);
 
         // Se for reembolso de pedido, atualizar status do pedido
-        if (tipo === 'pedido' && refund.status === "succeeded") {
+        if (tipo === 'pedido' && refund.status === 'succeeded') {
           await supabase
-            .from("pedidos_delivery")
-            .update({ status: "cancelado" })
-            .eq("id", pedidoId);
+            .from('pedidos_delivery')
+            .update({ status: 'cancelado' })
+            .eq('id', pedidoId);
         }
 
         // Se for reembolso de assinatura, cancelar assinatura
-        if (tipo === 'assinatura' && refund.status === "succeeded") {
+        if (tipo === 'assinatura' && refund.status === 'succeeded') {
           // Buscar subscription_id
           const { data: assinatura } = await supabase
-            .from("assinaturas")
-            .select("stripe_subscription_id")
-            .eq("id", assinaturaId)
+            .from('assinaturas')
+            .select('stripe_subscription_id')
+            .eq('id', assinaturaId)
             .single();
 
           if (assinatura?.stripe_subscription_id) {
-            await stripe.subscriptions.cancel(assinatura.stripe_subscription_id);
+            try {
+              await stripeRequest(`subscriptions/${assinatura.stripe_subscription_id}/cancel`, 'POST');
+            } catch (e) {
+              console.warn('Erro ao cancelar subscription via Stripe API:', e);
+            }
           }
 
           await supabase
-            .from("assinaturas")
-            .update({ status: "canceled", canceled_at: new Date().toISOString() })
-            .eq("id", assinaturaId);
+            .from('assinaturas')
+            .update({ status: 'canceled', canceled_at: new Date().toISOString() })
+            .eq('id', assinaturaId);
         }
 
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: "Reembolso processado automaticamente",
-            reembolso: { ...reembolso, status: refund.status },
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: true, message: 'Reembolso processado automaticamente', reembolso: { ...reembolso, status: refund.status } }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
       } catch (stripeError: any) {
-        console.error("Erro no Stripe:", stripeError);
+        console.error('Erro no Stripe:', stripeError);
         // Manter como pendente para processamento manual
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: "Solicitação registrada. Será processada manualmente.",
-            reembolso,
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: true, message: 'Solicitação registrada. Será processada manualmente.', reembolso }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 

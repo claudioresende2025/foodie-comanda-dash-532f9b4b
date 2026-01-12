@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
+// Evitar uso do SDK do Stripe (esm.sh) para não depender de shims Node
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
@@ -28,9 +28,16 @@ serve(async (req) => {
       throw new Error("Configuração do servidor incompleta.");
     }
 
-    const stripe = new Stripe(stripeKey, {
-      apiVersion: "2024-12-18.acacia",
-    });
+    const stripeSecret = stripeKey;
+    const stripeRequest = async (path: string, method = 'GET') => {
+      const url = `https://api.stripe.com/v1/${path}`;
+      const resp = await fetch(url, { method, headers: { Authorization: `Bearer ${stripeSecret}`, Accept: 'application/json' } });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(txt);
+      }
+      return resp.json();
+    };
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -43,9 +50,9 @@ serve(async (req) => {
       throw new Error("sessionId é obrigatório.");
     }
 
-    // Buscar sessão do Stripe
+    // Buscar sessão do Stripe via API
     logStep("Fetching Stripe session", { sessionId });
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripeRequest(`checkout/sessions/${sessionId}`);
 
     if (!session || session.payment_status !== "paid") {
       logStep("ERROR: Payment not confirmed", { 

@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -23,23 +22,61 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2023-10-16",
-    });
+    const stripeSecret = stripeSecretKey;
+
+    // Helper para chamadas REST simples ao Stripe
+    const stripeRequest = async (path: string, method = 'GET') => {
+      const url = `https://api.stripe.com/v1/${path}`;
+      const resp = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${stripeSecret}`,
+          Accept: 'application/json'
+        }
+      });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(txt);
+      }
+      return resp.json();
+    };
+
+    // Função para verificar assinatura do webhook Stripe (HMAC SHA256)
+    const verifyStripeSignature = async (payload: string, sigHeader: string | null, secret: string) => {
+      if (!sigHeader) return false;
+      // Header example: t=timestamp,v1=signature,v0=...
+      const parts = sigHeader.split(',');
+      let timestamp: string | null = null;
+      const signatures: string[] = [];
+      for (const p of parts) {
+        const [k,v] = p.split('=');
+        if (k === 't') timestamp = v;
+        if (k === 'v1') signatures.push(v);
+      }
+      if (!timestamp) return false;
+      const signed = `${timestamp}.${payload}`;
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(signed));
+      const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
+      for (const s of signatures) {
+        if (hex === s) return true;
+      }
+      return false;
+    };
 
     const body = await req.text();
-    const signature = req.headers.get("stripe-signature");
+    const signature = req.headers.get('stripe-signature');
 
-    let event: Stripe.Event;
-
+    let event: any;
     // Verificar assinatura do webhook (se configurado)
     if (stripeWebhookSecret && signature) {
-      try {
-        event = stripe.webhooks.constructEvent(body, signature, stripeWebhookSecret);
-      } catch (err: any) {
-        console.error("Erro na verificação do webhook:", err.message);
-        return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+      const ok = await verifyStripeSignature(body, signature, stripeWebhookSecret);
+      if (!ok) {
+        console.error('Assinatura do webhook inválida');
+        return new Response('Webhook Error: invalid signature', { status: 400 });
       }
+      event = JSON.parse(body);
     } else {
       // Sem verificação (desenvolvimento)
       event = JSON.parse(body);
@@ -49,38 +86,38 @@ serve(async (req) => {
 
     switch (event.type) {
       case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutCompleted(supabase, stripe, session);
+        const session = event.data.object as any;
+        await handleCheckoutCompleted(supabase, stripeRequest, session);
         break;
       }
 
       case "customer.subscription.created":
       case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any;
         await handleSubscriptionUpdated(supabase, subscription);
         break;
       }
 
       case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any;
         await handleSubscriptionCanceled(supabase, subscription);
         break;
       }
 
       case "invoice.paid": {
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as any;
         await handleInvoicePaid(supabase, invoice);
         break;
       }
 
       case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as any;
         await handleInvoicePaymentFailed(supabase, invoice);
         break;
       }
 
       case "charge.refunded": {
-        const charge = event.data.object as Stripe.Charge;
+        const charge = event.data.object as any;
         await handleChargeRefunded(supabase, charge);
         break;
       }
@@ -103,10 +140,10 @@ serve(async (req) => {
 });
 
 // Handler: Checkout concluído
-async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(supabase: any, stripeRequest: any, session: any) {
   const empresaId = session.metadata?.empresa_id;
   const planoId = session.metadata?.plano_id;
-  const periodo = session.metadata?.periodo || "mensal";
+  const periodo = session.metadata?.periodo || 'mensal';
 
   console.log("[handleCheckoutCompleted] Metadata recebido:", { empresaId, planoId, periodo });
   console.log("[handleCheckoutCompleted] Session metadata completo:", session.metadata);
@@ -123,14 +160,19 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
   const subscriptionId = session.subscription as string;
 
   if (!subscriptionId) {
-    console.error("subscription id não encontrado na sessão do checkout");
+    console.error('subscription id não encontrado na sessão do checkout');
     return;
   }
 
-  // Recuperar subscription do Stripe e delegar atualização para a função que
-  // já contém a lógica de inferir `plano_id` via metadata/price/product.
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-
+  // Recuperar subscription do Stripe via REST
+  const subscription = await (async () => {
+    try {
+      return await stripeRequest(`subscriptions/${subscriptionId}`);
+    } catch (e) {
+      console.error('Erro ao recuperar subscription via Stripe API:', e?.message || e);
+      throw e;
+    }
+  })();
   // Logs adicionais para depuração
   try {
     console.log('[DEBUG][handleCheckoutCompleted] subscription.id:', subscription.id);
@@ -165,8 +207,12 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
     let email = session.customer_details?.email || (session.customer_email as string | undefined);
 
     if (!email && session.customer) {
-      const customer = await stripe.customers.retrieve(session.customer as string) as any;
-      email = customer?.email;
+      try {
+        const customer = await stripeRequest(`customers/${session.customer}`);
+        email = customer?.email;
+      } catch (e) {
+        console.warn('Erro ao recuperar customer via Stripe API:', e?.message || e);
+      }
     }
 
     const sendgridKey = Deno.env.get("SENDGRID_API_KEY");
@@ -235,7 +281,7 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
 }
 
 // Handler: Assinatura atualizada
-async function handleSubscriptionUpdated(supabase: any, subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(supabase: any, subscription: any) {
   const empresaId = subscription.metadata?.empresa_id;
 
   if (!empresaId) {
@@ -257,7 +303,7 @@ async function handleSubscriptionUpdated(supabase: any, subscription: Stripe.Sub
   }
 }
 
-async function updateSubscriptionInDB(supabase: any, empresaId: string, subscription: Stripe.Subscription) {
+async function updateSubscriptionInDB(supabase: any, empresaId: string, subscription: any) {
   const status = mapStripeStatus(subscription.status);
 
   // Logs extras para depuração
@@ -377,7 +423,7 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
 }
 
 // Handler: Assinatura cancelada
-async function handleSubscriptionCanceled(supabase: any, subscription: Stripe.Subscription) {
+async function handleSubscriptionCanceled(supabase: any, subscription: any) {
   const { data: assinatura } = await supabase
     .from("assinaturas")
     .select("empresa_id")
@@ -412,7 +458,7 @@ async function handleSubscriptionCanceled(supabase: any, subscription: Stripe.Su
 }
 
 // Handler: Invoice pago
-async function handleInvoicePaid(supabase: any, invoice: Stripe.Invoice) {
+async function handleInvoicePaid(supabase: any, invoice: any) {
   const subscriptionId = invoice.subscription as string;
 
   if (!subscriptionId) return;
@@ -445,7 +491,7 @@ async function handleInvoicePaid(supabase: any, invoice: Stripe.Invoice) {
 }
 
 // Handler: Falha no pagamento
-async function handleInvoicePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
+async function handleInvoicePaymentFailed(supabase: any, invoice: any) {
   const subscriptionId = invoice.subscription as string;
 
   if (!subscriptionId) return;
@@ -489,7 +535,7 @@ async function handleInvoicePaymentFailed(supabase: any, invoice: Stripe.Invoice
 }
 
 // Handler: Reembolso
-async function handleChargeRefunded(supabase: any, charge: Stripe.Charge) {
+async function handleChargeRefunded(supabase: any, charge: any) {
   // Se for reembolso de assinatura
   if (charge.metadata?.assinatura_id) {
     await supabase

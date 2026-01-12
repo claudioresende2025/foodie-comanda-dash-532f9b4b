@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -22,9 +21,42 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2023-10-16",
-    });
+    const stripeSecret = stripeSecretKey;
+
+    // Helper simples para chamar a API do Stripe via REST, evitando SDKs que
+    // trazem shims do Node que não funcionam no runtime do Supabase Edge.
+    const stripeRequest = async (path: string, method = 'GET', body?: Record<string, any>) => {
+      const url = `https://api.stripe.com/v1/${path}`;
+      const headers: Record<string,string> = {
+        Authorization: `Bearer ${stripeSecret}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      };
+
+      let bodyData: string | undefined;
+      if (body) {
+        const params = new URLSearchParams();
+        const build = (obj: any, prefix = '') => {
+          for (const key of Object.keys(obj || {})) {
+            const val = obj[key];
+            const name = prefix ? `${prefix}[${key}]` : key;
+            if (val === undefined || val === null) continue;
+            if (typeof val === 'object' && !(val instanceof Date)) {
+              build(val, name);
+            } else {
+              params.append(name, String(val));
+            }
+          }
+        };
+        build(body);
+        bodyData = params.toString();
+      }
+
+      const resp = await fetch(url, { method, headers, body: bodyData });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error?.message || JSON.stringify(json));
+      return json;
+    };
 
     const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days } = await req.json();
 
@@ -66,14 +98,12 @@ serve(async (req) => {
 
     if (empresaId && !stripeCustomerId) {
       // Criar customer no Stripe usando dados da empresa
-      const customer = await stripe.customers.create({
-        email: empresa?.email,
-        name: empresa?.nome_fantasia,
-        metadata: {
-          empresa_id: empresaId,
-        },
-      });
-      stripeCustomerId = customer.id;
+        const customer = await stripeRequest('customers', 'POST', {
+          email: empresa?.email,
+          name: empresa?.nome_fantasia,
+          metadata: { empresa_id: empresaId }
+        });
+        stripeCustomerId = customer.id;
 
       // Atualizar assinatura com o customer ID
       if (assinatura) {
@@ -93,27 +123,19 @@ serve(async (req) => {
     // Se não tem price_id configurado, criar um produto/preço no Stripe
     if (!stripePriceId) {
       // Criar produto
-      const product = await stripe.products.create({
-        name: `${plano.nome} - ${periodo === "anual" ? "Anual" : "Mensal"}`,
+      const product = await stripeRequest('products', 'POST', {
+        name: `${plano.nome} - ${periodo === 'anual' ? 'Anual' : 'Mensal'}`,
         description: plano.descricao,
-        metadata: {
-          plano_id: planoId,
-          periodo,
-        },
+        metadata: { plano_id: planoId, periodo }
       });
 
       // Criar preço
-      const price = await stripe.prices.create({
+      const price = await stripeRequest('prices', 'POST', {
         product: product.id,
         unit_amount: Math.round(preco * 100), // Stripe usa centavos
-        currency: "brl",
-        recurring: {
-          interval: periodo === "anual" ? "year" : "month",
-        },
-        metadata: {
-          plano_id: planoId,
-          periodo,
-        },
+        currency: 'brl',
+        'recurring[interval]': periodo === 'anual' ? 'year' : 'month',
+        metadata: { plano_id: planoId, periodo }
       });
 
       stripePriceId = price.id;
@@ -136,28 +158,26 @@ serve(async (req) => {
     };
     if (empresaId) subscriptionMetadata.empresa_id = empresaId;
 
-    const session = await stripe.checkout.sessions.create({
-      // Se temos customer id, definir customer, caso contrário deixar Stripe coletar e criar
-      ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
-      payment_method_types: ["card"],
-      mode: "subscription",
-      line_items: [
-        {
-          price: stripePriceId,
-          quantity: 1,
-        },
-      ],
-      subscription_data: {
-        trial_period_days: trial_days ?? plano.trial_days ?? 3,
-        metadata: subscriptionMetadata,
-      },
-      success_url: successUrl || `${req.headers.get("origin")}/admin?subscription=success&planoId=${planoId}`,
-      cancel_url: cancelUrl || `${req.headers.get("origin")}/planos?canceled=true`,
-      metadata: subscriptionMetadata,
-      allow_promotion_codes: true,
-      billing_address_collection: "required",
-      locale: "pt-BR",
-    });
+    const sessionPayload: any = {
+      mode: 'subscription',
+      'payment_method_types[]': 'card',
+      'line_items[0][price]': stripePriceId,
+      'line_items[0][quantity]': '1',
+      'subscription_data[trial_period_days]': String(trial_days ?? plano.trial_days ?? 3),
+      success_url: successUrl || `${req.headers.get('origin')}/admin?subscription=success&planoId=${planoId}`,
+      cancel_url: cancelUrl || `${req.headers.get('origin')}/planos?canceled=true`,
+      allow_promotion_codes: 'true',
+      billing_address_collection: 'required',
+      locale: 'pt-BR'
+    };
+
+    // metadata
+    sessionPayload['metadata[plano_id]'] = planoId;
+    sessionPayload['metadata[periodo]'] = periodo;
+    if (empresaId) sessionPayload['metadata[empresa_id]'] = empresaId;
+    if (stripeCustomerId) sessionPayload['customer'] = stripeCustomerId;
+
+    const session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
 
     return new Response(
       JSON.stringify({ url: session.url, sessionId: session.id }),
