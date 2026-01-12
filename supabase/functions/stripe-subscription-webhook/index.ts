@@ -68,6 +68,14 @@ serve(async (req) => {
     const body = await req.text();
     const signature = req.headers.get('stripe-signature');
 
+    // Log signature and a short preview of the raw body for debugging
+    try {
+      console.log('stripe-signature header:', signature);
+      console.log('raw body preview:', (body && body.length > 1000) ? body.slice(0, 1000) : body);
+    } catch (e) {
+      console.warn('Erro ao logar signature/raw body preview:', e);
+    }
+
     let event: any;
     // Verificar assinatura do webhook (se configurado)
       if (stripeWebhookSecret && signature) {
