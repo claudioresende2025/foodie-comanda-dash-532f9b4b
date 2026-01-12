@@ -525,14 +525,7 @@ export default function Planos() {
                           ) : (
                             <X className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
                           )}
-                          <div className="flex items-center gap-2">
-                            <span className={`text-sm ${!item.included ? 'text-muted-foreground' : ''}`}>{item.label}</span>
-                            {(item.included && (plano.trial_days ?? 0) > 0) && (
-                              <Badge variant="secondary" className="text-xs ml-2 bg-green-100 text-green-800">
-                                Trial
-                              </Badge>
-                            )}
-                          </div>
+                          <span className={`text-sm ${!item.included ? 'text-muted-foreground' : ''}`}>{item.label}</span>
                         </li>
                       );
                     })}
