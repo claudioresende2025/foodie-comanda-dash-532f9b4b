@@ -234,8 +234,11 @@ export default function Assinatura() {
       });
 
       if (error) throw error;
-
-      toast.success(data.message || 'Solicitação de reembolso enviada');
+      if (data?.success === false) {
+        toast.error(data?.error || data?.message || 'Não foi possível registrar a solicitação de reembolso');
+      } else {
+        toast.success(data?.message || 'Solicitação de reembolso enviada');
+      }
       setRefundDialogOpen(false);
       setRefundMotivo('');
     } catch (err: any) {

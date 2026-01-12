@@ -14,14 +14,38 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseServiceKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+      Deno.env.get("SUPABASE_SERVICE_KEY") ||
+      Deno.env.get("SUPABASE_ANON_KEY") ||
+      "";
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+
+    if (!supabaseUrl) {
+      return new Response(JSON.stringify({ error: "SUPABASE_URL não configurado" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!supabaseServiceKey) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message:
+            "Credencial do Supabase não configurada. Configure SUPABASE_SERVICE_ROLE_KEY nos secrets para processar reembolsos.",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
-      throw new Error("Não autorizado");
+      return new Response(JSON.stringify({ error: "Não autorizado" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { data: { user }, error: authError } = await supabase.auth.getUser(
@@ -29,7 +53,10 @@ serve(async (req) => {
     );
 
     if (authError || !user) {
-      throw new Error("Não autorizado");
+      return new Response(JSON.stringify({ error: "Não autorizado" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { 
@@ -41,7 +68,10 @@ serve(async (req) => {
     } = await req.json();
 
     if (!tipo || (!pedidoId && !assinaturaId)) {
-      throw new Error("Parâmetros inválidos");
+      return new Response(JSON.stringify({ error: "Parâmetros inválidos" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     let empresaId: string;
@@ -59,7 +89,10 @@ serve(async (req) => {
         .single();
 
       if (error || !pedido) {
-        throw new Error("Pedido não encontrado");
+        return new Response(JSON.stringify({ error: "Pedido não encontrado" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       empresaId = pedido.empresa_id;
@@ -78,7 +111,10 @@ serve(async (req) => {
       const isCustomer = pedido.user_id === user.id;
 
       if (!isOwner && !isCustomer) {
-        throw new Error("Sem permissão para solicitar reembolso");
+        return new Response(JSON.stringify({ error: "Sem permissão para solicitar reembolso" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       // Verificar se pedido pode ser reembolsado (não pode estar entregue há mais de 24h)
@@ -86,7 +122,10 @@ serve(async (req) => {
         const entregueAt = new Date(pedido.updated_at);
         const horasDesdeEntrega = (Date.now() - entregueAt.getTime()) / (1000 * 60 * 60);
         if (horasDesdeEntrega > 24) {
-          throw new Error("Prazo para reembolso expirado (24 horas após entrega)");
+          return new Response(
+            JSON.stringify({ error: "Prazo para reembolso expirado (24 horas após entrega)" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         }
       }
 
@@ -99,7 +138,10 @@ serve(async (req) => {
         .single();
 
       if (error || !assinatura) {
-        throw new Error("Assinatura não encontrada");
+        return new Response(JSON.stringify({ error: "Assinatura não encontrada" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       empresaId = assinatura.empresa_id;
@@ -115,7 +157,10 @@ serve(async (req) => {
         .single();
 
       if (!ultimoPagamento) {
-        throw new Error("Nenhum pagamento encontrado para reembolso");
+        return new Response(JSON.stringify({ error: "Nenhum pagamento encontrado para reembolso" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       valor = valorParcial || ultimoPagamento.valor;
@@ -130,18 +175,27 @@ serve(async (req) => {
         .single();
 
       if (profile?.empresa_id !== empresaId) {
-        throw new Error("Sem permissão para solicitar reembolso");
+        return new Response(JSON.stringify({ error: "Sem permissão para solicitar reembolso" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       // Verificar política de reembolso (ex: dentro de 7 dias do pagamento)
       const pagamentoAt = new Date(ultimoPagamento.created_at);
       const diasDesdePagamento = (Date.now() - pagamentoAt.getTime()) / (1000 * 60 * 60 * 24);
       if (diasDesdePagamento > 7) {
-        throw new Error("Prazo para reembolso expirado (7 dias após pagamento)");
+        return new Response(
+          JSON.stringify({ error: "Prazo para reembolso expirado (7 dias após pagamento)" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
 
     } else {
-      throw new Error("Tipo de reembolso inválido");
+      return new Response(JSON.stringify({ error: "Tipo de reembolso inválido" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Verificar se já existe reembolso pendente
@@ -153,7 +207,10 @@ serve(async (req) => {
       .single();
 
     if (reembolsoExistente) {
-      throw new Error("Já existe uma solicitação de reembolso pendente");
+      return new Response(JSON.stringify({ error: "Já existe uma solicitação de reembolso pendente" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Criar solicitação de reembolso
@@ -173,7 +230,10 @@ serve(async (req) => {
       .single();
 
     if (reembolsoError) {
-      throw new Error("Erro ao criar solicitação de reembolso");
+      return new Response(JSON.stringify({ error: "Erro ao criar solicitação de reembolso" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Se for pagamento via Stripe e temos o payment_intent, processar automaticamente
@@ -260,12 +320,22 @@ serve(async (req) => {
             .eq('id', assinaturaId);
         }
 
-        return new Response(JSON.stringify({ success: true, message: 'Reembolso processado automaticamente', reembolso: { ...reembolso, status: refund.status } }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Reembolso processado automaticamente',
+            reembolso: { ...reembolso, status: refund.status },
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
 
       } catch (stripeError: any) {
         console.error('Erro no Stripe:', stripeError);
         // Manter como pendente para processamento manual
-        return new Response(JSON.stringify({ success: true, message: 'Solicitação registrada. Será processada manualmente.', reembolso }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(
+          JSON.stringify({ success: true, message: 'Solicitação registrada. Será processada manualmente.', reembolso }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
       }
     }
 
@@ -278,17 +348,14 @@ serve(async (req) => {
           : "Solicitação registrada para análise.",
         reembolso,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
     console.error("Erro no reembolso:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
-    );
+    return new Response(JSON.stringify({ success: false, error: error?.message || "Erro inesperado" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
