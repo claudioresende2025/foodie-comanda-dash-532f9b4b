@@ -188,6 +188,9 @@ serve(async (req) => {
         .eq("id", planoId);
     }
 
+    // Garantir um origin válido (fallback para variáveis de ambiente)
+    const origin = req.headers.get('origin') || Deno.env.get('FRONTEND_URL') || Deno.env.get('APP_URL') || 'https://foodie-comanda-dash.lovable.app';
+
     // Criar sessão de checkout
     const subscriptionMetadata: any = {
       plano_id: planoId,
@@ -200,19 +203,30 @@ serve(async (req) => {
       'payment_method_types[]': 'card',
       'line_items[0][price]': stripePriceId,
       'line_items[0][quantity]': '1',
-      'subscription_data[trial_period_days]': String(trial_days ?? plano.trial_days ?? 3),
-      success_url: successUrl || `${req.headers.get('origin')}/admin?subscription=success&planoId=${planoId}`,
-      cancel_url: cancelUrl || `${req.headers.get('origin')}/planos?canceled=true`,
+      success_url: successUrl || `${origin}/admin?subscription=success&planoId=${planoId}`,
+      cancel_url: cancelUrl || `${origin}/planos?canceled=true`,
       allow_promotion_codes: 'true',
       billing_address_collection: 'required',
       locale: 'pt-BR'
     };
+
+    // Trial days: if explicit `trial_days` provided and >0, include it. If 0 provided, omit (no trial).
+    const requestedTrial = typeof trial_days !== 'undefined' ? Number(trial_days) : (plano.trial_days ?? 3);
+    if (requestedTrial > 0) {
+      sessionPayload['subscription_data[trial_period_days]'] = String(requestedTrial);
+    }
 
     // metadata
     sessionPayload['metadata[plano_id]'] = planoId;
     sessionPayload['metadata[periodo]'] = periodo;
     if (empresaId) sessionPayload['metadata[empresa_id]'] = empresaId;
     if (stripeCustomerId) sessionPayload['customer'] = stripeCustomerId;
+
+    // Garantia adicional: success_url e cancel_url devem ser URLs absolutas
+    const ensureAbsoluteUrl = (u: any) => (typeof u === 'string' && /^https?:\/\//i.test(u)) ? u : null;
+    if (!ensureAbsoluteUrl(successUrl || `${origin}/admin?subscription=success&planoId=${planoId}`)) {
+      console.warn('[create-subscription-checkout] success_url inválida:', successUrl);
+    }
 
     let session: any;
     try {
