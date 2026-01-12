@@ -70,13 +70,20 @@ serve(async (req) => {
 
     let event: any;
     // Verificar assinatura do webhook (se configurado)
-    if (stripeWebhookSecret && signature) {
-      const ok = await verifyStripeSignature(body, signature, stripeWebhookSecret);
-      if (!ok) {
-        console.error('Assinatura do webhook inválida');
-        return new Response('Webhook Error: invalid signature', { status: 400 });
-      }
-      event = JSON.parse(body);
+      if (stripeWebhookSecret && signature) {
+        const ok = await verifyStripeSignature(body, signature, stripeWebhookSecret);
+        if (!ok) {
+          console.error('Assinatura do webhook inválida');
+          try {
+            // Persistir o payload para depuração mesmo com assinatura inválida
+            const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
+            await supabase.from('webhook_logs').insert({ event: 'invalid_signature', referencia: null, empresa_id: null, payload: parsed });
+          } catch (e) {
+            console.error('Erro ao gravar webhook_logs para assinatura inválida:', e);
+          }
+          return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
+        }
+        event = JSON.parse(body);
     } else {
       // Sem verificação (desenvolvimento)
       event = JSON.parse(body);
