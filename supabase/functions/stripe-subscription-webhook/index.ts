@@ -76,6 +76,21 @@ serve(async (req) => {
       console.warn('Erro ao logar signature/raw body preview:', e);
     }
 
+    // Insert an immediate debug row so we capture the header and raw body regardless of verification outcome
+    try {
+      await supabase.from('webhook_logs').insert({
+        event: 'received_debug',
+        referencia: null,
+        empresa_id: null,
+        payload: JSON.stringify({ received_at: new Date().toISOString() }),
+        stripe_signature: signature || null,
+        raw_body: (body && body.length > 2000) ? body.slice(0, 2000) : body,
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Erro ao inserir debug em webhook_logs:', e);
+    }
+
     let event: any;
     // Verificar assinatura do webhook (se configurado)
       if (stripeWebhookSecret && signature) {
