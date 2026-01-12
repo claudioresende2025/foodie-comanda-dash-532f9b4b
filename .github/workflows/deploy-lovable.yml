@@ -87,6 +87,25 @@ jobs:
             fi
           done
 
+      - name: Validate inputs and secrets
+        run: |
+          echo "Validating PROJECT_REF and DB_URL"
+          if [ -z "$PROJECT_REF" ]; then
+            echo "ERROR: PROJECT_REF is empty. Provide via workflow input or set secret LOVABLE_PROJECT_REF." && exit 1
+          fi
+          if [ -z "$DB_URL" ]; then
+            echo "ERROR: LOVABLE_DB_URL secret is not set or empty." && exit 1
+          fi
+          # Basic sanity check for DB_URL format
+          if [[ ! "$DB_URL" =~ ^postgres(ql)?:\/\/ ]]; then
+            echo "ERROR: LOVABLE_DB_URL does not look like a postgres URL." && exit 1
+          fi
+
+      - name: DB Connectivity Check
+        run: |
+          echo "Checking DB connectivity with a simple query"
+          supabase db query --db-url "$DB_URL" "SELECT 1;"
+
       - name: Apply Migrations
         run: |
           set -e
