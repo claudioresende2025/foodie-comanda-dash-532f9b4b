@@ -19,6 +19,15 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Ensure uuid_generate_v4() exists on systems where uuid-ossp isn't available
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'uuid_generate_v4') THEN
+    CREATE OR REPLACE FUNCTION public.uuid_generate_v4() RETURNS uuid AS $func$
+      SELECT gen_random_uuid();
+    $func$ LANGUAGE SQL IMMUTABLE;
+  END IF;
+END $$;
 -- ============================================================================
 -- TIPOS ENUMS
 -- ============================================================================
