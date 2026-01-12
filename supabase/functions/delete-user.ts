@@ -1,5 +1,6 @@
-import { serve } from 'std/server'
-import { createClient } from '@supabase/supabase-js'
+
+import { serve } from "std/server";
+import { createClient } from "jsr:@supabase/supabase-js";
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
