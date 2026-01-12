@@ -256,10 +256,33 @@ export default function Planos() {
   };
 
   const handleSelectPlan = async (plano: Plano) => {
+    // Se não tem empresaId, verificar se está logado
+    // Se logado sem empresa, redirecionar para onboarding
     if (!empresaId) {
-      toast.error('Faça login para assinar um plano');
-      navigate('/auth');
-      return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Usuário logado mas sem empresa - ir para onboarding com plano selecionado
+        try {
+          localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
+            planoId: plano.id, 
+            periodo: isAnual ? 'anual' : 'mensal',
+          }));
+        } catch (e) {}
+        toast.info('Complete o cadastro da sua empresa para continuar');
+        navigate('/admin/onboarding');
+        return;
+      } else {
+        // Não logado - salvar plano e ir para auth
+        try {
+          localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
+            planoId: plano.id, 
+            periodo: isAnual ? 'anual' : 'mensal',
+          }));
+        } catch (e) {}
+        toast.error('Faça login para assinar um plano');
+        navigate('/auth');
+        return;
+      }
     }
 
     setProcessingPlan(plano.id);

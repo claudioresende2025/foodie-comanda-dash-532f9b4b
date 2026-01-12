@@ -1,19 +1,27 @@
 import { useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { AdminSidebar } from './AdminSidebar';
 import { Loader2 } from 'lucide-react';
 
 export function AdminLayout() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
+      return;
     }
-  }, [user, loading, navigate]);
+
+    // Se usuário logado mas sem empresa, redirecionar para onboarding
+    // (exceto se já estiver no onboarding)
+    if (!loading && user && profile && !profile.empresa_id && !location.pathname.includes('/onboarding')) {
+      navigate('/admin/onboarding');
+    }
+  }, [user, profile, loading, navigate, location.pathname]);
 
   if (loading) {
     return (
