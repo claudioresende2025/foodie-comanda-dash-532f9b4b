@@ -112,6 +112,7 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
   console.log("[handleCheckoutCompleted] Session metadata completo:", session.metadata);
   console.log("[handleCheckoutCompleted] Subscription data metadata:", (session as any).subscription_data?.metadata);
 
+  console.log('[DEBUG][handleCheckoutCompleted] session object:', JSON.stringify(session, null, 2));
   if (!empresaId) {
     console.error("empresa_id não encontrado no metadata - checkout de novo usuário?");
     // Para novos usuários, o plano será aplicado no Onboarding via localStorage
@@ -129,6 +130,29 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
   // Recuperar subscription do Stripe e delegar atualização para a função que
   // já contém a lógica de inferir `plano_id` via metadata/price/product.
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  // Logs adicionais para depuração
+  try {
+    console.log('[DEBUG][handleCheckoutCompleted] subscription.id:', subscription.id);
+    console.log('[DEBUG][handleCheckoutCompleted] subscription.metadata:', JSON.stringify(subscription.metadata));
+    console.log('[DEBUG][handleCheckoutCompleted] subscription.items:', JSON.stringify(subscription.items?.data || subscription.items));
+  } catch (e) {
+    console.warn('Erro ao logar subscription debug info:', e);
+  }
+
+  // Tentar gravar um log leve no banco para ajudar na depuração (não falha o fluxo)
+  try {
+    await supabase.from('webhook_logs').insert({
+      event: 'checkout.session.completed',
+      referencia: subscription.id,
+      empresa_id: empresaId || null,
+      payload: JSON.stringify({ session: session, subscription: subscription }),
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', e?.message || e);
+  }
+
   try {
     await updateSubscriptionInDB(supabase, empresaId, subscription);
   } catch (err: any) {
@@ -236,6 +260,15 @@ async function handleSubscriptionUpdated(supabase: any, subscription: Stripe.Sub
 async function updateSubscriptionInDB(supabase: any, empresaId: string, subscription: Stripe.Subscription) {
   const status = mapStripeStatus(subscription.status);
 
+  // Logs extras para depuração
+  try {
+    console.log('[DEBUG][updateSubscriptionInDB] subscription.id:', subscription.id);
+    console.log('[DEBUG][updateSubscriptionInDB] subscription.metadata:', JSON.stringify(subscription.metadata));
+    console.log('[DEBUG][updateSubscriptionInDB] subscription.items:', JSON.stringify(subscription.items?.data || subscription.items));
+  } catch (e) {
+    console.warn('Erro ao logar debug info em updateSubscriptionInDB:', e);
+  }
+
   // Buscar plano_id dos metadados da subscription ou do price
   let planoId = subscription.metadata?.plano_id;
   
@@ -310,6 +343,19 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
     .from("assinaturas")
     .update(updateData)
     .eq("empresa_id", empresaId);
+
+  // Tentar gravar um log leve no banco para depuração (não obrigatório)
+  try {
+    await supabase.from('webhook_logs').insert({
+      event: 'subscription.updated',
+      referencia: subscription.id,
+      empresa_id: empresaId || null,
+      payload: JSON.stringify({ subscription }),
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', e?.message || e);
+  }
 
   // Atualizar empresa
   await supabase
