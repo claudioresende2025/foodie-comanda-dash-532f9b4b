@@ -39,7 +39,9 @@ import {
   Crown,
   XCircle,
   Receipt,
-  Download
+  Download,
+  X,
+  Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -420,23 +422,86 @@ export default function Assinatura() {
             </Card>
 
             {/* Recursos do Plano */}
-            {assinatura.plano?.recursos && assinatura.plano.recursos.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recursos {assinatura.plano_id ? 'do seu plano' : 'inclusos no trial'}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid md:grid-cols-2 gap-3">
-                    {assinatura.plano.recursos.map((recurso, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                        <span className="text-sm">{recurso}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {(() => {
+              const resourcesDisplay: Record<string, { label: string; included: boolean }[]> = {
+                'Básico': [
+                  { label: 'Dashboard: Básico (Vendas do dia)', included: true },
+                  { label: 'Mesas: Limitado (até 10 mesas)', included: true },
+                  { label: 'Delivery: Básico (WhatsApp)', included: true },
+                  { label: 'Garçom (App): 1 usuário', included: true },
+                  { label: 'Equipe/Empresa: Até 2 colaboradores', included: true },
+                  { label: 'Cardápio: Cardápio digital responsivo', included: true },
+                  { label: 'Pedidos (KDS): 1 tela', included: true },
+                  { label: 'Estatísticas Delivery: Não incluso', included: false },
+                  { label: 'Marketing: Não incluso', included: false },
+                  { label: 'Caixa / Gestão: Fluxo de Caixa + Estoque', included: true },
+                ],
+                'Profissional': [
+                  { label: 'Dashboard: Completo', included: true },
+                  { label: 'Mesas: Ilimitado', included: true },
+                  { label: 'Delivery: Integrado', included: true },
+                  { label: 'Garçom (App): Até 3 usuários', included: true },
+                  { label: 'Equipe/Empresa: Até 5 colaboradores', included: true },
+                  { label: 'Cardápio: Cardápio digital responsivo', included: true },
+                  { label: 'Pedidos (KDS): 1 tela', included: true },
+                  { label: 'Estatísticas Delivery: Não incluso', included: false },
+                  { label: 'Marketing: Não incluso', included: false },
+                  { label: 'Caixa / Gestão: Fluxo de Caixa + Estoque', included: true },
+                ],
+                'Enterprise': [
+                  { label: 'Dashboard: Avançado + Comparativos', included: true },
+                  { label: 'Mesas: Ilimitado', included: true },
+                  { label: 'Delivery: Integrado', included: true },
+                  { label: 'Garçom (App): Ilimitado', included: true },
+                  { label: 'Equipe/Empresa: Ilimitado', included: true },
+                  { label: 'Cardápio: Cardápio digital responsivo', included: true },
+                  { label: 'Pedidos (KDS): Ilimitado', included: true },
+                  { label: 'Estatísticas Delivery: Incluso', included: true },
+                  { label: 'Marketing: Cupons + Fidelidade', included: true },
+                  { label: 'Caixa / Gestão: Fluxo de Caixa + Estoque', included: true },
+                ],
+              };
+
+              const getPlanResources = (planName: string) => {
+                if (!planName) return [];
+                const nameLower = planName.toLowerCase();
+                if (nameLower.includes('básico') || nameLower.includes('bronze') || nameLower.includes('basico')) return resourcesDisplay['Básico'];
+                if (nameLower.includes('profissional') || nameLower.includes('prata')) return resourcesDisplay['Profissional'];
+                if (nameLower.includes('enterprise') || nameLower.includes('ouro')) return resourcesDisplay['Enterprise'];
+                return [];
+              };
+
+              const visualResources = getPlanResources(assinatura.plano?.nome || '');
+              const resourcesToShow = visualResources.length > 0 
+                ? visualResources 
+                : (assinatura.plano?.recursos || []).map(r => ({ label: r, included: true }));
+
+              if (resourcesToShow.length === 0) return null;
+
+              return (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recursos {assinatura.plano_id ? 'do seu plano' : 'inclusos no trial'}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      {resourcesToShow.map((recurso, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          {recurso.included ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          ) : (
+                            <X className="w-4 h-4 text-red-500 flex-shrink-0" />
+                          )}
+                          <span className={`text-sm ${!recurso.included ? 'text-muted-foreground' : ''}`}>
+                            {recurso.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Histórico de Pagamentos */}
             <Card>

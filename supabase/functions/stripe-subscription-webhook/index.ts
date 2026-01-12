@@ -233,7 +233,7 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
   }
 
   try {
-    await updateSubscriptionInDB(supabase, empresaId, subscription);
+    await updateSubscriptionInDB(supabase, empresaId, subscription, planoId);
   } catch (err: any) {
     console.error('Erro ao atualizar assinatura via updateSubscriptionInDB:', err);
   }
@@ -340,22 +340,23 @@ async function handleSubscriptionUpdated(supabase: any, subscription: any) {
   }
 }
 
-async function updateSubscriptionInDB(supabase: any, empresaId: string, subscription: any) {
+async function updateSubscriptionInDB(supabase: any, empresaId: string, subscription: any, forcePlanoId?: string) {
   const status = mapStripeStatus(subscription.status);
 
   // Logs extras para depuração
   try {
     console.log('[DEBUG][updateSubscriptionInDB] subscription.id:', subscription.id);
+    console.log('[DEBUG][updateSubscriptionInDB] forcePlanoId:', forcePlanoId);
     console.log('[DEBUG][updateSubscriptionInDB] subscription.metadata:', JSON.stringify(subscription.metadata));
     console.log('[DEBUG][updateSubscriptionInDB] subscription.items:', JSON.stringify(subscription.items?.data || subscription.items));
   } catch (e) {
     console.warn('Erro ao logar debug info em updateSubscriptionInDB:', e);
   }
 
-  // Buscar plano_id dos metadados da subscription ou do price
-  let planoId = subscription.metadata?.plano_id;
-  
-  // Se não tem nos metadados, tentar buscar do primeiro item pelo price_id
+  // 1. Tentar usar o plano forçado (vindo do checkout session)
+  let planoId = forcePlanoId;
+
+  // 2. Se não tem forçado, tentar buscar pelo price_id (fonte da verdade do faturamento)
   if (!planoId && subscription.items?.data?.length > 0) {
     const priceId = subscription.items.data[0].price?.id;
     if (priceId) {
@@ -403,6 +404,12 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
         }
       }
     }
+  }
+
+  // 3. Se ainda não tem plano, tentar metadata da subscription (pode estar desatualizado em upgrades)
+  if (!planoId) {
+    planoId = subscription.metadata?.plano_id;
+    if (planoId) console.log("Plano obtido via subscription.metadata:", planoId);
   }
 
   const updateData: Record<string, any> = {
