@@ -118,53 +118,21 @@ async function handleCheckoutCompleted(supabase: any, stripe: Stripe, session: S
     return;
   }
 
-  if (!planoId) {
-    console.error("plano_id não encontrado no metadata!");
+  // Buscar subscription ID
+  const subscriptionId = session.subscription as string;
+
+  if (!subscriptionId) {
+    console.error("subscription id não encontrado na sessão do checkout");
     return;
   }
 
-  // Buscar subscription ID
-  const subscriptionId = session.subscription as string;
-  
-  if (subscriptionId) {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-
-    // Atualizar ou criar assinatura no banco
-    const { error } = await supabase
-      .from("assinaturas")
-      .upsert({
-        empresa_id: empresaId,
-        plano_id: planoId,
-        status: subscription.status === "trialing" ? "trialing" : "active",
-        stripe_customer_id: session.customer as string,
-        stripe_subscription_id: subscriptionId,
-        periodo,
-        trial_start: subscription.trial_start 
-          ? new Date(subscription.trial_start * 1000).toISOString() 
-          : null,
-        trial_end: subscription.trial_end 
-          ? new Date(subscription.trial_end * 1000).toISOString() 
-          : null,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: "empresa_id",
-      });
-
-    if (error) {
-      console.error("Erro ao atualizar assinatura:", error);
-    }
-
-    // Atualizar status na empresa
-    await supabase
-      .from("empresas")
-      .update({
-        subscription_status: subscription.status === "trialing" ? "trialing" : "active",
-        blocked_at: null,
-        block_reason: null,
-      })
-      .eq("id", empresaId);
+  // Recuperar subscription do Stripe e delegar atualização para a função que
+  // já contém a lógica de inferir `plano_id` via metadata/price/product.
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  try {
+    await updateSubscriptionInDB(supabase, empresaId, subscription);
+  } catch (err: any) {
+    console.error('Erro ao atualizar assinatura via updateSubscriptionInDB:', err);
   }
 
   console.log("Checkout concluído para empresa:", empresaId);
