@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               await supabase.from('profiles').update({ empresa_id: parsed.empresaId }).eq('id', userId);
               // tentar criar user_role como proprietario se não existir
               try {
-                await supabase.from('user_roles').upsert([{ user_id: userId, empresa_id: parsed.empresaId, role: 'proprietario' }], { onConflict: 'user_id,empresa_id' });
+                await supabase.from('user_roles').upsert({ user_id: userId, empresa_id: parsed.empresaId, role: 'proprietario' }, { onConflict: ['user_id','empresa_id'] });
               } catch (e) {
                 console.warn('Não foi possível criar user_role automaticamente', e);
               }

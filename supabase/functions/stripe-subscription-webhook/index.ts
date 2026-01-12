@@ -68,29 +68,6 @@ serve(async (req) => {
     const body = await req.text();
     const signature = req.headers.get('stripe-signature');
 
-    // Log signature and a short preview of the raw body for debugging
-    try {
-      console.log('stripe-signature header:', signature);
-      console.log('raw body preview:', (body && body.length > 1000) ? body.slice(0, 1000) : body);
-    } catch (e) {
-      console.warn('Erro ao logar signature/raw body preview:', e);
-    }
-
-    // Insert an immediate debug row so we capture the header and raw body regardless of verification outcome
-    try {
-      await supabase.from('webhook_logs').insert({
-        event: 'received_debug',
-        referencia: null,
-        empresa_id: null,
-        payload: JSON.stringify({ received_at: new Date().toISOString() }),
-        stripe_signature: signature || null,
-        raw_body: (body && body.length > 2000) ? body.slice(0, 2000) : body,
-        created_at: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn('Erro ao inserir debug em webhook_logs:', e);
-    }
-
     let event: any;
     // Verificar assinatura do webhook (se configurado)
       if (stripeWebhookSecret && signature) {
@@ -99,15 +76,8 @@ serve(async (req) => {
           console.error('Assinatura do webhook inválida');
           try {
             // Persistir o payload para depuração mesmo com assinatura inválida
-              const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
-              await supabase.from('webhook_logs').insert({
-                event: 'invalid_signature',
-                referencia: null,
-                empresa_id: null,
-                payload: parsed,
-                stripe_signature: signature || null,
-                raw_body: (body && body.length > 1000) ? body.slice(0, 1000) : body,
-              });
+            const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
+            await supabase.from('webhook_logs').insert({ event: 'invalid_signature', referencia: null, empresa_id: null, payload: parsed });
           } catch (e) {
             console.error('Erro ao gravar webhook_logs para assinatura inválida:', e);
           }
@@ -205,8 +175,8 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
   const subscription = await (async () => {
     try {
       return await stripeRequest(`subscriptions/${subscriptionId}`);
-    } catch (e: unknown) {
-      console.error('Erro ao recuperar subscription via Stripe API:', e instanceof Error ? e.message : e);
+    } catch (e) {
+      console.error('Erro ao recuperar subscription via Stripe API:', e?.message || e);
       throw e;
     }
   })();
@@ -228,8 +198,8 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
       payload: JSON.stringify({ session: session, subscription: subscription }),
       created_at: new Date().toISOString(),
     });
-  } catch (e: unknown) {
-    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', e instanceof Error ? e.message : e);
+  } catch (e) {
+    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', e?.message || e);
   }
 
   try {
@@ -247,8 +217,8 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
       try {
         const customer = await stripeRequest(`customers/${session.customer}`);
         email = customer?.email;
-      } catch (e: unknown) {
-        console.warn('Erro ao recuperar customer via Stripe API:', e instanceof Error ? e.message : e);
+      } catch (e) {
+        console.warn('Erro ao recuperar customer via Stripe API:', e?.message || e);
       }
     }
 
@@ -441,12 +411,10 @@ async function updateSubscriptionInDB(supabase: any, empresaId: string, subscrip
       referencia: subscription.id,
       empresa_id: empresaId || null,
       payload: JSON.stringify({ subscription }),
-      stripe_signature: null,
-      raw_body: null,
       created_at: new Date().toISOString(),
     });
-  } catch (e: unknown) {
-    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', e instanceof Error ? e.message : e);
+  } catch (e) {
+    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', e?.message || e);
   }
 
   // Atualizar empresa
