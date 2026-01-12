@@ -171,15 +171,9 @@ export default function Equipe() {
       if (userProfileError) throw userProfileError;
       const email = userProfile?.email;
 
-      // Buscar o usuário no Auth pelo e-mail
-      let authUserId = userId;
-      if (email) {
-        const { data: userByEmail, error: userByEmailError } = await supabase.auth.admin.listUsers({ email });
-        if (userByEmailError) throw userByEmailError;
-        if (userByEmail?.users?.length > 0) {
-          authUserId = userByEmail.users[0].id;
-        }
-      }
+      // O `profiles.id` já corresponde ao UUID do usuário no Auth.
+      // Evitamos usar `supabase.auth.admin` no browser (chave pública causa 403).
+      const authUserId = userId;
 
       // Remover roles somente desta empresa
       const { error: roleError } = await supabase
@@ -193,9 +187,17 @@ export default function Equipe() {
       const { error: profileError } = await supabase.from("profiles").update({ empresa_id: null }).eq("id", userId);
       if (profileError) throw profileError;
 
-      // Remover usuário do Authenticator (Supabase Auth) pelo UUID correto
-      const { error: authError } = await supabase.auth.admin.deleteUser(authUserId);
-      if (authError) throw authError;
+      // Remover usuário do Auth via Edge Function (usa service role internamente)
+      const resp = await fetch(`/functions/v1/delete-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: authUserId }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Erro na função delete-user: ${text}`);
+      }
     },
     onSuccess: async () => {
       // Pequeno delay para garantir que o Supabase reflita a exclusão
