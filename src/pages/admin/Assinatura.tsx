@@ -283,6 +283,30 @@ export default function Assinatura() {
     ? Math.max(0, Math.ceil((new Date(assinatura.trial_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
 
+  const isValidDate = (value?: any) => {
+    if (!value) return false;
+    const d = new Date(value);
+    return !isNaN(d.getTime()) && d.getTime() > 0;
+  };
+
+  const formatDateBR = (value?: any) => {
+    if (!isValidDate(value)) return '—';
+    return format(new Date(value), 'dd/MM/yyyy', { locale: ptBR });
+  };
+  
+  const getNextChargeDate = () => {
+    const end = assinatura?.current_period_end;
+    if (isValidDate(end)) return formatDateBR(end);
+    const start = assinatura?.current_period_start;
+    if (isValidDate(start)) {
+      const base = new Date(start);
+      const days = assinatura?.periodo === 'anual' ? 365 : 30;
+      const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+      return formatDateBR(fallback);
+    }
+    return '—';
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -369,7 +393,7 @@ export default function Assinatura() {
                     </div>
                     <Progress value={(3 - trialDaysRemaining) / 3 * 100} className="h-2" />
                     <p className="text-xs text-blue-600 mt-2">
-                      Seu cartão será cobrado em {format(new Date(assinatura.trial_end), 'dd/MM/yyyy', { locale: ptBR })}
+                      Seu cartão será cobrado em {formatDateBR(assinatura.trial_end)}
                     </p>
                   </div>
                 </CardContent>
@@ -383,7 +407,7 @@ export default function Assinatura() {
                       <Calendar className="w-4 h-4 text-muted-foreground" />
                       <span>Próxima cobrança: </span>
                       <span className="font-medium">
-                        {format(new Date(assinatura.current_period_end), 'dd/MM/yyyy', { locale: ptBR })}
+                        {getNextChargeDate()}
                       </span>
                     </div>
                   </div>
@@ -399,7 +423,7 @@ export default function Assinatura() {
                       <p className="font-medium text-amber-900">Cancelamento agendado</p>
                       <p className="text-sm text-amber-700">
                         Sua assinatura será cancelada em{' '}
-                        {format(new Date(assinatura.current_period_end), 'dd/MM/yyyy', { locale: ptBR })}
+                        {formatDateBR(assinatura.current_period_end)}
                       </p>
                     </div>
                   </div>
