@@ -72,10 +72,6 @@ export const UpdateNotification = () => {
       }
     };
 
-    // Escuta mudanças de controller (quando o SW ativa)
-    const onControllerChange = () => window.location.reload();
-    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-
     // Escuta mensagens do service worker — útil para builds que enviam aviso
     const onMessage = (e: MessageEvent) => {
       if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
@@ -98,7 +94,6 @@ export const UpdateNotification = () => {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
       navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
     };
   }, []);
