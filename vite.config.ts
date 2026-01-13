@@ -1,19 +1,12 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
-export default defineConfig(async ({ mode }) => ({
-  server: {
-    host: "::",
-    port: 8080,
-  },
-  plugins: [
+export default defineConfig(async ({ mode }) => {
+  const plugins: PluginOption[] = [
     react(),
-    // Carrega `lovable-tagger` dinamicamente apenas em desenvolvimento para
-    // evitar resolver dependências nativas no ambiente de build do Lovable.
-    mode === "development" ? (await import('lovable-tagger')).componentTagger() : false,
     VitePWA({
       registerType: "prompt",
       includeAssets: ["pwa-icon.png", "pwa-icon-192.png", "pwa-icon-512.png", "apple-touch-icon.png"],
@@ -126,10 +119,28 @@ export default defineConfig(async ({ mode }) => ({
         ]
       }
     })
-  ].filter(Boolean),
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+  ];
+
+  // Carrega `lovable-tagger` dinamicamente apenas em desenvolvimento
+  if (mode === "development") {
+    try {
+      const { componentTagger } = await import("lovable-tagger");
+      plugins.push(componentTagger());
+    } catch {
+      // Ignora se não disponível
+    }
+  }
+
+  return {
+    server: {
+      host: "::",
+      port: 8080,
     },
-  },
-}));
+    plugins,
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
+  };
+});
