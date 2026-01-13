@@ -53,8 +53,12 @@ export function AdminLayout() {
     ];
     const match = checks.find((c) => c.match(path));
     if (match && !match.test) {
-      toast.error('Recurso indisponível no seu plano');
-      navigate('/admin');
+      if (path === '/admin') {
+        navigate('/admin/assinatura');
+      } else {
+        toast.error('Recurso indisponível no seu plano');
+        navigate('/admin/assinatura');
+      }
     }
   }, [
     loading,

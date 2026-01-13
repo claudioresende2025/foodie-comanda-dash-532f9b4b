@@ -226,12 +226,15 @@ export default function Assinatura() {
   const handleRequestRefund = async () => {
     setIsRequestingRefund(true);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token || '';
       const { data, error } = await supabase.functions.invoke('request-refund', {
         body: {
           tipo: 'assinatura',
           assinaturaId: assinatura?.id,
           motivo: refundMotivo,
         },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
       if (error) throw error;

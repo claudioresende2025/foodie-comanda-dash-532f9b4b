@@ -127,7 +127,7 @@ export function AdminSidebar() {
     caixa: canAccessCaixa,
     equipe: canAccessEquipe,
     empresa: canAccessEmpresa,
-    assinatura: canAccessEmpresa,
+    assinatura: true,
     configuracoes: canAccessConfiguracoes,
   };
 
