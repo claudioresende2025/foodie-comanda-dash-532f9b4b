@@ -61,7 +61,7 @@ const defaultPlanResources: Record<string, {
       marketing: false,
       garcom: true,
       caixa: true,
-      equipe: false, // Não incluso no bronze
+      equipe: true,
       pedidos: true,
     },
     kds_screens: 1,

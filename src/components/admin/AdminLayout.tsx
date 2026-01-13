@@ -1,19 +1,80 @@
 import { useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 import { AdminSidebar } from './AdminSidebar';
 import { Loader2 } from 'lucide-react';
+import { useUserRole } from '@/hooks/useUserRole';
+import { toast } from 'sonner';
 
 export function AdminLayout() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const {
+    isLoading: roleLoading,
+    canAccessDashboard,
+    canAccessMesas,
+    canManageMenu,
+    canAccessPedidos,
+    canAccessDelivery,
+    canAccessDeliveryStats,
+    canAccessGarcom,
+    canAccessCaixa,
+    canAccessEquipe,
+    canAccessEmpresa,
+    canAccessConfiguracoes,
+    canAccessMarketing,
+  } = useUserRole();
 
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
     }
   }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (loading || roleLoading || !user) return;
+    const path = location.pathname;
+    const checks: { test: boolean; match: (p: string) => boolean }[] = [
+      { test: canAccessDashboard, match: (p) => p === '/admin' },
+      { test: canAccessMesas, match: (p) => p.startsWith('/admin/mesas') },
+      { test: canManageMenu, match: (p) => p.startsWith('/admin/cardapio') },
+      { test: canAccessPedidos, match: (p) => p.startsWith('/admin/pedidos') },
+      { test: canAccessDelivery, match: (p) => p === '/admin/delivery' },
+      { test: canAccessDeliveryStats, match: (p) => p.startsWith('/admin/delivery/dashboard') },
+      { test: canAccessGarcom, match: (p) => p.startsWith('/admin/garcom') },
+      { test: canAccessCaixa, match: (p) => p.startsWith('/admin/caixa') },
+      { test: canAccessEquipe, match: (p) => p.startsWith('/admin/equipe') },
+      { test: canAccessEmpresa, match: (p) => p.startsWith('/admin/empresa') },
+      { test: canAccessConfiguracoes, match: (p) => p.startsWith('/admin/configuracoes') },
+      { test: canAccessMarketing, match: (p) => p.startsWith('/admin/marketing') },
+      { test: true, match: (p) => p.startsWith('/admin/assinatura') },
+    ];
+    const match = checks.find((c) => c.match(path));
+    if (match && !match.test) {
+      toast.error('Recurso indisponível no seu plano');
+      navigate('/admin');
+    }
+  }, [
+    loading,
+    roleLoading,
+    user,
+    location.pathname,
+    canAccessDashboard,
+    canAccessMesas,
+    canManageMenu,
+    canAccessPedidos,
+    canAccessDelivery,
+    canAccessDeliveryStats,
+    canAccessGarcom,
+    canAccessCaixa,
+    canAccessEquipe,
+    canAccessEmpresa,
+    canAccessConfiguracoes,
+    canAccessMarketing,
+    navigate,
+  ]);
 
   if (loading) {
     return (
