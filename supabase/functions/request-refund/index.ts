@@ -12,14 +12,17 @@ const getErrorMessage = (e: unknown): string => {
   try { return JSON.stringify(e as any); } catch { return String(e); }
 };
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Credentials": "true",
+const buildCors = (req: Request) => {
+  const origin = req.headers.get("origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
 };
 
 serve(async (req: Request) => {
+  const corsHeaders = buildCors(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -84,12 +87,27 @@ serve(async (req: Request) => {
       });
     }
 
-    const contentType = req.headers.get("content-type") || "";
-    if (!contentType.toLowerCase().includes("application/json")) {
-      return new Response(JSON.stringify({ error: "Content-Type inválido" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const contentType = (req.headers.get("content-type") || "").toLowerCase();
+    let bodyObj: any = null;
+    if (contentType.includes("application/json")) {
+      try {
+        bodyObj = await req.json();
+      } catch (e) {
+        return new Response(JSON.stringify({ error: "JSON inválido", details: getErrorMessage(e) }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      try {
+        const raw = await req.text();
+        bodyObj = raw ? JSON.parse(raw) : null;
+      } catch {
+        return new Response(JSON.stringify({ error: "Corpo inválido. Envie JSON válido." }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const { 
@@ -98,7 +116,7 @@ serve(async (req: Request) => {
       assinaturaId,
       motivo,
       valorParcial, // Se quiser reembolso parcial
-    } = await req.json();
+    } = bodyObj || {};
 
     if (!tipo || (!pedidoId && !assinaturaId)) {
       return new Response(JSON.stringify({ error: "Parâmetros inválidos" }), {
