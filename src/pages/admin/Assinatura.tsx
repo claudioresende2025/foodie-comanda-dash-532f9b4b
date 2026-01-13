@@ -304,6 +304,21 @@ export default function Assinatura() {
       const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
       return formatDateBR(fallback);
     }
+    // Fallback: usar último pagamento registrado
+    const lastPayment = pagamentos && pagamentos.length > 0 ? pagamentos[0] : null;
+    if (lastPayment?.created_at) {
+      const base = new Date(lastPayment.created_at);
+      const days = assinatura?.periodo === 'anual' ? 365 : 30;
+      const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+      return formatDateBR(fallback);
+    }
+    // Outro fallback: usar updated_at da assinatura
+    if (isValidDate(assinatura?.updated_at)) {
+      const base = new Date(assinatura!.updated_at as any);
+      const days = assinatura?.periodo === 'anual' ? 365 : 30;
+      const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+      return formatDateBR(fallback);
+    }
     return '—';
   };
 
