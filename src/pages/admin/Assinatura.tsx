@@ -57,6 +57,7 @@ interface Assinatura {
   current_period_end: string;
   cancel_at_period_end: boolean;
   canceled_at: string | null;
+  updated_at?: string;
   plano_id: string | null;
   plano: {
     id: string;
@@ -317,6 +318,12 @@ export default function Assinatura() {
       const base = new Date(assinatura!.updated_at as any);
       const days = assinatura?.periodo === 'anual' ? 365 : 30;
       const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+      return formatDateBR(fallback);
+    }
+    // Fallback final: estimativa a partir de hoje, para não ficar vazio
+    if (assinatura?.periodo) {
+      const days = assinatura.periodo === 'anual' ? 365 : 30;
+      const fallback = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
       return formatDateBR(fallback);
     }
     return '—';

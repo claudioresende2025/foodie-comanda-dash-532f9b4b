@@ -1,12 +1,23 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+declare const Deno: { env: { get(name: string): string | undefined } };
+
+const getErrorMessage = (e: unknown): string => {
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object' && 'message' in e) {
+    const m = (e as { message?: string }).message;
+    return m ? String(m) : String(e);
+  }
+  try { return JSON.stringify(e as any); } catch { return String(e); }
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
 };
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -176,7 +187,7 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
     try {
       return await stripeRequest(`subscriptions/${subscriptionId}`);
     } catch (e) {
-      console.error('Erro ao recuperar subscription via Stripe API:', e?.message || e);
+      console.error('Erro ao recuperar subscription via Stripe API:', getErrorMessage(e));
       throw e;
     }
   })();
@@ -199,7 +210,7 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
       created_at: new Date().toISOString(),
     });
   } catch (e) {
-    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', e?.message || e);
+    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', getErrorMessage(e));
   }
 
   try {
@@ -218,7 +229,7 @@ async function handleCheckoutCompleted(supabase: any, stripeRequest: any, sessio
         const customer = await stripeRequest(`customers/${session.customer}`);
         email = customer?.email;
       } catch (e) {
-        console.warn('Erro ao recuperar customer via Stripe API:', e?.message || e);
+        console.warn('Erro ao recuperar customer via Stripe API:', getErrorMessage(e));
       }
     }
 
@@ -472,7 +483,7 @@ async function updateSubscriptionInDB(supabase: any, stripeRequest: any, empresa
       created_at: new Date().toISOString(),
     });
   } catch (e) {
-    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', e?.message || e);
+    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', getErrorMessage(e));
   }
 
   // Atualizar empresa
