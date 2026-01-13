@@ -16,6 +16,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Credentials": "true",
 };
 
 serve(async (req: Request) => {
@@ -24,6 +25,13 @@ serve(async (req: Request) => {
   }
 
   try {
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Método não permitido" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey =
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
@@ -59,12 +67,26 @@ serve(async (req: Request) => {
       });
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!bearerToken || bearerToken.length < 10) {
+      return new Response(JSON.stringify({ error: "Não autorizado" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(bearerToken);
 
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Não autorizado" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const contentType = req.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) {
+      return new Response(JSON.stringify({ error: "Content-Type inválido" }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -80,6 +102,13 @@ serve(async (req: Request) => {
 
     if (!tipo || (!pedidoId && !assinaturaId)) {
       return new Response(JSON.stringify({ error: "Parâmetros inválidos" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (tipo !== "pedido" && tipo !== "assinatura") {
+      return new Response(JSON.stringify({ error: "Tipo de reembolso inválido" }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -107,7 +136,19 @@ serve(async (req: Request) => {
       }
 
       empresaId = pedido.empresa_id;
-      valor = valorParcial || pedido.total;
+      const totalPedido = Number(pedido.total) || 0;
+      if (valorParcial !== undefined && valorParcial !== null) {
+        const vp = Number(valorParcial);
+        if (!Number.isFinite(vp) || vp <= 0 || vp > totalPedido) {
+          return new Response(JSON.stringify({ error: "Valor parcial inválido" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        valor = Math.round(vp * 100) / 100;
+      } else {
+        valor = totalPedido;
+      }
       stripePaymentIntentId = pedido.stripe_payment_intent_id;
       metodoOriginal = pedido.metodo_pagamento;
 
@@ -178,6 +219,20 @@ serve(async (req: Request) => {
       stripePaymentIntentId = ultimoPagamento.stripe_payment_intent_id;
       metodoOriginal = ultimoPagamento.metodo_pagamento;
 
+      const valorMaximo = Number(ultimoPagamento.valor) || 0;
+      if (valorParcial !== undefined && valorParcial !== null) {
+        const vp = Number(valorParcial);
+        if (!Number.isFinite(vp) || vp <= 0 || vp > valorMaximo) {
+          return new Response(JSON.stringify({ error: "Valor parcial inválido" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        valor = Math.round(vp * 100) / 100;
+      } else {
+        valor = valorMaximo;
+      }
+
       // Verificar se usuário é dono da empresa
       const { data: profile } = await supabase
         .from("profiles")
@@ -233,7 +288,7 @@ serve(async (req: Request) => {
         assinatura_id: tipo === 'assinatura' ? assinaturaId : null,
         tipo,
         valor,
-        motivo: motivo || "Solicitado pelo usuário",
+        motivo: typeof motivo === "string" ? (motivo.length > 255 ? motivo.slice(0, 255) : motivo) : "Solicitado pelo usuário",
         status: "pending",
         metodo_original: metodoOriginal,
       })
@@ -251,13 +306,16 @@ serve(async (req: Request) => {
     if (stripeSecretKey && stripePaymentIntentId && metodoOriginal === 'card') {
       try {
         const stripeSecret = stripeSecretKey;
-        const stripeRequest = async (path: string, method = 'GET', body?: Record<string, any>) => {
+        const stripeRequest = async (path: string, method = 'GET', body?: Record<string, any>, idempotencyKey?: string) => {
           const url = `https://api.stripe.com/v1/${path}`;
           const headers: Record<string,string> = {
             Authorization: `Bearer ${stripeSecret}`,
             Accept: 'application/json',
             'Content-Type': 'application/x-www-form-urlencoded'
           };
+          if (idempotencyKey) {
+            headers['Idempotency-Key'] = idempotencyKey;
+          }
           let bodyData: string | undefined;
           if (body) {
             const params = new URLSearchParams();
@@ -285,10 +343,10 @@ serve(async (req: Request) => {
         // Criar reembolso via a API REST do Stripe
         const refund = await stripeRequest('refunds', 'POST', {
           payment_intent: stripePaymentIntentId,
-          amount: Math.round(valor * 100),
+          amount: Math.max(1, Math.round(valor * 100)),
           reason: 'requested_by_customer',
           metadata: { reembolso_id: reembolso.id, tipo, empresa_id: empresaId }
-        });
+        }, `refund_${reembolso.id}`);
 
         // Atualizar status do reembolso
         await supabase

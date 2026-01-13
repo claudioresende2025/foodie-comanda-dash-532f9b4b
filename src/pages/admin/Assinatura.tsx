@@ -226,15 +226,29 @@ export default function Assinatura() {
   const handleRequestRefund = async () => {
     setIsRequestingRefund(true);
     try {
+      if (!assinatura?.id) {
+        toast.error('Assinatura não encontrada. Recarregue a página.');
+        return;
+      }
+      const motivo = refundMotivo.trim();
+      if (!motivo) {
+        toast.error('Informe o motivo do reembolso');
+        return;
+      }
+
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token || '';
+
       const { data, error } = await supabase.functions.invoke('request-refund', {
         body: {
           tipo: 'assinatura',
-          assinaturaId: assinatura?.id,
-          motivo: refundMotivo,
+          assinaturaId: assinatura.id,
+          motivo,
         },
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
 
       if (error) throw error;
