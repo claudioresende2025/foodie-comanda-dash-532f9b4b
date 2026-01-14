@@ -452,6 +452,8 @@ async function updateSubscriptionInDB(supabase: any, stripeRequest: any, empresa
     status,
     current_period_start: toISO(subscription.current_period_start),
     current_period_end: toISO(subscription.current_period_end),
+    trial_start: toISO(subscription.trial_start),
+    trial_end: toISO(subscription.trial_end),
     cancel_at_period_end: subscription.cancel_at_period_end,
     canceled_at: toISO(subscription.canceled_at),
     updated_at: new Date().toISOString(),
