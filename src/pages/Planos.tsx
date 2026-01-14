@@ -256,12 +256,6 @@ export default function Planos() {
   };
 
   const handleSelectPlan = async (plano: Plano) => {
-    if (!empresaId) {
-      toast.error('Faça login para assinar um plano');
-      navigate('/auth');
-      return;
-    }
-
     setProcessingPlan(plano.id);
 
     try {
@@ -285,7 +279,7 @@ export default function Planos() {
         // ignore localStorage errors
       }
       
-      // URL de sucesso vai para admin com parâmetros para atualizar assinatura
+      // URL de sucesso: leva para a aplicação com parâmetros; App/Onboarding tratam o fluxo
       const successUrl = `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
 
       const body: any = {
@@ -296,7 +290,7 @@ export default function Planos() {
         trial_days: currentSubscription ? 0 : (plano.trial_days ?? 3), // Sem trial para upgrades
       };
 
-      // Sempre enviar empresaId se disponível
+      // Enviar empresaId apenas se disponível (fluxo sem login permitido)
       if (empresaId) body.empresaId = empresaId;
 
       console.log('[Planos] Chamando create-subscription-checkout:', body);
