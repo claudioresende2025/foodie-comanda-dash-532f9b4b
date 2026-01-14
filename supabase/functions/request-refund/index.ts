@@ -400,8 +400,12 @@ serve(async (req: Request) => {
           if (assinatura?.stripe_subscription_id) {
             try {
               await stripeRequest(`subscriptions/${assinatura.stripe_subscription_id}/cancel`, 'POST');
-            } catch (e) {
-              console.warn('Erro ao cancelar subscription via Stripe API:', e);
+            } catch (e1) {
+              try {
+                await stripeRequest(`subscriptions/${assinatura.stripe_subscription_id}`, 'DELETE');
+              } catch (e2) {
+                console.warn('Erro ao cancelar assinatura no Stripe (POST cancel e DELETE):', e1, e2);
+              }
             }
           }
 
