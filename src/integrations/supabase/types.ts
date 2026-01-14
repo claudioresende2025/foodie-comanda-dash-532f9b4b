@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       assinaturas: {
         Row: {
+          canceled_at: string | null
           created_at: string | null
           data_fim: string | null
           data_inicio: string | null
@@ -30,6 +31,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          canceled_at?: string | null
           created_at?: string | null
           data_fim?: string | null
           data_inicio?: string | null
@@ -44,6 +46,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          canceled_at?: string | null
           created_at?: string | null
           data_fim?: string | null
           data_inicio?: string | null
@@ -1024,6 +1027,63 @@ export type Database = {
           },
         ]
       }
+      pagamentos_assinatura: {
+        Row: {
+          assinatura_id: string
+          created_at: string
+          descricao: string | null
+          empresa_id: string
+          id: string
+          metadata: Json | null
+          metodo_pagamento: string | null
+          status: string
+          stripe_payment_intent_id: string | null
+          updated_at: string
+          valor: number
+        }
+        Insert: {
+          assinatura_id: string
+          created_at?: string
+          descricao?: string | null
+          empresa_id: string
+          id?: string
+          metadata?: Json | null
+          metodo_pagamento?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          valor: number
+        }
+        Update: {
+          assinatura_id?: string
+          created_at?: string
+          descricao?: string | null
+          empresa_id?: string
+          id?: string
+          metadata?: Json | null
+          metodo_pagamento?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagamentos_assinatura_assinatura_id_fkey"
+            columns: ["assinatura_id"]
+            isOneToOne: false
+            referencedRelation: "assinaturas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagamentos_assinatura_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pedidos: {
         Row: {
           comanda_id: string
@@ -1088,9 +1148,11 @@ export type Database = {
           endereco_id: string | null
           forma_pagamento: Database["public"]["Enums"]["forma_pagamento"] | null
           id: string
+          metodo_pagamento: string | null
           notas: string | null
           status: Database["public"]["Enums"]["delivery_status"]
           stripe_payment_id: string | null
+          stripe_payment_intent_id: string | null
           stripe_payment_status: string | null
           subtotal: number
           taxa_entrega: number
@@ -1110,9 +1172,11 @@ export type Database = {
             | Database["public"]["Enums"]["forma_pagamento"]
             | null
           id?: string
+          metodo_pagamento?: string | null
           notas?: string | null
           status?: Database["public"]["Enums"]["delivery_status"]
           stripe_payment_id?: string | null
+          stripe_payment_intent_id?: string | null
           stripe_payment_status?: string | null
           subtotal?: number
           taxa_entrega?: number
@@ -1132,9 +1196,11 @@ export type Database = {
             | Database["public"]["Enums"]["forma_pagamento"]
             | null
           id?: string
+          metodo_pagamento?: string | null
           notas?: string | null
           status?: Database["public"]["Enums"]["delivery_status"]
           stripe_payment_id?: string | null
+          stripe_payment_intent_id?: string | null
           stripe_payment_status?: string | null
           subtotal?: number
           taxa_entrega?: number
@@ -1419,6 +1485,73 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reembolsos: {
+        Row: {
+          assinatura_id: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          metodo_original: string | null
+          motivo: string | null
+          pedido_delivery_id: string | null
+          status: string
+          stripe_refund_id: string | null
+          tipo: string
+          updated_at: string
+          valor: number
+        }
+        Insert: {
+          assinatura_id?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          metodo_original?: string | null
+          motivo?: string | null
+          pedido_delivery_id?: string | null
+          status?: string
+          stripe_refund_id?: string | null
+          tipo: string
+          updated_at?: string
+          valor: number
+        }
+        Update: {
+          assinatura_id?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          metodo_original?: string | null
+          motivo?: string | null
+          pedido_delivery_id?: string | null
+          status?: string
+          stripe_refund_id?: string | null
+          tipo?: string
+          updated_at?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reembolsos_assinatura_id_fkey"
+            columns: ["assinatura_id"]
+            isOneToOne: false
+            referencedRelation: "assinaturas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reembolsos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reembolsos_pedido_delivery_id_fkey"
+            columns: ["pedido_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos_delivery"
             referencedColumns: ["id"]
           },
         ]
