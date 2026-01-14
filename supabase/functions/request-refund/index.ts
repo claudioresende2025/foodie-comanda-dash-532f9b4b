@@ -227,7 +227,11 @@ serve(async (req: Request) => {
         .single();
 
       if (!ultimoPagamento) {
-        return new Response(JSON.stringify({ error: "Nenhum pagamento encontrado para reembolso" }), {
+        return new Response(JSON.stringify({ 
+          success: false,
+          error: "Nenhum pagamento encontrado para reembolso", 
+          message: "Não há pagamentos registrados para esta assinatura. Reembolsos só estão disponíveis após o primeiro pagamento."
+        }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
