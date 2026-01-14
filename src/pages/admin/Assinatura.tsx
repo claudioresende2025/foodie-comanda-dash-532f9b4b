@@ -104,7 +104,7 @@ export default function Assinatura() {
         
         try {
           toast.success('Checkout concluído! Atualizando assinatura...');
-          try { localStorage.removeItem('post_subscribe_plan'); } catch (e) {}
+          try { localStorage.removeItem('post_subscribe_plan'); } catch (e) { void e; }
         } catch (err) {
           console.error('[Assinatura] Erro:', err);
         }
