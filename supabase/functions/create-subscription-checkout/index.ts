@@ -85,15 +85,17 @@ serve(async (req: Request) => {
       throw new Error("Plano não encontrado");
     }
 
-    // Buscar empresa
-    const { data: empresa, error: empresaError } = await supabase
-      .from("empresas")
-      .select("*")
-      .eq("id", empresaId)
-      .single();
-
-    if (empresaError || !empresa) {
-      throw new Error("Empresa não encontrada");
+    // Buscar empresa apenas se fornecida (permite checkout sem login)
+    let empresa: any = null;
+    if (empresaId) {
+      const { data: emp, error: empresaError } = await supabase
+        .from("empresas")
+        .select("*")
+        .eq("id", empresaId)
+        .single();
+      if (!empresaError && emp) {
+        empresa = emp;
+      }
     }
 
     // Buscar ou criar assinatura
@@ -105,17 +107,13 @@ serve(async (req: Request) => {
 
     // Verificar se já tem um customer no Stripe (somente se empresaId for fornecida)
     let stripeCustomerId = assinatura?.stripe_customer_id;
-
-    if (empresaId && !stripeCustomerId) {
-      // Criar customer no Stripe usando dados da empresa
-        const customer = await stripeRequest('customers', 'POST', {
-          email: empresa?.email,
-          name: empresa?.nome_fantasia,
-          metadata: { empresa_id: empresaId }
-        });
-        stripeCustomerId = customer.id;
-
-      // Atualizar assinatura com o customer ID
+    if (empresaId && !stripeCustomerId && empresa) {
+      const customer = await stripeRequest('customers', 'POST', {
+        email: empresa?.email,
+        name: empresa?.nome_fantasia,
+        metadata: { empresa_id: empresaId }
+      });
+      stripeCustomerId = customer.id;
       if (assinatura) {
         await supabase
           .from("assinaturas")
