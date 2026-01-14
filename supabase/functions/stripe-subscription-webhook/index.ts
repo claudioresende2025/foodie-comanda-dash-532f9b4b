@@ -556,21 +556,19 @@ async function handleInvoicePaid(supabase: any, invoice: any) {
 
   if (!assinatura) return;
 
-  // Registrar pagamento
-  await supabase.from("pagamentos_assinatura").insert({
-    assinatura_id: assinatura.id,
-    empresa_id: assinatura.empresa_id,
-    stripe_payment_intent_id: invoice.payment_intent as string,
-    stripe_invoice_id: invoice.id,
-    valor: (invoice.amount_paid || 0) / 100, // Converter de centavos
-    status: "succeeded",
-    metodo_pagamento: "card",
-    descricao: invoice.description || `Pagamento ${invoice.billing_reason}`,
-    metadata: {
-      billing_reason: invoice.billing_reason,
-      hosted_invoice_url: invoice.hosted_invoice_url,
-    },
-  });
+  const { error: insertError } = await supabase
+    .from("pagamentos_assinatura")
+    .insert({
+      assinatura_id: assinatura.id,
+      empresa_id: assinatura.empresa_id,
+      stripe_payment_intent_id: invoice.payment_intent as string,
+      valor: (invoice.amount_paid || 0) / 100,
+      status: "succeeded",
+      metodo_pagamento: "card",
+    });
+  if (insertError) {
+    console.error("Erro ao inserir pagamentos_assinatura:", insertError);
+  }
 
   console.log("Pagamento registrado:", assinatura.empresa_id);
 }
