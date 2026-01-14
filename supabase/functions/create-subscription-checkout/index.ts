@@ -98,12 +98,16 @@ serve(async (req: Request) => {
       }
     }
 
-    // Buscar ou criar assinatura
-    let { data: assinatura } = await supabase
-      .from("assinaturas")
-      .select("*")
-      .eq("empresa_id", empresaId)
-      .single();
+    // Buscar assinatura somente se empresaId existir
+    let assinatura: any = null;
+    if (empresaId) {
+      const { data: found } = await supabase
+        .from("assinaturas")
+        .select("*")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+      assinatura = found;
+    }
 
     // Verificar se já tem um customer no Stripe (somente se empresaId for fornecida)
     let stripeCustomerId = assinatura?.stripe_customer_id;
@@ -191,19 +195,16 @@ serve(async (req: Request) => {
 
     const session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
 
-    return new Response(
-      JSON.stringify({ url: session.url, sessionId: session.id }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: true, url: session.url, sessionId: session.id }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   } catch (error: any) {
     console.error("Erro ao criar checkout:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
-    );
+    return new Response(JSON.stringify({ success: false, error: error.message || String(error) }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
