@@ -479,7 +479,7 @@ export default function Assinatura() {
                     Cancelar Assinatura
                   </Button>
                 )}
-                {assinatura.status === 'active' && (
+                {assinatura.status === 'active' && pagamentos.length > 0 && (
                   <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
                     Solicitar Reembolso
                   </Button>
