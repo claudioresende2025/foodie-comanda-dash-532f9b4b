@@ -103,26 +103,8 @@ export default function Assinatura() {
         console.log('[Assinatura] Processando sucesso do checkout:', { planoId, sessionId });
         
         try {
-          // Atualizar a assinatura com o novo plano
-          const { error } = await (supabase as any)
-            .from('assinaturas')
-            .update({
-              plano_id: planoId,
-              status: 'active',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('empresa_id', profile.empresa_id);
-
-          if (error) {
-            console.error('[Assinatura] Erro ao atualizar plano:', error);
-            toast.error('Erro ao atualizar plano. Entre em contato com o suporte.');
-          } else {
-            toast.success('Plano atualizado com sucesso!');
-            // Limpar localStorage
-            try {
-              localStorage.removeItem('post_subscribe_plan');
-            } catch (e) {}
-          }
+          toast.success('Checkout concluído! Atualizando assinatura...');
+          try { localStorage.removeItem('post_subscribe_plan'); } catch (e) {}
         } catch (err) {
           console.error('[Assinatura] Erro:', err);
         }
@@ -308,6 +290,9 @@ export default function Assinatura() {
   const trialDaysRemaining = assinatura?.trial_end 
     ? Math.max(0, Math.ceil((new Date(assinatura.trial_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
+  const trialDaysTotal = assinatura?.trial_start && assinatura?.trial_end
+    ? Math.max(1, Math.ceil((new Date(assinatura.trial_end).getTime() - new Date(assinatura.trial_start).getTime()) / (1000 * 60 * 60 * 24)))
+    : 3;
 
   const isValidDate = (value?: any) => {
     if (!value) return false;
@@ -321,6 +306,9 @@ export default function Assinatura() {
   };
   
   const getNextChargeDate = () => {
+    if (assinatura?.status === 'trialing' && isValidDate(assinatura?.trial_end)) {
+      return formatDateBR(assinatura!.trial_end);
+    }
     const end = assinatura?.current_period_end;
     if (isValidDate(end)) return formatDateBR(end);
     const start = assinatura?.current_period_start;
@@ -438,7 +426,7 @@ export default function Assinatura() {
                         {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia' : 'dias'} restantes
                       </span>
                     </div>
-                    <Progress value={(3 - trialDaysRemaining) / 3 * 100} className="h-2" />
+                    <Progress value={((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100} className="h-2" />
                     <p className="text-xs text-blue-600 mt-2">
                       Seu cartão será cobrado em {formatDateBR(assinatura.trial_end)}
                     </p>
