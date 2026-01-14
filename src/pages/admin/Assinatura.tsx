@@ -81,7 +81,7 @@ interface Pagamento {
 export default function Assinatura() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [assinatura, setAssinatura] = useState<Assinatura | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
@@ -141,19 +141,27 @@ export default function Assinatura() {
   }, [searchParams, profile?.empresa_id]);
 
   useEffect(() => {
-    if (profile?.empresa_id) {
-      fetchData();
+    // Se auth ainda está carregando, aguardar
+    if (authLoading) return;
+    
+    // Se não tem profile ou empresa_id, parar loading e mostrar estado vazio
+    if (!profile?.empresa_id) {
+      setIsLoading(false);
+      return;
     }
-  }, [profile?.empresa_id]);
+    
+    fetchData();
+  }, [profile?.empresa_id, authLoading]);
 
   const fetchData = async () => {
+    setIsLoading(true);
     try {
-      // Buscar assinatura com plano
+      // Buscar assinatura com plano (usar maybeSingle para não lançar erro se não existir)
       const { data: assinaturaData, error: assinaturaError } = await (supabase as any)
         .from('assinaturas')
         .select('*, plano:planos(*)')
         .eq('empresa_id', profile?.empresa_id)
-        .single();
+        .maybeSingle();
 
       if (!assinaturaError && assinaturaData) {
         let planoData = assinaturaData.plano;
