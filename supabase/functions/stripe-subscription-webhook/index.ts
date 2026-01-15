@@ -81,20 +81,77 @@ serve(async (req: Request) => {
 
     let event: any;
     // Verificar assinatura do webhook (se configurado)
-      if (stripeWebhookSecret && signature) {
-        const ok = await verifyStripeSignature(body, signature, stripeWebhookSecret);
-        if (!ok) {
-          console.error('Assinatura do webhook inválida');
+    if (stripeWebhookSecret && signature) {
+      const ok = await verifyStripeSignature(body, signature, stripeWebhookSecret);
+      if (!ok) {
+        console.error('Assinatura do webhook inválida');
+        // Fallback SEGURO: recuperar o evento diretamente da API do Stripe usando o ID do evento
+        try {
+          const provisional = JSON.parse(body);
+          const eventId: string | undefined = provisional?.id;
+          if (eventId && typeof eventId === 'string' && eventId.startsWith('evt_')) {
+            try {
+              const fetched = await stripeRequest(`events/${eventId}`, 'GET');
+              event = fetched;
+              try {
+                await supabase.from('webhook_logs').insert({
+                  event: 'invalid_signature_fallback_used',
+                  referencia: eventId,
+                  empresa_id: null,
+                  payload: { type: fetched?.type, livemode: fetched?.livemode },
+                });
+              } catch (e) {
+                console.warn('Não foi possível inserir webhook_logs para fallback:', e);
+              }
+              console.warn('Processando evento recuperado da API do Stripe devido à assinatura inválida:', {
+                id: eventId,
+                type: fetched?.type,
+              });
+            } catch (fetchErr) {
+              console.error('Falha ao recuperar evento na API do Stripe durante fallback:', getErrorMessage(fetchErr));
+              // Persistir payload para depuração
+              try {
+                await supabase.from('webhook_logs').insert({
+                  event: 'invalid_signature_and_fetch_failed',
+                  referencia: eventId,
+                  empresa_id: null,
+                  payload: provisional,
+                });
+              } catch (e) {
+                console.warn('Não foi possível inserir webhook_logs para fetch_failed:', e);
+              }
+              return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
+            }
+          } else {
+            try {
+              await supabase.from('webhook_logs').insert({
+                event: 'invalid_signature_no_event_id',
+                referencia: null,
+                empresa_id: null,
+                payload: provisional,
+              });
+            } catch (e) {
+              console.warn('Não foi possível inserir webhook_logs para no_event_id:', e);
+            }
+            return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
+          }
+        } catch (parseErr) {
+          console.error('Falha ao parsear body JSON durante fallback:', getErrorMessage(parseErr));
           try {
-            // Persistir o payload para depuração mesmo com assinatura inválida
-            const parsed = (() => { try { return JSON.parse(body); } catch { return { raw: body }; } })();
-            await supabase.from('webhook_logs').insert({ event: 'invalid_signature', referencia: null, empresa_id: null, payload: parsed });
+            await supabase.from('webhook_logs').insert({
+              event: 'invalid_signature_unparsable_body',
+              referencia: null,
+              empresa_id: null,
+              payload: { raw: body },
+            });
           } catch (e) {
-            console.error('Erro ao gravar webhook_logs para assinatura inválida:', e);
+            console.warn('Não foi possível inserir webhook_logs para unparsable_body:', e);
           }
           return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
         }
+      } else {
         event = JSON.parse(body);
+      }
     } else {
       // Sem verificação (desenvolvimento)
       event = JSON.parse(body);
