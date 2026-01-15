@@ -305,11 +305,18 @@ export default function Assinatura() {
   const StatusIcon = statusConfig?.icon || CheckCircle2;
 
   // Calcular dias restantes do trial
-  const trialDaysRemaining = assinatura?.trial_end 
-    ? Math.max(0, Math.ceil((new Date(assinatura.trial_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+  const resolveDate = (value?: any) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const trialEndDate = resolveDate(assinatura?.trial_end) || resolveDate(assinatura?.current_period_end);
+  const trialStartDate = resolveDate(assinatura?.trial_start) || resolveDate(assinatura?.current_period_start);
+  const trialDaysRemaining = trialEndDate
+    ? Math.max(0, Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
-  const trialDaysTotal = assinatura?.trial_start && assinatura?.trial_end
-    ? Math.max(1, Math.ceil((new Date(assinatura.trial_end).getTime() - new Date(assinatura.trial_start).getTime()) / (1000 * 60 * 60 * 24)))
+  const trialDaysTotal = trialEndDate && trialStartDate
+    ? Math.max(1, Math.ceil((trialEndDate.getTime() - trialStartDate.getTime()) / (1000 * 60 * 60 * 24)))
     : 3;
 
   const isValidDate = (value?: any) => {
@@ -451,7 +458,7 @@ export default function Assinatura() {
                     </div>
                     <Progress value={((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100} className="h-2" />
                     <p className="text-xs text-blue-600 mt-2">
-                      Seu cartão será cobrado em {formatDateBR(assinatura.trial_end)}
+                      Seu cartão será cobrado em {getNextChargeDate()}
                     </p>
                   </div>
                 </CardContent>
