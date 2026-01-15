@@ -145,7 +145,7 @@ export function useUserRole(): UserRoleData {
 
     try {
       // Buscar role, overrides e assinatura em paralelo
-      const [roleResult, overridesResult, assinaturaResult] = await Promise.all([
+      const [roleResult, overridesResult, assinaturaResult, empresaResult] = await Promise.all([
         supabase
           .from('user_roles')
           .select('role')
@@ -161,6 +161,11 @@ export function useUserRole(): UserRoleData {
           .from('assinaturas')
           .select('*, plano:planos(*)')
           .eq('empresa_id', profile.empresa_id)
+          .maybeSingle(),
+        (supabase as any)
+          .from('empresas')
+          .select('subscription_status, trial_ends_at')
+          .eq('id', profile.empresa_id)
           .maybeSingle(),
       ]);
 
@@ -188,6 +193,7 @@ export function useUserRole(): UserRoleData {
       // Process overrides and plan data
       const overrides = overridesResult.data || null;
       const assinatura = assinaturaResult.data || null;
+      const empresa = empresaResult.data || null;
 
       // Determine plano slug and recursos
       const rawSlug = assinatura?.plano?.slug?.toLowerCase() || assinatura?.plano?.nome?.toLowerCase() || '';
@@ -218,6 +224,12 @@ export function useUserRole(): UserRoleData {
       if (Object.keys(planoRecursos).length === 0 && assinatura) {
         planoRecursos = defaultPlanResources['bronze'].recursos;
         planoSlug = planoSlug || 'bronze';
+      }
+      // Fallback: empresa com status ativo/trialing sem assinatura registrada
+      if (Object.keys(planoRecursos).length === 0 && !assinatura && empresa && (empresa.subscription_status === 'active' || empresa.subscription_status === 'trialing')) {
+        planoRecursos = defaultPlanResources['bronze'].recursos;
+        planoSlug = 'bronze';
+        planoNome = 'Básico';
       }
 
       // Merge overrides with plan recursos (overrides take precedence)
