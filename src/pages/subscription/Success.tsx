@@ -45,6 +45,7 @@ export default function SubscriptionSuccess() {
     if (per) setPeriodo(per);
   }, [params]);
 
+<<<<<<< HEAD
   // Verificar se usuário já está logado e tem empresa
   useEffect(() => {
     const checkExistingUser = async () => {
@@ -76,10 +77,20 @@ export default function SubscriptionSuccess() {
 
         // Usuário logado, verificar se tem empresa
         const { data: profile, error: profileError } = await supabase
+=======
+  useEffect(() => {
+    const tryLinkForExistingUser = async () => {
+      if (!sessionId) return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase
+>>>>>>> bb0443b (autosync: update 2026-01-15T19:03:33.634Z)
           .from('profiles')
           .select('empresa_id')
           .eq('id', user.id)
           .single();
+<<<<<<< HEAD
 
         if (profileError) {
           logStep('Error fetching profile', { error: profileError.message });
@@ -131,6 +142,32 @@ export default function SubscriptionSuccess() {
     if (sessionId) {
       checkExistingUser();
     }
+=======
+        if (!profile?.empresa_id) return;
+        setIsLoading(true);
+        const { error } = await supabase.functions.invoke('process-subscription', {
+          body: {
+            sessionId,
+            empresaId: profile.empresa_id,
+            planoId,
+            periodo,
+          },
+        });
+        if (error) {
+          toast.error(error.message || 'Falha ao atualizar assinatura.');
+          setIsLoading(false);
+          return;
+        }
+        toast.success('Assinatura atualizada com sucesso!');
+        navigate('/admin/assinatura');
+      } catch (e: any) {
+        // mantém formulário caso não esteja logado ou sem empresa
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    tryLinkForExistingUser();
+>>>>>>> bb0443b (autosync: update 2026-01-15T19:03:33.634Z)
   }, [sessionId, planoId, periodo, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -202,51 +239,68 @@ export default function SubscriptionSuccess() {
         throw new Error(`Falha ao criar empresa: ${empErr.message}`);
       }
       
-      if (!empresa) {
-        logStep('Etapa 2 FALHOU: empresa não retornada');
-        throw new Error('Empresa não foi criada corretamente.');
-      }
-      
-      empresaId = empresa.id;
-      logStep('Etapa 2 OK: Empresa criada', { empresaId });
-    } catch (err: any) {
-      logStep('Etapa 2 EXCEÇÃO', { error: err.message });
-      toast.error(err.message || 'Erro ao criar empresa.');
-      setIsLoading(false);
-      return;
-    }
+        useEffect(() => {
+          // Quando retornamos do checkout do Stripe (`session_id` presente), tentamos vincular
+          // automaticamente a assinatura se o usuário já estiver logado e possuir `empresa_id`.
+          const tryApplySubscriptionForLoggedUser = async () => {
+            if (!sessionId) {
+              setIsLoading(false);
+              setShowForm(true);
+              return;
+            }
 
-    // Etapa 3: Atualizar profile com empresa_id
-    try {
-      logStep('Etapa 3: Atualizando profile...', { userId, empresaId });
-      const { error: profErr } = await supabase
-        .from('profiles')
-        .update({ empresa_id: empresaId })
-        .eq('id', userId);
-      
-      if (profErr) {
-        logStep('Etapa 3 FALHOU: Erro ao atualizar profile', { error: profErr.message, code: profErr.code });
-        throw new Error(`Falha ao vincular empresa ao perfil: ${profErr.message}`);
-      }
-      
-      logStep('Etapa 3 OK: Profile atualizado');
-    } catch (err: any) {
-      logStep('Etapa 3 EXCEÇÃO', { error: err.message });
-      toast.error(err.message || 'Erro ao vincular empresa.');
-      setIsLoading(false);
-      return;
-    }
+            try {
+              const { data: { user } } = await supabase.auth.getUser();
+              if (!user) {
+                setIsLoading(false);
+                setShowForm(true);
+                return;
+              }
 
-    // Etapa 4: Criar role de proprietário
-    try {
-      logStep('Etapa 4: Criando role de proprietário...', { userId, empresaId });
-      const { error: roleErr } = await supabase.from('user_roles').insert({
-        user_id: userId,
-        empresa_id: empresaId,
-        role: 'proprietario',
-      });
-      
-      if (roleErr) {
+              const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('empresa_id')
+                .eq('id', user.id)
+                .single();
+
+              if (profileError) {
+                console.warn('Erro ao buscar profile:', profileError);
+              }
+
+              if (!profile?.empresa_id) {
+                setIsLoading(false);
+                setShowForm(true);
+                return;
+              }
+
+              // Processa assinatura via Edge Function
+              setIsLoading(true);
+              const { error } = await supabase.functions.invoke('process-subscription', {
+                body: {
+                  sessionId,
+                  empresaId: profile.empresa_id,
+                  planoId,
+                  periodo,
+                },
+              });
+
+              if (error) {
+                toast.error(error.message || 'Falha ao atualizar assinatura.');
+                setIsLoading(false);
+                setShowForm(true);
+                return;
+              }
+
+              toast.success('Assinatura atualizada com sucesso!');
+              navigate('/admin/assinatura');
+            } catch (e) {
+              // mantém formulário em caso de erro (usuário não logado ou problema na função)
+              setIsLoading(false);
+              setShowForm(true);
+            }
+          };
+
+          tryApplySubscriptionForLoggedUser();
         logStep('Etapa 4 AVISO: Erro ao criar role (não fatal)', { error: roleErr.message });
         // Não falhar por isso, pois o usuário pode continuar
       } else {
@@ -267,7 +321,7 @@ export default function SubscriptionSuccess() {
           periodo,
         },
       });
-      
+
       if (linkErr) {
         logStep('Etapa 5 AVISO: Erro ao vincular assinatura', { error: linkErr.message });
         // Salvar para tentar novamente depois
@@ -283,9 +337,12 @@ export default function SubscriptionSuccess() {
         logStep('Etapa 5 OK: Assinatura vinculada', { response: linkRes });
         toast.success('Assinatura vinculada com sucesso!');
       }
-    } catch (fnError: any) {
-      logStep('Etapa 5 EXCEÇÃO: Edge function não disponível', { error: fnError.message });
-      // Salvar para tentar novamente depois
+
+      // Redireciona para a tela de assinatura para o usuário finalizar/visualizar o plano
+      navigate('/admin/assinatura');
+    } catch (err: any) {
+      // Em caso de erro (ex.: edge function indisponível), registra e salva para retry
+      logStep('Etapa 5 EXCEÇÃO: Erro ao processar assinatura', { error: err.message });
       localStorage.setItem('pending_subscription', JSON.stringify({ 
         sessionId, 
         empresaId, 
@@ -294,6 +351,8 @@ export default function SubscriptionSuccess() {
         timestamp: Date.now() 
       }));
       toast.warning('Cadastro criado! A assinatura será ativada automaticamente.');
+    } finally {
+      setIsLoading(false);
     }
 
     // Etapa 6: Enviar e-mail de boas-vindas (não bloqueia o fluxo)
