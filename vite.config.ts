@@ -8,7 +8,7 @@ export default defineConfig(async ({ mode }) => {
   const plugins: PluginOption[] = [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       includeAssets: ["pwa-icon.png", "pwa-icon-192.png", "pwa-icon-512.png", "apple-touch-icon.png"],
       devOptions: {
         enabled: true
@@ -62,7 +62,7 @@ export default defineConfig(async ({ mode }) => {
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,jpg,jpeg,webp}"],
         cleanupOutdatedCaches: true,
-        skipWaiting: false,
+        skipWaiting: true,
         clientsClaim: true,
         runtimeCaching: [
           {
