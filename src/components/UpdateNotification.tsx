@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 export const UpdateNotification = () => {
   const [showNotification, setShowNotification] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     if (sessionStorage.getItem('update_available') === '1') {
@@ -106,6 +107,10 @@ export const UpdateNotification = () => {
   }, []);
 
   const handleUpdate = () => {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    sessionStorage.removeItem('update_available');
+    setShowNotification(false);
     if (waitingWorker) {
       // Envia mensagem para o service worker para pular a espera
       waitingWorker.postMessage({ type: 'SKIP_WAITING' });
@@ -151,6 +156,7 @@ export const UpdateNotification = () => {
           <div className="flex items-center gap-2">
             <Button
               onClick={handleUpdate}
+              disabled={isUpdating}
               size="sm"
               variant="secondary"
               className="bg-white text-green-600 hover:bg-gray-100"
