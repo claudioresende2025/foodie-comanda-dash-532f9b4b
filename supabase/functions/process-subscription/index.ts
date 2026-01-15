@@ -15,11 +15,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-<<<<<<< HEAD
-    const { sessionId, empresaId, planoId: inputPlanoId, periodo: inputPeriodo } = await req.json();
-=======
     const { sessionId, empresaId, planoId: planoIdInput, periodo: periodoInput } = await req.json();
->>>>>>> 314605f (autosync: update 2026-01-15T10:58:59.405Z)
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -42,7 +38,7 @@ serve(async (req) => {
     if (!sessionId) throw new Error("sessionId é obrigatório");
     if (!empresaId) throw new Error("empresaId é obrigatório");
 
-    logStep("Iniciando processamento", { sessionId, empresaId, inputPlanoId, inputPeriodo });
+    logStep("Iniciando processamento", { sessionId, empresaId, planoIdInput, periodoInput });
 
     // Recuperar sessão e subscription
     const session = await stripeRequest(`checkout/sessions/${sessionId}`);
@@ -70,14 +66,9 @@ serve(async (req) => {
 
     const status = statusMap[subscription.status] || "active";
 
-<<<<<<< HEAD
-    // Usar planoId do input ou inferir da subscription
-    let planoId = inputPlanoId || subscription.metadata?.plano_id;
-    const periodo = inputPeriodo || subscription.metadata?.periodo || 'mensal';
-=======
-    // Inferir plano_id
+    // Inferir plano_id e período
     let planoId = (planoIdInput as string | undefined) || (subscription.metadata?.plano_id as string | undefined);
->>>>>>> 314605f (autosync: update 2026-01-15T10:58:59.405Z)
+    const periodo = (periodoInput as string | undefined) || (subscription.metadata?.periodo as string | undefined) || 'mensal';
 
     if (!planoId && subscription.items?.data?.length > 0) {
       const priceId = subscription.items.data[0].price?.id;
@@ -120,17 +111,12 @@ serve(async (req) => {
     logStep("Plano identificado", { planoId, periodo, status });
 
     // Calcular datas
-    const dataInicio = subscription.current_period_start 
-      ? new Date(subscription.current_period_start * 1000).toISOString() 
-      : new Date().toISOString();
-    
-    const dataFim = subscription.current_period_end 
-      ? new Date(subscription.current_period_end * 1000).toISOString() 
-      : null;
-
-    const trialFim = subscription.trial_end 
+    const currentStartISO = subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null;
+    const currentEndISO = subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null;
+    const trialStartISO = subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null;
+    const trialEndISO = subscription.trial_end 
       ? new Date(subscription.trial_end * 1000).toISOString() 
-      : null;
+      : currentEndISO;
 
     // Upsert assinatura
     const { error: upsertError } = await supabase
@@ -142,19 +128,11 @@ serve(async (req) => {
         periodo: periodo,
         stripe_customer_id: session.customer as string,
         stripe_subscription_id: subscription.id,
-<<<<<<< HEAD
-        data_inicio: dataInicio,
-        data_fim: dataFim,
-        trial_fim: trialFim,
+        trial_start: trialStartISO,
+        trial_end: trialEndISO,
+        current_period_start: currentStartISO,
+        current_period_end: currentEndISO,
         updated_at: new Date().toISOString(),
-=======
-        periodo: (periodoInput as string | null) || (subscription.metadata?.periodo || null),
-        trial_start: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null,
-        trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-        current_period_start: updateData.current_period_start,
-        current_period_end: updateData.current_period_end,
-        updated_at: updateData.updated_at,
->>>>>>> 314605f (autosync: update 2026-01-15T10:58:59.405Z)
       }, { onConflict: 'empresa_id' });
 
     if (upsertError) {
