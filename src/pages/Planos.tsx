@@ -1,18 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { 
-  Check, X, Loader2, Zap, Crown, Building2, ArrowLeft, Star, Shield, Clock, CreditCard, Phone 
-} from 'lucide-react';
+import { Check, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Configuração visual dos planos (Overrides conforme sua solicitação)
 const PLAN_CONFIG: Record<string, any> = {
   'basico': {
     nome: 'Plano Iniciante (Bronze)',
@@ -59,7 +55,6 @@ const PLAN_CONFIG: Record<string, any> = {
 };
 
 export default function Planos() {
-  const navigate = useNavigate();
   const [planos, setPlanos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnual, setIsAnual] = useState(false);
@@ -83,15 +78,16 @@ export default function Planos() {
 
       const formatted = (data || []).map(p => {
         const slug = p.slug?.toLowerCase() || '';
-        let config = PLAN_CONFIG['basico'];
-        if (slug.includes('profissional') || slug.includes('prata')) config = PLAN_CONFIG['profissional'];
-        if (slug.includes('enterprise') || slug.includes('ouro')) config = PLAN_CONFIG['enterprise'];
+        // Identifica qual config usar baseada no slug do banco
+        let configKey = 'basico';
+        if (slug.includes('profissional') || slug.includes('prata')) configKey = 'profissional';
+        if (slug.includes('enterprise') || slug.includes('ouro')) configKey = 'enterprise';
 
+        const config = PLAN_CONFIG[configKey];
         return {
           ...p,
-          nome: config.nome,
-          recursos: config.recursos,
-          trial_days: p.trial_days || 3
+          nome: config.nome, // Sobrescreve apenas para exibição visual
+          recursos: config.recursos
         };
       });
 
@@ -114,28 +110,30 @@ export default function Planos() {
   const handleSelectPlan = async (plano: any) => {
     setProcessingPlan(plano.id);
     try {
-      // 1. Definimos para onde o cliente vai após pagar
-      // Se ele NÃO tem empresaId, mandamos para o cadastro/onboarding
-      const successUrl = `${window.location.origin}/onboarding?session_id={CHECKOUT_SESSION_ID}&plano_id=${plano.id}`;
-      const cancelUrl = `${window.location.origin}/planos?canceled=true`;
-
+      // URL de sucesso aponta para sua página de cadastro pós-pagamento
+      const successUrl = `${window.location.origin}/subscription-success?session_id={CHECKOUT_SESSION_ID}&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}`;
+      
       const { data, error } = await supabase.functions.invoke('create-subscription-checkout', {
         body: {
           planoId: plano.id,
           periodo: isAnual ? 'anual' : 'mensal',
-          successUrl,
-          cancelUrl,
-          empresaId: empresaId || null, // Se for null, a Function não deve dar erro de "empresa não encontrada"
+          successUrl: successUrl,
+          cancelUrl: `${window.location.origin}/planos`,
+          empresaId: empresaId,
           trial_days: plano.trial_days
         }
       });
 
       if (error) throw error;
-      if (data?.url) window.location.href = data.url;
+      if (data?.url) {
+        window.location.href = data.url; // Redireciona para o Stripe
+      } else {
+        throw new Error("URL do Stripe não retornada");
+      }
 
     } catch (err: any) {
-      console.error('Erro no checkout:', err);
-      toast.error('Falha ao iniciar pagamento. Tente novamente.');
+      console.error('Erro:', err);
+      toast.error('Erro ao ir para o pagamento. Verifique os logs.');
     } finally {
       setProcessingPlan(null);
     }
@@ -148,8 +146,6 @@ export default function Planos() {
       <div className="container mx-auto px-4 pt-16">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4">Escolha seu Plano</h1>
-          <p className="text-muted-foreground">Comece hoje e profissionalize seu restaurante</p>
-          
           <div className="flex items-center justify-center gap-4 mt-8">
             <Label>Mensal</Label>
             <Switch checked={isAnual} onCheckedChange={setIsAnual} />
@@ -159,7 +155,7 @@ export default function Planos() {
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {planos.map((plano) => (
-            <Card key={plano.id} className={plano.destaque ? 'border-primary shadow-lg scale-105' : ''}>
+            <Card key={plano.id} className={plano.destaque ? 'border-primary shadow-lg' : ''}>
               <CardHeader className="text-center">
                 <CardTitle>{plano.nome}</CardTitle>
                 <div className="mt-4">
@@ -183,7 +179,7 @@ export default function Planos() {
               <CardFooter>
                 <Button 
                   className="w-full" 
-                  disabled={!!processingPlan}
+                  disabled={processingPlan === plano.id}
                   onClick={() => handleSelectPlan(plano)}
                 >
                   {processingPlan === plano.id ? <Loader2 className="animate-spin mr-2" /> : 'Selecionar'}
