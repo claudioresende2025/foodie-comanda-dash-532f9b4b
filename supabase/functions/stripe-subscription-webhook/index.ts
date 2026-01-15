@@ -109,31 +109,75 @@ serve(async (req: Request) => {
               });
             } catch (fetchErr) {
               console.error('Falha ao recuperar evento na API do Stripe durante fallback:', getErrorMessage(fetchErr));
-              // Persistir payload para depuração
+              event = null;
+            }
+          } else {
+            // Fallback alternativo: buscar recurso principal do evento (subscription/invoice/session/charge)
+            const obj = provisional?.data?.object;
+            const objId: string | undefined = obj?.id;
+            const objType: string | undefined = obj?.object;
+            let path: string | null = null;
+            if (objId && typeof objId === 'string') {
+              switch (objType) {
+                case 'subscription':
+                  path = `subscriptions/${objId}`;
+                  break;
+                case 'invoice':
+                  path = `invoices/${objId}`;
+                  break;
+                case 'checkout.session':
+                  path = `checkout/sessions/${objId}`;
+                  break;
+                case 'charge':
+                  path = `charges/${objId}`;
+                  break;
+                default:
+                  if (provisional?.type && provisional.type.startsWith('customer.subscription')) {
+                    path = `subscriptions/${objId}`;
+                  }
+                  break;
+              }
+            }
+            if (path) {
+              try {
+                const fetchedObject = await stripeRequest(path, 'GET');
+                event = { type: provisional?.type, data: { object: fetchedObject } };
+                try {
+                  await supabase.from('webhook_logs').insert({
+                    event: 'invalid_signature_object_fallback_used',
+                    referencia: objId || null,
+                    empresa_id: null,
+                    payload: { type: provisional?.type, object: objType },
+                  });
+                } catch (e) {
+                  console.warn('Não foi possível inserir webhook_logs para object_fallback:', e);
+                }
+                console.warn('Processando evento reconstruído via objeto Stripe devido à assinatura inválida:', {
+                  type: provisional?.type,
+                  object: objType,
+                  id: objId,
+                });
+              } catch (fetchObjErr) {
+                console.error('Falha ao recuperar objeto principal na API do Stripe durante fallback:', getErrorMessage(fetchObjErr));
+                event = null;
+              }
+            } else {
+              event = null;
+            }
+
+            if (!event) {
               try {
                 await supabase.from('webhook_logs').insert({
-                  event: 'invalid_signature_and_fetch_failed',
-                  referencia: eventId,
+                  event: 'invalid_signature_no_event_id_and_no_object_fallback',
+                  referencia: null,
                   empresa_id: null,
                   payload: provisional,
                 });
               } catch (e) {
-                console.warn('Não foi possível inserir webhook_logs para fetch_failed:', e);
+                console.warn('Não foi possível inserir webhook_logs para no_event_id_and_no_object:', e);
               }
               return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
             }
-          } else {
-            try {
-              await supabase.from('webhook_logs').insert({
-                event: 'invalid_signature_no_event_id',
-                referencia: null,
-                empresa_id: null,
-                payload: provisional,
-              });
-            } catch (e) {
-              console.warn('Não foi possível inserir webhook_logs para no_event_id:', e);
-            }
-            return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
           }
         } catch (parseErr) {
           console.error('Falha ao parsear body JSON durante fallback:', getErrorMessage(parseErr));
