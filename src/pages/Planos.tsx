@@ -279,9 +279,6 @@ export default function Planos() {
         // ignore localStorage errors
       }
       
-<<<<<<< HEAD
-      
-      // URL de sucesso: fluxo unificado
       // Se já tem empresaId (usuário logado), trata em /admin/assinatura; caso contrário, usa /subscription/success
       const successUrl = empresaId 
         ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
