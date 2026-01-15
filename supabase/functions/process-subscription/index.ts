@@ -92,6 +92,7 @@ serve(async (req) => {
       }
     }
 
+<<<<<<< HEAD
     if (!planoId) {
       // Fallback: buscar qualquer plano ativo
       const { data: anyPlan } = await supabase
@@ -103,6 +104,26 @@ serve(async (req) => {
         .maybeSingle();
       if (anyPlan?.id) planoId = anyPlan.id;
     }
+=======
+    const currentStartISO = subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null;
+    const currentEndISO = subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null;
+    const trialStartISO = subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null;
+    // Fallback: se trial_end vier vazio, usar current_period_end para representar fim do trial
+    const trialEndISO = subscription.trial_end 
+      ? new Date(subscription.trial_end * 1000).toISOString() 
+      : currentEndISO;
+
+    const updateData: Record<string, any> = {
+      status,
+      current_period_start: currentStartISO,
+      current_period_end: currentEndISO,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+      updated_at: new Date().toISOString(),
+      trial_start: trialStartISO,
+      trial_end: trialEndISO,
+    };
+>>>>>>> 178f6ed (autosync: update 2026-01-15T11:29:02.670Z)
 
     if (!planoId) {
       throw new Error("Não foi possível determinar o plano da assinatura");
