@@ -37,6 +37,43 @@ export default function SubscriptionSuccess() {
     if (per) setPeriodo(per);
   }, [params]);
 
+  useEffect(() => {
+    const tryLinkForExistingUser = async () => {
+      if (!sessionId) return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('empresa_id')
+          .eq('id', user.id)
+          .single();
+        if (!profile?.empresa_id) return;
+        setIsLoading(true);
+        const { error } = await supabase.functions.invoke('process-subscription', {
+          body: {
+            sessionId,
+            empresaId: profile.empresa_id,
+            planoId,
+            periodo,
+          },
+        });
+        if (error) {
+          toast.error(error.message || 'Falha ao atualizar assinatura.');
+          setIsLoading(false);
+          return;
+        }
+        toast.success('Assinatura atualizada com sucesso!');
+        navigate('/admin/assinatura');
+      } catch (e: any) {
+        // mantém formulário caso não esteja logado ou sem empresa
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    tryLinkForExistingUser();
+  }, [sessionId, planoId, periodo, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionId) {
@@ -98,7 +135,7 @@ export default function SubscriptionSuccess() {
         toast.success('Assinatura vinculada com sucesso!');
       }
 
-      navigate('/admin');
+      navigate('/admin/assinatura');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao concluir cadastro.');
     } finally {
