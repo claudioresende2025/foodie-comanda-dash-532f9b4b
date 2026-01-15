@@ -6,6 +6,16 @@ export const UpdateNotification = () => {
   const [showNotification, setShowNotification] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showTimer, setShowTimer] = useState<number | null>(null);
+
+  const triggerShowWithDelay = () => {
+    if (showTimer) return;
+    const t = window.setTimeout(() => {
+      setShowNotification(true);
+      setShowTimer(null);
+    }, 10000);
+    setShowTimer(t);
+  };
 
   useEffect(() => {
     if (sessionStorage.getItem('update_available') === '1') {
@@ -24,7 +34,7 @@ export const UpdateNotification = () => {
           if (registration) {
             if (registration.waiting) {
               setWaitingWorker(registration.waiting);
-              setShowNotification(true);
+              triggerShowWithDelay();
               sessionStorage.setItem('update_available', '1');
             }
 
@@ -34,7 +44,7 @@ export const UpdateNotification = () => {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     setWaitingWorker(newWorker);
-                    setShowNotification(true);
+                    triggerShowWithDelay();
                     sessionStorage.setItem('update_available', '1');
                   }
                 });
@@ -47,7 +57,7 @@ export const UpdateNotification = () => {
           if (reg) {
             if (reg.waiting) {
               setWaitingWorker(reg.waiting);
-              setShowNotification(true);
+              triggerShowWithDelay();
               sessionStorage.setItem('update_available', '1');
             }
             reg.addEventListener('updatefound', () => {
@@ -56,7 +66,7 @@ export const UpdateNotification = () => {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     setWaitingWorker(newWorker);
-                    setShowNotification(true);
+                    triggerShowWithDelay();
                     sessionStorage.setItem('update_available', '1');
                   }
                 });
@@ -82,7 +92,7 @@ export const UpdateNotification = () => {
     // Escuta mensagens do service worker — útil para builds que enviam aviso
     const onMessage = (e: MessageEvent) => {
       if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
-        setShowNotification(true);
+        triggerShowWithDelay();
         sessionStorage.setItem('update_available', '1');
       }
     };
@@ -103,6 +113,7 @@ export const UpdateNotification = () => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
+      if (showTimer) window.clearTimeout(showTimer);
     };
   }, []);
 
