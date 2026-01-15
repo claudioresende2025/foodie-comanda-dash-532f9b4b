@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-// Evitar uso do SDK do Stripe (esm.sh) para não depender de shims Node
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -7,11 +6,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const logStep = (step: string, details?: any) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[PROCESS-SUBSCRIPTION] ${step}${detailsStr}`);
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, empresaId } = await req.json();
+    const { sessionId, empresaId, planoId: inputPlanoId, periodo: inputPeriodo } = await req.json();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -20,10 +24,10 @@ serve(async (req) => {
     if (!stripeSecretKey) throw new Error("STRIPE_SECRET_KEY não configurado");
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const stripeSecret = stripeSecretKey;
+
     const stripeRequest = async (path: string, method = 'GET') => {
       const url = `https://api.stripe.com/v1/${path}`;
-      const resp = await fetch(url, { method, headers: { Authorization: `Bearer ${stripeSecret}`, Accept: 'application/json' } });
+      const resp = await fetch(url, { method, headers: { Authorization: `Bearer ${stripeSecretKey}`, Accept: 'application/json' } });
       if (!resp.ok) {
         const txt = await resp.text();
         throw new Error(txt);
@@ -34,14 +38,21 @@ serve(async (req) => {
     if (!sessionId) throw new Error("sessionId é obrigatório");
     if (!empresaId) throw new Error("empresaId é obrigatório");
 
+    logStep("Iniciando processamento", { sessionId, empresaId, inputPlanoId, inputPeriodo });
+
     // Recuperar sessão e subscription
     const session = await stripeRequest(`checkout/sessions/${sessionId}`);
     const subscriptionId = session.subscription as string;
+    
+    logStep("Sessão recuperada", { subscriptionId, customer: session.customer });
+
     if (!subscriptionId) throw new Error("subscription id não encontrado na session");
 
     const subscription = await stripeRequest(`subscriptions/${subscriptionId}`);
 
-    // Reaproveita a lógica do webhook: inferir plano pelo metadata/price/product
+    logStep("Subscription recuperada", { status: subscription.status, metadata: subscription.metadata });
+
+    // Mapear status
     const statusMap: Record<string, string> = {
       trialing: "trialing",
       active: "active",
@@ -55,8 +66,9 @@ serve(async (req) => {
 
     const status = statusMap[subscription.status] || "active";
 
-    // Inferir plano_id
-    let planoId = subscription.metadata?.plano_id as string | undefined;
+    // Usar planoId do input ou inferir da subscription
+    let planoId = inputPlanoId || subscription.metadata?.plano_id;
+    const periodo = inputPeriodo || subscription.metadata?.periodo || 'mensal';
 
     if (!planoId && subscription.items?.data?.length > 0) {
       const priceId = subscription.items.data[0].price?.id;
@@ -77,62 +89,81 @@ serve(async (req) => {
             .maybeSingle();
           if (planoAnual?.id) planoId = planoAnual.id;
         }
-
-        if (!planoId) {
-          const productId = subscription.items.data[0].price?.product;
-          if (productId && typeof productId === 'string') {
-            const { data: planoByProduct } = await supabase
-              .from('planos')
-              .select('id')
-              .eq('stripe_product_id', productId)
-              .maybeSingle();
-            if (planoByProduct?.id) planoId = planoByProduct.id;
-          }
-        }
       }
     }
 
-    const updateData: Record<string, any> = {
-      status,
-      current_period_start: subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null,
-      current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
-      cancel_at_period_end: subscription.cancel_at_period_end,
-      canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
-      updated_at: new Date().toISOString(),
-    };
+    if (!planoId) {
+      // Fallback: buscar qualquer plano ativo
+      const { data: anyPlan } = await supabase
+        .from("planos")
+        .select("id")
+        .eq("ativo", true)
+        .order("ordem", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (anyPlan?.id) planoId = anyPlan.id;
+    }
 
-    if (planoId) updateData.plano_id = planoId;
+    if (!planoId) {
+      throw new Error("Não foi possível determinar o plano da assinatura");
+    }
+
+    logStep("Plano identificado", { planoId, periodo, status });
+
+    // Calcular datas
+    const dataInicio = subscription.current_period_start 
+      ? new Date(subscription.current_period_start * 1000).toISOString() 
+      : new Date().toISOString();
+    
+    const dataFim = subscription.current_period_end 
+      ? new Date(subscription.current_period_end * 1000).toISOString() 
+      : null;
+
+    const trialFim = subscription.trial_end 
+      ? new Date(subscription.trial_end * 1000).toISOString() 
+      : null;
 
     // Upsert assinatura
-    await supabase
+    const { error: upsertError } = await supabase
       .from('assinaturas')
       .upsert({
         empresa_id: empresaId,
-        plano_id: updateData.plano_id,
-        status: updateData.status,
+        plano_id: planoId,
+        status: status,
+        periodo: periodo,
         stripe_customer_id: session.customer as string,
         stripe_subscription_id: subscription.id,
-        periodo: subscription.metadata?.periodo || null,
-        trial_start: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null,
-        trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-        current_period_start: updateData.current_period_start,
-        current_period_end: updateData.current_period_end,
-        updated_at: updateData.updated_at,
+        data_inicio: dataInicio,
+        data_fim: dataFim,
+        trial_fim: trialFim,
+        updated_at: new Date().toISOString(),
       }, { onConflict: 'empresa_id' });
 
-    // Atualizar empresa
-    await supabase
-      .from('empresas')
-      .update({
-        subscription_status: status,
-        blocked_at: ['canceled', 'unpaid', 'past_due'].includes(status) ? new Date().toISOString() : null,
-        block_reason: status === 'canceled' ? 'Assinatura cancelada' : status === 'past_due' ? 'Pagamento atrasado' : null,
-      })
-      .eq('id', empresaId);
+    if (upsertError) {
+      logStep("Erro no upsert", { error: upsertError });
+      throw new Error(`Erro ao salvar assinatura: ${upsertError.message}`);
+    }
 
-    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    logStep("Assinatura salva com sucesso", { empresaId, planoId, status });
+
+    return new Response(JSON.stringify({ 
+      success: true,
+      empresaId,
+      planoId,
+      status,
+      subscriptionId: subscription.id
+    }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
+
   } catch (err: any) {
-    console.error('Erro em process-subscription:', err);
-    return new Response(JSON.stringify({ error: err.message || String(err) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    logStep('ERRO', { message: err.message || String(err) });
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: err.message || String(err) 
+    }), { 
+      status: 200, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 });
