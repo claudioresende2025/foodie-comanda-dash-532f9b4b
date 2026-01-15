@@ -280,9 +280,7 @@ export default function Planos() {
       }
       
       // Se já tem empresaId (usuário logado), trata em /admin/assinatura; caso contrário, usa /subscription/success
-      const successUrl = empresaId 
-        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
-        : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+      const successUrl = `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
 
       const body: any = {
         planoId: plano.id,
