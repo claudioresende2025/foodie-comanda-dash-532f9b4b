@@ -605,9 +605,14 @@ export default function Assinatura() {
               </CardHeader>
               <CardContent>
                 {pagamentos.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    Nenhum pagamento registrado
-                  </p>
+                  <div className="text-center text-muted-foreground py-8">
+                    <p className="mb-2">Nenhum pagamento registrado</p>
+                    {assinatura.status === 'trialing' && (
+                      <p className="text-xs">
+                        Primeiro pagamento programado para {getNextChargeDate()}
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {pagamentos.map((pagamento) => (
