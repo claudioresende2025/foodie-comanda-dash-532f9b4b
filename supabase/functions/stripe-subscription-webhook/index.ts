@@ -52,6 +52,70 @@ serve(async (req: Request) => {
       return resp.json();
     };
 
+    // Diagnóstico opcional: permite verificar configuração sem depender da assinatura do Stripe
+    const urlObj = new URL(req.url);
+    const isDiagnose = urlObj.searchParams.get('diagnose') === '1' || req.headers.get('x-diagnostic') === '1';
+    if (isDiagnose) {
+      const check: any = {
+        env: {
+          STRIPE_SECRET_KEY: !!stripeSecretKey,
+          STRIPE_WEBHOOK_SECRET: !!stripeWebhookSecret,
+          SUPABASE_URL: !!supabaseUrl,
+          SUPABASE_SERVICE_ROLE_KEY: !!supabaseServiceKey,
+        },
+        webhook_endpoint_match: null,
+        recent_events: [],
+        recent_webhook_logs: [],
+        assinatura: null,
+      };
+      try {
+        const endpoints = await stripeRequest('webhook_endpoints', 'GET');
+        const expectedUrl = `https://${(Deno.env.get("SUPABASE_PROJECT_REF") || supabaseUrl?.match(/https:\/\/([^.]*)/)?.[1])}.supabase.co/functions/v1/stripe-subscription-webhook`;
+        const match = (endpoints?.data || []).find((e: any) => e.url === expectedUrl);
+        check.webhook_endpoint_match = {
+          expected_url: expectedUrl,
+          matched: !!match,
+          endpoint_id: match?.id || null,
+          enabled_events: match?.enabled_events || [],
+        };
+      } catch (e) {
+        check.webhook_endpoint_match = { error: getErrorMessage(e) };
+      }
+      try {
+        const events = await stripeRequest('events?limit=5', 'GET');
+        check.recent_events = (events?.data || []).map((ev: any) => ({ id: ev.id, type: ev.type, created: ev.created }));
+      } catch (e) {
+        check.recent_events = [{ error: getErrorMessage(e) }];
+      }
+      try {
+        const { data: logs } = await createClient(supabaseUrl, supabaseServiceKey)
+          .from('webhook_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(10);
+        check.recent_webhook_logs = (logs || []).map((l: any) => ({ event: l.event, referencia: l.referencia, created_at: l.created_at }));
+      } catch (e) {
+        check.recent_webhook_logs = [{ error: getErrorMessage(e) }];
+      }
+      const empresaId = urlObj.searchParams.get('empresaId');
+      if (empresaId) {
+        try {
+          const { data: assinaturaRow } = await createClient(supabaseUrl, supabaseServiceKey)
+            .from('assinaturas')
+            .select('empresa_id, plano_id, status, current_period_end, current_period_start, trial_start, trial_end, stripe_subscription_id')
+            .eq('empresa_id', empresaId)
+            .maybeSingle();
+          check.assinatura = assinaturaRow || null;
+        } catch (e) {
+          check.assinatura = { error: getErrorMessage(e) };
+        }
+      }
+      return new Response(JSON.stringify({ success: true, diagnose: check }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Função para verificar assinatura do webhook Stripe (HMAC SHA256)
     const verifyStripeSignature = async (payload: string, sigHeader: string | null, secret: string) => {
       if (!sigHeader) return false;
