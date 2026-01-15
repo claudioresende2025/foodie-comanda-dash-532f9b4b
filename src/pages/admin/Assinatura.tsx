@@ -324,8 +324,13 @@ export default function Assinatura() {
   };
   
   const getNextChargeDate = () => {
-    if (assinatura?.status === 'trialing' && isValidDate(assinatura?.trial_end)) {
-      return formatDateBR(assinatura!.trial_end);
+    if (assinatura?.status === 'trialing') {
+      if (isValidDate(assinatura?.trial_end)) {
+        return formatDateBR(assinatura!.trial_end);
+      }
+      if (isValidDate(assinatura?.current_period_end)) {
+        return formatDateBR(assinatura!.current_period_end);
+      }
     }
     const end = assinatura?.current_period_end;
     if (isValidDate(end)) return formatDateBR(end);
