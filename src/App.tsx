@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -21,6 +21,7 @@ import Index from "@/pages/Index";
 import Planos from "@/pages/Planos";
 import SubscriptionSuccess from "@/pages/SubscriptionSuccess";
 import SuperAdmin from "@/pages/SuperAdmin";
+import SubscriptionSuccess from "@/pages/subscription/Success";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import Dashboard from "@/pages/admin/Dashboard";
 import Onboarding from "@/pages/admin/Onboarding";
@@ -112,8 +113,12 @@ const App = () => (
 
 function SubscriptionHandler() {
   const navigate = useNavigate();
+  const location = useLocation();
   useEffect(() => {
     try {
+      if (location.pathname.startsWith('/subscription')) {
+        return;
+      }
       const params = new URLSearchParams(window.location.search);
       if (params.get('subscription') === 'success') {
         (async () => {
@@ -141,7 +146,7 @@ function SubscriptionHandler() {
     } catch (e) {
       // ignore
     }
-  }, [navigate]);
+  }, [navigate, location.pathname]);
   return null;
 }
 
