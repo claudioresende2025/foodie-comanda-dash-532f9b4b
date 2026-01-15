@@ -279,8 +279,11 @@ export default function Planos() {
         // ignore localStorage errors
       }
       
-      // URL de sucesso: leva para a aplicação com parâmetros; App/Onboarding tratam o fluxo
-      const successUrl = `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+      // URL de sucesso: leva para página de cadastro pós-pagamento (novo fluxo)
+      // Se já tem empresaId (usuário logado), vai para assinatura, senão vai para cadastro
+      const successUrl = empresaId 
+        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
+        : `${window.location.origin}/subscription/success?planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
 
       const body: any = {
         planoId: plano.id,

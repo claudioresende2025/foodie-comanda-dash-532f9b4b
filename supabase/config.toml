@@ -14,3 +14,15 @@ verify_jwt = false
 
 [functions.request-refund]
 verify_jwt = false
+
+[functions.verify-subscription-payment]
+verify_jwt = false
+
+[functions.process-subscription]
+verify_jwt = false
+
+[functions.complete-delivery-order]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false

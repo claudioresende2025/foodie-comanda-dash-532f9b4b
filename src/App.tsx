@@ -19,6 +19,7 @@ import DeliveryProfile from "@/pages/DeliveryProfile";
 import Install from "@/pages/Install";
 import Index from "@/pages/Index";
 import Planos from "@/pages/Planos";
+import SubscriptionSuccess from "@/pages/SubscriptionSuccess";
 import SuperAdmin from "@/pages/SuperAdmin";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import Dashboard from "@/pages/admin/Dashboard";
@@ -69,6 +70,7 @@ const App = () => (
             <Route path="/install" element={<Install />} />
             {/* Planos e Assinatura */}
             <Route path="/planos" element={<Planos />} />
+            <Route path="/subscription/success" element={<SubscriptionSuccess />} />
             {/* Super Admin (Desenvolvedor) */}
             <Route path="/super-admin" element={<SuperAdmin />} />
             {/* Delivery marketplace */}
