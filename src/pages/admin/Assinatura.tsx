@@ -304,19 +304,23 @@ export default function Assinatura() {
   const statusConfig = assinatura ? getStatusConfig(assinatura.status) : null;
   const StatusIcon = statusConfig?.icon || CheckCircle2;
 
-  // Calcular dias restantes do trial
   const resolveDate = (value?: any) => {
     if (!value) return null;
     const d = new Date(value);
     return isNaN(d.getTime()) ? null : d;
   };
-  const trialEndDate = resolveDate(assinatura?.trial_end) || resolveDate(assinatura?.current_period_end);
-  const trialStartDate = resolveDate(assinatura?.trial_start) || resolveDate(assinatura?.current_period_start);
-  const trialDaysRemaining = trialEndDate
-    ? Math.max(0, Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-    : 0;
-  const trialDaysTotal = trialEndDate && trialStartDate
-    ? Math.max(1, Math.ceil((trialEndDate.getTime() - trialStartDate.getTime()) / (1000 * 60 * 60 * 24)))
+  const trialStartDateRaw = resolveDate(assinatura?.trial_start) || resolveDate(assinatura?.current_period_start) || resolveDate(assinatura?.updated_at);
+  const trialEndDateRaw = resolveDate(assinatura?.trial_end);
+  const computedTrialEnd = (() => {
+    if (trialEndDateRaw) return trialEndDateRaw;
+    if (trialStartDateRaw) return new Date(trialStartDateRaw.getTime() + 3 * 24 * 60 * 60 * 1000);
+    return null;
+  })();
+  const trialDaysRemaining = computedTrialEnd
+    ? Math.max(0, Math.ceil((computedTrialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 3;
+  const trialDaysTotal = computedTrialEnd && trialStartDateRaw
+    ? Math.max(1, Math.ceil((computedTrialEnd.getTime() - trialStartDateRaw.getTime()) / (1000 * 60 * 60 * 24)))
     : 3;
 
   const isValidDate = (value?: any) => {
