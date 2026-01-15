@@ -98,11 +98,29 @@ export default function Assinatura() {
       const subscriptionSuccess = searchParams.get('subscription');
       const planoId = searchParams.get('planoId');
       const sessionId = searchParams.get('session_id');
+      const periodo = searchParams.get('periodo');
       
       if (subscriptionSuccess === 'success' && planoId && profile?.empresa_id) {
         console.log('[Assinatura] Processando sucesso do checkout:', { planoId, sessionId });
         
         try {
+          if (sessionId) {
+            try {
+              const { error } = await supabase.functions.invoke('process-subscription', {
+                body: {
+                  sessionId,
+                  empresaId: profile.empresa_id,
+                  planoId,
+                  periodo,
+                },
+              });
+              if (error) {
+                console.warn('Falha ao vincular assinatura via process-subscription:', error);
+              }
+            } catch (e) {
+              console.warn('Erro ao chamar process-subscription:', e);
+            }
+          }
           toast.success('Checkout concluído! Atualizando assinatura...');
           try { localStorage.removeItem('post_subscribe_plan'); } catch (e) { void e; }
         } catch (err) {
