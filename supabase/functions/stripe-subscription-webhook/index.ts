@@ -117,7 +117,7 @@ serve(async (req: Request) => {
     }
 
     // Função para verificar assinatura do webhook Stripe (HMAC SHA256)
-    const verifyStripeSignature = async (payload: string, sigHeader: string | null, secret: string) => {
+    const verifyStripeSignature = async (payload: string, sigHeader: string | null, secret: string, toleranceSeconds = 300) => {
       if (!sigHeader) return false;
       // Header example: t=timestamp,v1=signature,v0=...
       const parts = sigHeader.split(',');
@@ -129,6 +129,10 @@ serve(async (req: Request) => {
         if (k === 'v1') signatures.push(v);
       }
       if (!timestamp) return false;
+      const ts = Number(timestamp);
+      if (!Number.isFinite(ts)) return false;
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (Math.abs(nowSec - ts) > toleranceSeconds) return false;
       const signed = `${timestamp}.${payload}`;
       const enc = new TextEncoder();
       const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
