@@ -92,7 +92,6 @@ serve(async (req) => {
       }
     }
 
-<<<<<<< HEAD
     if (!planoId) {
       const { data: anyPlan } = await supabase
         .from("planos")
