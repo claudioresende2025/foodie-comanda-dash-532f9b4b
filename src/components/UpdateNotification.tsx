@@ -7,6 +7,9 @@ export const UpdateNotification = () => {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
+    if (sessionStorage.getItem('update_available') === '1') {
+      setShowNotification(true);
+    }
     // Verifica se o navegador suporta service workers
     if (!('serviceWorker' in navigator)) {
       return;
@@ -17,24 +20,26 @@ export const UpdateNotification = () => {
       try {
         // Tenta obter a registration ativa (se já existir)
         const registration = await navigator.serviceWorker.getRegistration();
-        if (registration) {
-          if (registration.waiting) {
-            setWaitingWorker(registration.waiting);
-            setShowNotification(true);
-          }
-
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  setWaitingWorker(newWorker);
-                  setShowNotification(true);
-                }
-              });
+          if (registration) {
+            if (registration.waiting) {
+              setWaitingWorker(registration.waiting);
+              setShowNotification(true);
+              sessionStorage.setItem('update_available', '1');
             }
-          });
-        }
+
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    setWaitingWorker(newWorker);
+                    setShowNotification(true);
+                    sessionStorage.setItem('update_available', '1');
+                  }
+                });
+              }
+            });
+          }
 
         // Também aguarda a registration caso ainda esteja sendo registrada
         navigator.serviceWorker.ready.then((reg) => {
@@ -42,6 +47,7 @@ export const UpdateNotification = () => {
             if (reg.waiting) {
               setWaitingWorker(reg.waiting);
               setShowNotification(true);
+              sessionStorage.setItem('update_available', '1');
             }
             reg.addEventListener('updatefound', () => {
               const newWorker = reg.installing;
@@ -50,6 +56,7 @@ export const UpdateNotification = () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     setWaitingWorker(newWorker);
                     setShowNotification(true);
+                    sessionStorage.setItem('update_available', '1');
                   }
                 });
               }
@@ -57,14 +64,13 @@ export const UpdateNotification = () => {
           }
         }).catch(() => {});
 
-        // Verifica atualizações a cada 10 segundos (se houver registration obtida)
+        // Verifica atualizações periodicamente
         const interval = setInterval(async () => {
           const reg = await navigator.serviceWorker.getRegistration();
           if (reg) {
             await reg.update();
-            console.log('[AutoUpdate] Verificando atualizações...');
           }
-        }, 10 * 1000);
+        }, 60 * 1000);
 
         return () => clearInterval(interval);
       } catch (error) {
@@ -76,6 +82,7 @@ export const UpdateNotification = () => {
     const onMessage = (e: MessageEvent) => {
       if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
         setShowNotification(true);
+        sessionStorage.setItem('update_available', '1');
       }
     };
     navigator.serviceWorker.addEventListener('message', onMessage as EventListener);
@@ -107,11 +114,23 @@ export const UpdateNotification = () => {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         window.location.reload();
       });
+      return;
     }
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (reg?.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          window.location.reload();
+        });
+      } else {
+        window.location.reload();
+      }
+    });
   };
 
   const handleClose = () => {
     setShowNotification(false);
+    sessionStorage.removeItem('update_available');
   };
 
   if (!showNotification) {
