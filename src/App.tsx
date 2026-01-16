@@ -19,7 +19,6 @@ import DeliveryProfile from "@/pages/DeliveryProfile";
 import Install from "@/pages/Install";
 import Index from "@/pages/Index";
 import Planos from "@/pages/Planos";
-import SubscriptionSuccess from "@/pages/SubscriptionSuccess";
 import SuperAdmin from "@/pages/SuperAdmin";
 import SubscriptionSuccess from "@/pages/subscription/Success";
 import { AdminLayout } from "@/components/admin/AdminLayout";
