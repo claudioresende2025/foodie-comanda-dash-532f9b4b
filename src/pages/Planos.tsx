@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { 
   Check, X, Loader2, Crown, Zap, Building2, 
-  ArrowLeft, Star, Shield, Clock, CreditCard, Phone 
+  ArrowLeft, Star, Clock 
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,10 +19,7 @@ interface Plano {
   descricao: string;
   preco_mensal: number;
   preco_anual: number;
-  recursos: any;
-  limite_pedidos_mes: number | null;
-  limite_mesas: number | null;
-  limite_usuarios: number | null;
+  recursos: any[];
   destaque: boolean;
   stripe_price_id_mensal: string | null;
   stripe_price_id_anual: string | null;
@@ -37,24 +34,6 @@ const iconMap: Record<string, any> = {
   'Básico': Zap,
   'Profissional': Crown,
   'Enterprise': Building2,
-};
-
-const defaultRecursosByPlan: Record<string, string[]> = {
-  'Básico': [
-    'Cardápio digital responsivo',
-    'Comandas eletrônicas por mesa',
-    'Gestão de pedidos delivery',
-  ],
-  'Profissional': [
-    'Tudo do Básico',
-    'Relatórios avançados',
-    'Suporte prioritário',
-  ],
-  'Enterprise': [
-    'Tudo do Profissional',
-    'Integrações personalizadas',
-    'SLA dedicado',
-  ],
 };
 
 export default function Planos() {
@@ -93,46 +72,87 @@ export default function Planos() {
         .order('ordem', { ascending: true });
 
       if (error) throw error;
-      
-      const planosFormatted = (data || []).map((p: any) => ({
-        ...p,
-        recursos: typeof p.recursos === 'string' ? JSON.parse(p.recursos) : p.recursos || [],
-      }));
+
+      // Lista de Overrides para garantir o visual da imagem 01
+      const displayOverrides: Record<string, any> = {
+        'basico': {
+          nome: 'Plano Iniciante (Bronze)',
+          recursos: [
+            { label: 'Dashboard (Básico)', included: true },
+            { label: 'Cardápio', included: true },
+            { label: 'Mesas (Limite 10)', included: true },
+            { label: 'Pedidos (KDS) (1 Tela)', included: true },
+            { label: 'Delivery (WhatsApp)', included: true },
+            { label: 'Estatísticas Delivery', included: false },
+            { label: 'App Garçom (1 usuário)', included: true },
+            { label: 'Marketing', included: false },
+          ],
+        },
+        'profissional': {
+          nome: 'Plano Profissional (Prata)',
+          destaque: true,
+          recursos: [
+            { label: 'Dashboard (Completo)', included: true },
+            { label: 'Cardápio', included: true },
+            { label: 'Mesas (Ilimitado)', included: true },
+            { label: 'Pedidos (KDS) (1 Tela)', included: true },
+            { label: 'Delivery (Integrado)', included: true },
+            { label: 'App Garçom (Até 3 usuários)', included: true },
+            { label: 'Equipe (Até 5 colaboradores)', included: true },
+          ],
+        },
+        'enterprise': {
+          nome: 'Plano Enterprise (Ouro)',
+          recursos: [
+            { label: 'Dashboard (Avançado)', included: true },
+            { label: 'Mesas (Ilimitado)', included: true },
+            { label: 'Pedidos (KDS) (Ilimitado)', included: true },
+            { label: 'Estatísticas Delivery', included: true },
+            { label: 'App Garçom (Ilimitado)', included: true },
+            { label: 'Marketing (Fidelidade)', included: true },
+            { label: 'Equipe (Ilimitado)', included: true },
+          ],
+        },
+      };
+
+      const planosFormatted = (data || []).map((p: any) => {
+        const slug = (p.slug || '').toLowerCase();
+        const override = displayOverrides[slug] || {};
+        return {
+          ...p,
+          nome: override.nome || p.nome,
+          destaque: override.destaque ?? p.destaque,
+          recursos: override.recursos || (typeof p.recursos === 'string' ? JSON.parse(p.recursos) : p.recursos || []),
+        };
+      });
 
       setPlanos(planosFormatted);
     } catch (err) {
       console.error('Erro ao carregar planos:', err);
-      toast.error('Erro ao carregar planos');
     } finally {
       setIsLoading(false);
     }
   };
 
   const fetchCurrentUser = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
-      setUserEmail(user.email || null);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setUserEmail(user.email || null);
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('empresa_id')
-        .eq('id', user.id)
-        .single();
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('empresa_id')
+      .eq('id', user.id)
+      .single();
 
-      if (profile?.empresa_id) {
-        setEmpresaId(profile.empresa_id);
-        const { data: assinatura } = await (supabase as any)
-          .from('assinaturas')
-          .select('*, plano:planos(*)')
-          .eq('empresa_id', profile.empresa_id)
-          .maybeSingle();
-
-        setCurrentSubscription(assinatura);
-      }
-    } catch (err) {
-      console.error('Erro ao buscar usuário:', err);
+    if (profile?.empresa_id) {
+      setEmpresaId(profile.empresa_id);
+      const { data: assinatura } = await (supabase as any)
+        .from('assinaturas')
+        .select('*, plano:planos(*)')
+        .eq('empresa_id', profile.empresa_id)
+        .maybeSingle();
+      setCurrentSubscription(assinatura);
     }
   };
 
@@ -151,19 +171,17 @@ export default function Planos() {
       const body = {
         planoId: plano.id,
         priceId: isAnual ? plano.stripe_price_id_anual : plano.stripe_price_id_mensal,
-        successUrl: `${window.location.origin}/planos?subscription=success`,
+        successUrl: `${window.location.origin}/admin?subscription=success`,
         cancelUrl: `${window.location.origin}/planos?canceled=true`,
         empresaId: empresaId
       };
 
       const { data, error } = await supabase.functions.invoke('create-subscription-checkout', { body });
-
       if (error) throw error;
       if (data?.url) window.location.href = data.url;
 
     } catch (err: any) {
-      console.error('Erro ao criar checkout:', err);
-      toast.error('Erro ao processar assinatura. Verifique se a Edge Function está configurada.');
+      toast.error('Erro ao processar assinatura.');
     } finally {
       setProcessingPlan(null);
     }
@@ -173,33 +191,20 @@ export default function Planos() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
   };
 
-  const getSavingsPercentage = (mensal: number, anual: number) => {
-    const anualEquivalent = anual / 12;
-    return Math.round(((mensal - anualEquivalent) / mensal) * 100);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-muted/30">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
       <header className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {empresaId && (
-                <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-              )}
-              <div>
-                <h1 className="text-xl font-bold">Foodie Comanda Pro</h1>
-              </div>
-            </div>
+          <div className="flex items-center gap-4">
+            {empresaId && (
+              <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            )}
+            <h1 className="text-xl font-bold">Foodie Comanda Pro</h1>
+          </div>
         </div>
       </header>
 
@@ -208,22 +213,19 @@ export default function Planos() {
           <Badge variant="outline" className="mb-4 bg-primary/10 text-primary border-primary/20">
             <Clock className="w-3 h-3 mr-1" /> 3 dias grátis em qualquer plano
           </Badge>
-          <h2 className="text-4xl font-extrabold mb-4 tracking-tight text-foreground">Escolha o plano ideal para seu negócio</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Gestão completa de mesas, comandas e delivery em um só lugar.
-          </p>
+          <h2 className="text-4xl font-extrabold mb-4 tracking-tight">Escolha o plano ideal</h2>
         </div>
 
         <div className="flex items-center justify-center gap-4 mb-12">
-          <Label htmlFor="billing-toggle" className={!isAnual ? 'font-bold' : 'text-muted-foreground'}>Mensal</Label>
-          <Switch id="billing-toggle" checked={isAnual} onCheckedChange={setIsAnual} />
-          <Label htmlFor="billing-toggle" className={isAnual ? 'font-bold' : 'text-muted-foreground'}>Anual</Label>
+          <Label className={!isAnual ? 'font-bold' : ''}>Mensal</Label>
+          <Switch checked={isAnual} onCheckedChange={setIsAnual} />
+          <Label className={isAnual ? 'font-bold' : ''}>Anual</Label>
           {isAnual && <Badge className="bg-green-500">Economize até 17%</Badge>}
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {planos.map((plano) => {
-            const Icon = iconMap[plano.nome] || Zap;
+            const Icon = iconMap[plano.nome.includes('Iniciante') ? 'Básico' : plano.nome.includes('Profissional') ? 'Profissional' : 'Enterprise'] || Zap;
             const isCurrentPlan = currentSubscription?.plano_id === plano.id;
             const price = isAnual ? plano.preco_anual : plano.preco_mensal;
             const displayPrice = isAnual ? price / 12 : price;
@@ -231,8 +233,8 @@ export default function Planos() {
             return (
               <Card key={plano.id} className={`relative flex flex-col ${plano.destaque ? 'border-primary shadow-xl scale-105' : ''}`}>
                 {plano.destaque && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-3 py-1 rounded-full text-xs font-bold flex items-center">
-                    <Star className="w-3 h-3 mr-1 fill-current" /> MAIS POPULAR
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-3 py-1 rounded-full text-xs font-bold">
+                    <Star className="w-3 h-3 inline mr-1 fill-current" /> MAIS POPULAR
                   </div>
                 )}
                 <CardHeader className="text-center">
@@ -240,20 +242,20 @@ export default function Planos() {
                     <Icon className="w-6 h-6" />
                   </div>
                   <CardTitle>{plano.nome}</CardTitle>
-                  <CardDescription>{plano.descricao}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <div className="text-center mb-6">
                     <span className="text-4xl font-bold">{formatPrice(displayPrice)}</span>
                     <span className="text-muted-foreground">/mês</span>
-                    {isAnual && <p className="text-xs text-muted-foreground mt-2 font-medium">Cobrado anualmente: {formatPrice(price)}</p>}
                   </div>
                   <Separator className="my-6" />
                   <ul className="space-y-3">
                     {plano.recursos.map((recurso: any, idx: number) => (
                       <li key={idx} className="flex items-start gap-2 text-sm">
-                        <Check className="w-4 h-4 text-green-500 mt-0.5" />
-                        <span>{typeof recurso === 'string' ? recurso : recurso.label}</span>
+                        {recurso.included !== false ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-red-400" />}
+                        <span className={recurso.included === false ? 'text-muted-foreground line-through' : ''}>
+                          {recurso.label}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -273,8 +275,6 @@ export default function Planos() {
           })}
         </div>
       </main>
-      
-      {/* Rodapé e FAQs omitidos aqui para brevidade, mas mantidos no seu código original */}
     </div>
   );
 }
