@@ -12,7 +12,8 @@ export default function SubscriptionSuccess() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [planoId, setPlanoId] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<string | null>('mensal');
@@ -37,19 +38,42 @@ export default function SubscriptionSuccess() {
     if (per) setPeriodo(per);
   }, [params]);
 
+  // Verificar se usuário já está logado e tem empresa
   useEffect(() => {
-    const tryLinkForExistingUser = async () => {
-      if (!sessionId) return;
+    const checkExistingUser = async () => {
+      if (!sessionId) {
+        setIsLoading(false);
+        setShowForm(true);
+        return;
+      }
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        
+        if (!user) {
+          // Usuário não logado, mostrar formulário de cadastro
+          setIsLoading(false);
+          setShowForm(true);
+          return;
+        }
+
+        // Usuário logado, verificar se tem empresa
         const { data: profile } = await supabase
           .from('profiles')
           .select('empresa_id')
           .eq('id', user.id)
           .single();
-        if (!profile?.empresa_id) return;
-        setIsLoading(true);
+
+        if (!profile?.empresa_id) {
+          // Usuário logado mas sem empresa, mostrar formulário
+          setIsLoading(false);
+          setShowForm(true);
+          return;
+        }
+
+        // Usuário logado COM empresa - processar assinatura e redirecionar
+        console.log('[SubscriptionSuccess] Usuário logado com empresa, processando assinatura...');
+        
         const { error } = await supabase.functions.invoke('process-subscription', {
           body: {
             sessionId,
@@ -58,20 +82,27 @@ export default function SubscriptionSuccess() {
             periodo,
           },
         });
+
         if (error) {
-          toast.error(error.message || 'Falha ao atualizar assinatura.');
+          console.error('Erro ao processar assinatura:', error);
+          toast.error('Erro ao processar assinatura. Tente novamente.');
           setIsLoading(false);
+          setShowForm(true);
           return;
         }
+
         toast.success('Assinatura atualizada com sucesso!');
         navigate('/admin/assinatura');
       } catch (e: any) {
-        // mantém formulário caso não esteja logado ou sem empresa
-      } finally {
+        console.error('Erro ao verificar usuário:', e);
         setIsLoading(false);
+        setShowForm(true);
       }
     };
-    tryLinkForExistingUser();
+
+    if (sessionId) {
+      checkExistingUser();
+    }
   }, [sessionId, planoId, periodo, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -138,10 +169,20 @@ export default function SubscriptionSuccess() {
       navigate('/admin/assinatura');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao concluir cadastro.');
-    } finally {
       setIsLoading(false);
     }
   };
+
+  if (isLoading && !showForm) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/30">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+          <p className="mt-4 text-muted-foreground">Processando assinatura...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-6">
@@ -236,4 +277,3 @@ export default function SubscriptionSuccess() {
     </div>
   );
 }
-

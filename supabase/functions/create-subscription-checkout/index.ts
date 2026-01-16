@@ -68,7 +68,7 @@ serve(async (req: Request) => {
       return json;
     };
 
-    const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days } = await req.json();
+    const { planoId, empresaId, periodo, successUrl, cancelUrl, trial_days, customerEmail } = await req.json();
 
     if (!planoId) {
       throw new Error("planoId é obrigatório");
@@ -87,6 +87,7 @@ serve(async (req: Request) => {
 
     // Buscar empresa apenas se fornecida (permite checkout sem login)
     let empresa: any = null;
+    let emailForCheckout = customerEmail || null;
     if (empresaId) {
       const { data: emp, error: empresaError } = await supabase
         .from("empresas")
@@ -95,6 +96,8 @@ serve(async (req: Request) => {
         .single();
       if (!empresaError && emp) {
         empresa = emp;
+        // Se temos email da empresa, usar para o checkout
+        if (emp.email) emailForCheckout = emailForCheckout || emp.email;
       }
     }
 
@@ -175,7 +178,7 @@ serve(async (req: Request) => {
       'payment_method_types[]': 'card',
       'line_items[0][price]': stripePriceId,
       'line_items[0][quantity]': '1',
-      success_url: successUrl || `${req.headers.get('origin')}/admin?subscription=success&planoId=${planoId}`,
+      success_url: successUrl || `${req.headers.get('origin')}/admin/assinatura?subscription=success&planoId=${planoId}&session_id={CHECKOUT_SESSION_ID}&periodo=${periodo}`,
       cancel_url: cancelUrl || `${req.headers.get('origin')}/planos?canceled=true`,
       allow_promotion_codes: 'true',
       billing_address_collection: 'required',
@@ -183,7 +186,8 @@ serve(async (req: Request) => {
     };
 
     const days = trial_days ?? plano.trial_days ?? 3;
-    if (days > 0) {
+    // Para upgrade de plano (usuário já tem empresa), não aplicar trial
+    if (days > 0 && !empresaId) {
       sessionPayload['subscription_data[trial_period_days]'] = String(days);
     }
 
@@ -191,7 +195,13 @@ serve(async (req: Request) => {
     sessionPayload['metadata[plano_id]'] = planoId;
     sessionPayload['metadata[periodo]'] = periodo;
     if (empresaId) sessionPayload['metadata[empresa_id]'] = empresaId;
-    if (stripeCustomerId) sessionPayload['customer'] = stripeCustomerId;
+    
+    // Se já temos um customer no Stripe, usá-lo. Caso contrário, pré-preencher email
+    if (stripeCustomerId) {
+      sessionPayload['customer'] = stripeCustomerId;
+    } else if (emailForCheckout) {
+      sessionPayload['customer_email'] = emailForCheckout;
+    }
 
     const session = await stripeRequest('checkout/sessions', 'POST', sessionPayload);
 

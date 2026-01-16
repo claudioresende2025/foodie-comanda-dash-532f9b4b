@@ -227,10 +227,15 @@ export default function Planos() {
     }
   };
 
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
   const fetchCurrentUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      
+      // Guardar email do usuário para o checkout
+      setUserEmail(user.email || null);
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -279,8 +284,11 @@ export default function Planos() {
         // ignore localStorage errors
       }
       
-      // Se já tem empresaId (usuário logado), trata em /admin/assinatura; caso contrário, usa /subscription/success
-      const successUrl = `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+      // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
+      // Caso contrário, usa /subscription/success para criar conta
+      const successUrl = empresaId
+        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
+        : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
 
       const body: any = {
         planoId: plano.id,
@@ -292,6 +300,9 @@ export default function Planos() {
 
       // Enviar empresaId apenas se disponível (fluxo sem login permitido)
       if (empresaId) body.empresaId = empresaId;
+      
+      // Enviar email do usuário para pré-preencher no Stripe
+      if (userEmail) body.customerEmail = userEmail;
 
       console.log('[Planos] Chamando create-subscription-checkout:', body);
 
