@@ -1,3 +1,5 @@
+pagina planos 01
+
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,8 +10,17 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { 
-  Check, X, Loader2, Crown, Zap, Building2, 
-  ArrowLeft, Star, Clock 
+  Check, X,
+  Loader2, 
+  Crown, 
+  Zap, 
+  Building2,
+  ArrowLeft,
+  Star,
+  Shield,
+  Clock,
+  CreditCard,
+  Phone
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,12 +30,14 @@ interface Plano {
   descricao: string;
   preco_mensal: number;
   preco_anual: number;
-  recursos: any[];
+  recursos: string[];
+  limite_pedidos_mes: number | null;
+  limite_mesas: number | null;
+  limite_usuarios: number | null;
   destaque: boolean;
   stripe_price_id_mensal: string | null;
   stripe_price_id_anual: string | null;
   trial_days?: number;
-  slug?: string;
 }
 
 const iconMap: Record<string, any> = {
@@ -36,32 +49,56 @@ const iconMap: Record<string, any> = {
   'Enterprise': Building2,
 };
 
+const defaultRecursosByPlan: Record<string, string[]> = {
+  'Básico': [
+    'Cardápio digital: Cardápio online responsivo com fotos, variações, preços e controle de disponibilidade por item.',
+    'Comandas: Comandas eletrônicas por mesa com histórico de pedido, edições rápidas e fechamento simplificado.',
+    'Delivery: Gestão de pedidos delivery com cálculo de taxa, confirmação de endereço e status de entrega.',
+  ],
+  'Profissional': [
+    'Tudo do Básico: Todos os recursos do plano Básico já inclusos.',
+    'Relatórios: Painel e exportação de relatórios (vendas, ticket médio, itens mais vendidos e períodos).',
+    'Suporte prioritário: Atendimento prioritário com tempos de resposta reduzidos e assistência para configuração.',
+  ],
+  'Enterprise': [
+    'Tudo do Profissional: Inclui todos os recursos do plano Profissional.',
+    'Integrações: Conectores e integrações personalizadas (ERP, gateways de pagamento, sistemas de PDV).',
+    'SLA dedicado: Gerente de conta e SLA customizado com suporte técnico prioritário e onboarding dedicado.',
+  ],
+};
 export default function Planos() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnual, setIsAnual] = useState(false);
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [currentSubscription, setCurrentSubscription] = useState<any>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPlanos();
     fetchCurrentUser();
-    checkQueryParameters();
-  }, []);
 
-  const checkQueryParameters = () => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('subscription') === 'success') {
-      toast.success('Compra realizada com sucesso!');
-      navigate('/admin');
-    } else if (params.get('canceled') === 'true') {
-      toast.error('Assinatura cancelada.');
+    // Se voltamos do checkout com sucesso, atualiza a assinatura localmente (não desloga)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('subscription') === 'success') {
+        (async () => {
+          try {
+            await fetchCurrentUser();
+            toast.success('Compra realizada. Assinatura atualizada.');
+            navigate('/admin');
+          } catch (e) {
+            console.warn('Erro ao atualizar após subscribe', e);
+          }
+        })();
+      } else if (params.get('canceled') === 'true') {
+        toast.error('Assinatura cancelada.');
+      }
+    } catch (e) {
+      // ignore
     }
-  };
+  }, []);
 
   const fetchPlanos = async () => {
     try {
@@ -71,12 +108,47 @@ export default function Planos() {
         .eq('ativo', true)
         .order('ordem', { ascending: true });
 
-      if (error) throw error;
+      console.log('Planos data:', data, 'Error:', error);
 
-      // Lista de Overrides para garantir o visual da imagem 01
+      if (error) throw error;
+      
+      // Parse recursos JSON
+      const planosAll = (data || []).map((p: any) => ({
+        ...p,
+        recursos: typeof p.recursos === 'string' ? JSON.parse(p.recursos) : p.recursos || [],
+      }));
+
+      // Seleção canônica para exibir apenas 3 cartões (Básico, Profissional, Enterprise)
+      const slugCandidates: Record<string, string[]> = {
+        'Básico': ['basico', 'b-sico', 'bronze'],
+        'Profissional': ['profissional', 'prata'],
+        'Enterprise': ['enterprise', 'ouro'],
+      };
+
+      const findByCandidates = (candidates: string[]) => {
+        for (const s of candidates) {
+          const found = planosAll.find((p: any) => (p.slug || '').toLowerCase() === s.toLowerCase());
+          if (found) return found;
+        }
+        // fallback: try by nome matching
+        for (const s of candidates) {
+          const found = planosAll.find((p: any) => (p.nome || '').toLowerCase().includes(s.toLowerCase()));
+          if (found) return found;
+        }
+        return null;
+      };
+
+      const displayOrder = ['Básico', 'Profissional', 'Enterprise'];
+
+      // Overrides visuais conforme imagem fornecida
       const displayOverrides: Record<string, any> = {
-        'basico': {
+        'Básico': {
           nome: 'Plano Iniciante (Bronze)',
+          preco_mensal: 149.90,
+          preco_anual: 149.90 * 12,
+          trial_days: 3,
+          descricao: 'Plano Iniciante - Ideal para lanchonetes e MEI',
+          destaque: false,
           recursos: [
             { label: 'Dashboard (Básico)', included: true },
             { label: 'Cardápio', included: true },
@@ -86,10 +158,15 @@ export default function Planos() {
             { label: 'Estatísticas Delivery', included: false },
             { label: 'App Garçom (1 usuário)', included: true },
             { label: 'Marketing', included: false },
+            { label: 'Equipe (Até 2 colaboradores)', included: false },
           ],
         },
-        'profissional': {
+        'Profissional': {
           nome: 'Plano Profissional (Prata)',
+          preco_mensal: 299.90,
+          preco_anual: 299.90 * 12,
+          trial_days: 3,
+          descricao: 'Plano Crescimento - Ideal para restaurantes com mesas',
           destaque: true,
           recursos: [
             { label: 'Dashboard (Completo)', included: true },
@@ -97,184 +174,478 @@ export default function Planos() {
             { label: 'Mesas (Ilimitado)', included: true },
             { label: 'Pedidos (KDS) (1 Tela)', included: true },
             { label: 'Delivery (Integrado)', included: true },
+            { label: 'Estatísticas Delivery', included: false },
             { label: 'App Garçom (Até 3 usuários)', included: true },
+            { label: 'Marketing', included: false },
             { label: 'Equipe (Até 5 colaboradores)', included: true },
           ],
         },
-        'enterprise': {
-          nome: 'Plano Enterprise (Ouro)',
+        'Enterprise': {
+          nome: 'Plano Enteerprise (Ouro)',
+          preco_mensal: 549.90,
+          preco_anual: 549.90 * 12,
+          trial_days: 7,
+          descricao: 'Plano Profissional - Operações de Alto Volume',
+          destaque: false,
           recursos: [
-            { label: 'Dashboard (Avançado)', included: true },
+            { label: 'Dashboard (Avançado + Comparativos)', included: true },
+            { label: 'Cardápio', included: true },
             { label: 'Mesas (Ilimitado)', included: true },
             { label: 'Pedidos (KDS) (Ilimitado)', included: true },
+            { label: 'Delivery (Integrado)', included: true },
             { label: 'Estatísticas Delivery', included: true },
             { label: 'App Garçom (Ilimitado)', included: true },
-            { label: 'Marketing (Fidelidade)', included: true },
+            { label: 'Marketing (Cupons + Fidelidade)', included: true },
             { label: 'Equipe (Ilimitado)', included: true },
           ],
         },
       };
 
-      const planosFormatted = (data || []).map((p: any) => {
-        const slug = (p.slug || '').toLowerCase();
-        const override = displayOverrides[slug] || {};
-        return {
-          ...p,
-          nome: override.nome || p.nome,
-          destaque: override.destaque ?? p.destaque,
-          recursos: override.recursos || (typeof p.recursos === 'string' ? JSON.parse(p.recursos) : p.recursos || []),
-        };
-      });
+      const planosFormatted: any[] = [];
+      for (const displayName of displayOrder) {
+        const p = findByCandidates(slugCandidates[displayName]);
+        if (p) {
+          const override = displayOverrides[displayName] || {};
+          planosFormatted.push({
+            ...p,
+            nome: override.nome || displayName,
+            descricao: override.descricao ?? p.descricao ?? '',
+            preco_mensal: override.preco_mensal ?? p.preco_mensal,
+            preco_anual: override.preco_anual ?? p.preco_anual,
+            trial_days: override.trial_days ?? p.trial_days ?? 3,
+            recursos: override.recursos || (p.recursos && p.recursos.length ? p.recursos : (defaultRecursosByPlan[p.nome] || [])),
+            destaque: override.destaque ?? p.destaque ?? false,
+          });
+        }
+      }
 
-      setPlanos(planosFormatted);
+      // Se não encontrou nenhum plano canônico, fallback para todos
+      setPlanos(planosFormatted.length ? planosFormatted : planosAll);
     } catch (err) {
       console.error('Erro ao carregar planos:', err);
+      toast.error('Erro ao carregar planos');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
   const fetchCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    setUserEmail(user.email || null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      // Guardar email do usuário para o checkout
+      setUserEmail(user.email || null);
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('empresa_id')
-      .eq('id', user.id)
-      .single();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .single();
 
-    if (profile?.empresa_id) {
-      setEmpresaId(profile.empresa_id);
-      const { data: assinatura } = await (supabase as any)
-        .from('assinaturas')
-        .select('*, plano:planos(*)')
-        .eq('empresa_id', profile.empresa_id)
-        .maybeSingle();
-      setCurrentSubscription(assinatura);
+      if (profile?.empresa_id) {
+        setEmpresaId(profile.empresa_id);
+        
+        // Buscar assinatura atual
+        const { data: assinatura } = await (supabase as any)
+          .from('assinaturas')
+          .select('*, plano:planos(*)')
+          .eq('empresa_id', profile.empresa_id)
+          .single();
+
+        setCurrentSubscription(assinatura);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar usuário:', err);
     }
   };
 
   const handleSelectPlan = async (plano: Plano) => {
     setProcessingPlan(plano.id);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
 
-      if (!session) {
-        localStorage.setItem('post_login_redirect', '/planos');
-        toast.info('Crie sua conta para concluir a assinatura.');
-        navigate('/auth');
-        return;
+    try {
+      // Verificar se é upgrade de plano existente
+      if (currentSubscription && currentSubscription.plano_id !== plano.id) {
+        console.log('[Planos] Detectado upgrade/mudança de plano:', {
+          planoAtual: currentSubscription.plano_id,
+          novoPlano: plano.id
+        });
       }
 
-      const body = {
+      // Salvar plano pendente para aplicar ao registrar/login
+      try {
+        localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
+          planoId: plano.id, 
+          periodo: isAnual ? 'anual' : 'mensal', 
+          empresaId,
+          isUpgrade: !!currentSubscription 
+        }));
+      } catch (e) {
+        // ignore localStorage errors
+      }
+      
+      // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
+      // Caso contrário, usa /subscription/success para criar conta
+      const successUrl = empresaId
+        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
+        : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+
+      const body: any = {
         planoId: plano.id,
-        priceId: isAnual ? plano.stripe_price_id_anual : plano.stripe_price_id_mensal,
-        successUrl: `${window.location.origin}/admin?subscription=success`,
+        periodo: isAnual ? 'anual' : 'mensal',
+        successUrl,
         cancelUrl: `${window.location.origin}/planos?canceled=true`,
-        empresaId: empresaId
+        trial_days: currentSubscription ? 0 : (plano.trial_days ?? 3), // Sem trial para upgrades
       };
 
-      const { data, error } = await supabase.functions.invoke('create-subscription-checkout', { body });
-      if (error) throw error;
-      if (data?.url) window.location.href = data.url;
+      // Enviar empresaId apenas se disponível (fluxo sem login permitido)
+      if (empresaId) body.empresaId = empresaId;
+      
+      // Enviar email do usuário para pré-preencher no Stripe
+      if (userEmail) body.customerEmail = userEmail;
 
+      console.log('[Planos] Chamando create-subscription-checkout:', body);
+
+      const { data, error } = await supabase.functions.invoke('create-subscription-checkout', { body });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('URL de checkout não retornada');
+      }
     } catch (err: any) {
-      toast.error('Erro ao processar assinatura.');
+      console.error('Erro ao criar checkout:', err);
+      toast.error(err.message || 'Erro ao processar assinatura');
     } finally {
       setProcessingPlan(null);
     }
   };
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(price);
   };
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  const getMonthlyEquivalent = (anualPrice: number) => {
+    return anualPrice / 12;
+  };
+
+  const getSavingsPercentage = (mensal: number, anual: number) => {
+    const anualEquivalent = anual / 12;
+    const savings = ((mensal - anualEquivalent) / mensal) * 100;
+    return Math.round(savings);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-muted/30">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
-      <header className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {empresaId && (
-              <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-            )}
-            <h1 className="text-xl font-bold">Foodie Comanda Pro</h1>
-          </div>
+      {/* Header */}
+      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4">
+              {/* Mostrar header mais simples quando acessado pela rota pública /planos */}
+              {(() => {
+                const loc = useLocation();
+                if (loc.pathname === '/planos') {
+                  return (
+                    <div className="text-center py-2">
+                      <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                        Foodie Comanda Pro
+                      </h1>
+                      <p className="text-muted-foreground text-sm">
+                        A plataforma completa para seu restaurante
+                      </p>
+                    </div>
+                  );
+                }
+
+                return empresaId ? (
+                  <div className="flex items-center gap-4">
+                    <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
+                      <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <div>
+                      <h1 className="text-2xl font-bold">Gerenciar Assinatura</h1>
+                      <p className="text-muted-foreground text-sm">Escolha ou altere seu plano</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-2">
+                    <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                      Comanda Digital Pro
+                    </h1>
+                    <p className="text-muted-foreground text-sm">A plataforma completa para seu restaurante</p>
+                  </div>
+                );
+              })()}
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-12">
+        {/* Trial Banner */}
         <div className="mb-12 text-center">
-          <Badge variant="outline" className="mb-4 bg-primary/10 text-primary border-primary/20">
-            <Clock className="w-3 h-3 mr-1" /> 3 dias grátis em qualquer plano
-          </Badge>
-          <h2 className="text-4xl font-extrabold mb-4 tracking-tight">Escolha o plano ideal</h2>
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-6">
+            <Clock className="w-4 h-4" />
+            <span className="font-medium">3 dias grátis em qualquer plano</span>
+          </div>
+          
+          <h2 className="text-4xl font-bold mb-4">
+            Simplifique a gestão do seu restaurante
+          </h2>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Comandas digitais, delivery, controle de mesas e muito mais em uma única plataforma
+          </p>
         </div>
 
+        {/* Toggle Mensal/Anual */}
         <div className="flex items-center justify-center gap-4 mb-12">
-          <Label className={!isAnual ? 'font-bold' : ''}>Mensal</Label>
-          <Switch checked={isAnual} onCheckedChange={setIsAnual} />
-          <Label className={isAnual ? 'font-bold' : ''}>Anual</Label>
-          {isAnual && <Badge className="bg-green-500">Economize até 17%</Badge>}
+          <Label htmlFor="billing-toggle" className={!isAnual ? 'font-bold' : 'text-muted-foreground'}>
+            Mensal
+          </Label>
+          <Switch
+            id="billing-toggle"
+            checked={isAnual}
+            onCheckedChange={setIsAnual}
+          />
+          <Label htmlFor="billing-toggle" className={isAnual ? 'font-bold' : 'text-muted-foreground'}>
+            Anual
+          </Label>
+          {isAnual && (
+            <Badge variant="secondary" className="bg-green-100 text-green-800">
+              Economize até 17%
+            </Badge>
+          )}
         </div>
 
+        {/* Planos Grid */}
+        {planos.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Nenhum plano disponível no momento.</p>
+            <Button onClick={() => fetchPlanos()} className="mt-4">
+              Tentar novamente
+            </Button>
+          </div>
+        ) : (
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {planos.map((plano) => {
-            const Icon = iconMap[plano.nome.includes('Iniciante') ? 'Básico' : plano.nome.includes('Profissional') ? 'Profissional' : 'Enterprise'] || Zap;
+            const Icon = iconMap[plano.nome] || Zap;
             const isCurrentPlan = currentSubscription?.plano_id === plano.id;
             const price = isAnual ? plano.preco_anual : plano.preco_mensal;
-            const displayPrice = isAnual ? price / 12 : price;
+            const monthlyEquivalent = isAnual ? getMonthlyEquivalent(plano.preco_anual) : plano.preco_mensal;
+            const savings = getSavingsPercentage(plano.preco_mensal, plano.preco_anual);
 
             return (
-              <Card key={plano.id} className={`relative flex flex-col ${plano.destaque ? 'border-primary shadow-xl scale-105' : ''}`}>
+              <Card 
+                key={plano.id} 
+                className={`relative flex flex-col ${
+                  plano.destaque 
+                    ? 'border-primary shadow-lg shadow-primary/20 scale-105' 
+                    : ''
+                }`}
+              >
                 {plano.destaque && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-white px-3 py-1 rounded-full text-xs font-bold">
-                    <Star className="w-3 h-3 inline mr-1 fill-current" /> MAIS POPULAR
+                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                    <Badge className="bg-primary text-primary-foreground px-4 py-1">
+                      <Star className="w-3 h-3 mr-1 fill-current" />
+                      Mais Popular
+                    </Badge>
                   </div>
                 )}
-                <CardHeader className="text-center">
-                  <div className="w-12 h-12 bg-primary/10 text-primary rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <Icon className="w-6 h-6" />
+
+                <CardHeader className="text-center pb-2">
+                  <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ${
+                    plano.destaque 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'bg-muted'
+                  }`}>
+                    <Icon className="w-8 h-8" />
                   </div>
-                  <CardTitle>{plano.nome}</CardTitle>
+                  <CardTitle className="text-2xl">{plano.nome}</CardTitle>
+                  {plano.descricao ? <CardDescription>{plano.descricao}</CardDescription> : null}
                 </CardHeader>
+
                 <CardContent className="flex-1">
                   <div className="text-center mb-6">
-                    <span className="text-4xl font-bold">{formatPrice(displayPrice)}</span>
-                    <span className="text-muted-foreground">/mês</span>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-4xl font-bold">
+                        {formatPrice(monthlyEquivalent)}
+                      </span>
+                      <span className="text-muted-foreground">/mês</span>
+                    </div>
+                    {isAnual && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-sm text-muted-foreground">
+                          Cobrado {formatPrice(price)} anualmente
+                        </p>
+                        <Badge variant="outline" className="text-green-600 border-green-600">
+                          Economia de {savings}%
+                        </Badge>
+                      </div>
+                    )}
+                    <p className="text-sm text-muted-foreground mt-1">Trial de {plano.trial_days ?? 3} dias</p>
                   </div>
+
                   <Separator className="my-6" />
+
                   <ul className="space-y-3">
-                    {plano.recursos.map((recurso: any, idx: number) => (
-                      <li key={idx} className="flex items-start gap-2 text-sm">
-                        {recurso.included !== false ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-red-400" />}
-                        <span className={recurso.included === false ? 'text-muted-foreground line-through' : ''}>
-                          {recurso.label}
-                        </span>
-                      </li>
-                    ))}
+                    {(((plano.recursos && plano.recursos.length) ? plano.recursos : (defaultRecursosByPlan[plano.nome] || [])) as any[]).map((recurso, index) => {
+                      const item = typeof recurso === 'string' ? { label: recurso, included: true } : recurso;
+                      return (
+                        <li key={index} className="flex items-start gap-3">
+                          {item.included ? (
+                            <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <X className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                          )}
+                          <span className={`text-sm ${!item.included ? 'text-muted-foreground' : ''}`}>{item.label}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </CardContent>
-                <CardFooter>
+
+                <CardFooter className="pt-4">
                   <Button 
                     className="w-full" 
+                    size="lg"
                     variant={plano.destaque ? 'default' : 'outline'}
-                    disabled={processingPlan !== null || isCurrentPlan}
                     onClick={() => handleSelectPlan(plano)}
+                    disabled={processingPlan !== null || isCurrentPlan}
                   >
-                    {processingPlan === plano.id ? <Loader2 className="animate-spin" /> : isCurrentPlan ? 'Plano Atual' : 'Começar Agora'}
+                    {processingPlan === plano.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processando...
+                      </>
+                    ) : isCurrentPlan ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Plano Atual
+                      </>
+                    ) : (
+                      <>
+                        Selecionar
+                      </>
+                    )}
                   </Button>
                 </CardFooter>
               </Card>
             );
           })}
         </div>
+        )}
+
+        {/* Features Section */}
+        <div className="mt-20 text-center">
+          <h3 className="text-2xl font-bold mb-8">Por que escolher nossa plataforma?</h3>
+          
+          <div className="grid md:grid-cols-4 gap-6 max-w-4xl mx-auto">
+            <div className="p-6">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-6 h-6 text-primary" />
+              </div>
+              <h4 className="font-semibold mb-2">Seguro</h4>
+              <p className="text-sm text-muted-foreground">Seus dados protegidos com criptografia de ponta</p>
+            </div>
+            
+            <div className="p-6">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Clock className="w-6 h-6 text-primary" />
+              </div>
+              <h4 className="font-semibold mb-2">3 Dias Grátis</h4>
+              <p className="text-sm text-muted-foreground">Teste todas as funcionalidades sem compromisso</p>
+            </div>
+            
+            <div className="p-6">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CreditCard className="w-6 h-6 text-primary" />
+              </div>
+              <h4 className="font-semibold mb-2">Cancele Quando Quiser</h4>
+              <p className="text-sm text-muted-foreground">Sem multas ou taxas de cancelamento</p>
+            </div>
+            
+            <div className="p-6">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Phone className="w-6 h-6 text-primary" />
+              </div>
+              <h4 className="font-semibold mb-2">Suporte Dedicado</h4>
+              <p className="text-sm text-muted-foreground">Equipe pronta para ajudar você</p>
+            </div>
+          </div>
+        </div>
+
+        {/* FAQ Section */}
+        <div className="mt-20 max-w-3xl mx-auto">
+          <h3 className="text-2xl font-bold mb-8 text-center">Perguntas Frequentes</h3>
+          
+          <div className="space-y-6">
+            <div className="bg-card rounded-lg p-6 border">
+              <h4 className="font-semibold mb-2">Como funciona o período de teste?</h4>
+              <p className="text-muted-foreground text-sm">
+                Você tem 3 dias para testar todas as funcionalidades do plano escolhido gratuitamente. 
+                Não cobramos nada durante esse período e você pode cancelar a qualquer momento.
+              </p>
+            </div>
+            
+            <div className="bg-card rounded-lg p-6 border">
+              <h4 className="font-semibold mb-2">Posso mudar de plano depois?</h4>
+              <p className="text-muted-foreground text-sm">
+                Sim! Você pode fazer upgrade ou downgrade do seu plano a qualquer momento. 
+                O valor será calculado proporcionalmente.
+              </p>
+            </div>
+            
+            <div className="bg-card rounded-lg p-6 border">
+              <h4 className="font-semibold mb-2">Como funciona o cancelamento?</h4>
+              <p className="text-muted-foreground text-sm">
+                Você pode cancelar sua assinatura a qualquer momento pelo painel administrativo. 
+                Seu acesso continua até o fim do período pago. Para reembolsos, entre em contato com nosso suporte.
+              </p>
+            </div>
+            
+            <div className="bg-card rounded-lg p-6 border">
+              <h4 className="font-semibold mb-2">Quais formas de pagamento são aceitas?</h4>
+              <p className="text-muted-foreground text-sm">
+                Aceitamos cartão de crédito (Visa, Mastercard, Elo, American Express) e PIX. 
+                O pagamento é processado de forma segura pelo Stripe.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* CTA Final */}
+        <div className="mt-20 text-center bg-primary/5 rounded-3xl p-12">
+          <h3 className="text-3xl font-bold mb-4">Pronto para começar?</h3>
+          <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
+            Junte-se a centenas de restaurantes que já simplificaram sua gestão com nossa plataforma
+          </p>
+          <Button size="lg" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            Escolher Meu Plano
+          </Button>
+        </div>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t py-8 mt-12">
+        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+          <p>© {new Date().getFullYear()} Foodie Comanda. Todos os direitos reservados.</p>
+          <p className="mt-2">
+            Dúvidas? Entre em contato: suporte@foodiecomanda.com.br
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
