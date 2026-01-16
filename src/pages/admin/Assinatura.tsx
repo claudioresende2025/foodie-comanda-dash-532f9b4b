@@ -51,13 +51,12 @@ interface Assinatura {
   id: string;
   status: string;
   periodo: string;
-  trial_start: string;
-  trial_end: string;
-  current_period_start: string;
-  current_period_end: string;
-  cancel_at_period_end: boolean;
+  data_inicio: string | null;
+  data_fim: string | null;
+  trial_fim: string | null;
   canceled_at: string | null;
   updated_at?: string;
+  stripe_subscription_id?: string | null;
   plano_id: string | null;
   plano: {
     id: string;
@@ -309,8 +308,10 @@ export default function Assinatura() {
     const d = new Date(value);
     return isNaN(d.getTime()) ? null : d;
   };
-  const trialStartDateRaw = resolveDate(assinatura?.trial_start) || resolveDate(assinatura?.current_period_start) || resolveDate(assinatura?.updated_at);
-  const trialEndDateRaw = resolveDate(assinatura?.trial_end);
+  
+  // Usar os nomes corretos das colunas: data_inicio, data_fim, trial_fim
+  const trialStartDateRaw = resolveDate(assinatura?.data_inicio) || resolveDate(assinatura?.updated_at);
+  const trialEndDateRaw = resolveDate(assinatura?.trial_fim);
   const computedTrialEnd = (() => {
     if (trialEndDateRaw) return trialEndDateRaw;
     if (trialStartDateRaw) return new Date(trialStartDateRaw.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -334,18 +335,21 @@ export default function Assinatura() {
     return format(new Date(value), 'dd/MM/yyyy', { locale: ptBR });
   };
   
+  // Verificar se a assinatura foi marcada para cancelar
+  const isCanceledAtPeriodEnd = !!assinatura?.canceled_at && assinatura?.status !== 'canceled';
+  
   const getNextChargeDate = () => {
     if (assinatura?.status === 'trialing') {
-      if (isValidDate(assinatura?.trial_end)) {
-        return formatDateBR(assinatura!.trial_end);
+      if (isValidDate(assinatura?.trial_fim)) {
+        return formatDateBR(assinatura!.trial_fim);
       }
-      if (isValidDate(assinatura?.current_period_end)) {
-        return formatDateBR(assinatura!.current_period_end);
+      if (isValidDate(assinatura?.data_fim)) {
+        return formatDateBR(assinatura!.data_fim);
       }
     }
-    const end = assinatura?.current_period_end;
+    const end = assinatura?.data_fim;
     if (isValidDate(end)) return formatDateBR(end);
-    const start = assinatura?.current_period_start;
+    const start = assinatura?.data_inicio;
     if (isValidDate(start)) {
       const base = new Date(start);
       const days = assinatura?.periodo === 'anual' ? 365 : 30;
@@ -484,7 +488,7 @@ export default function Assinatura() {
               )}
 
               {/* Cancel Info */}
-              {assinatura.cancel_at_period_end && (
+              {isCanceledAtPeriodEnd && (
                 <CardContent className="pt-0">
                   <div className="bg-amber-50 rounded-lg p-4 flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -492,25 +496,27 @@ export default function Assinatura() {
                       <p className="font-medium text-amber-900">Cancelamento agendado</p>
                       <p className="text-sm text-amber-700">
                         Sua assinatura será cancelada em{' '}
-                        {formatDateBR(assinatura.current_period_end)}
+                        {formatDateBR(assinatura.data_fim)}
                       </p>
                     </div>
                   </div>
                 </CardContent>
               )}
 
-              <CardFooter className="flex gap-2">
+              <CardFooter className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => navigate('/planos')}>
                   <RefreshCw className="w-4 h-4 mr-2" />
                   {assinatura.plano_id ? 'Trocar Plano' : 'Escolher Plano'}
                 </Button>
-                {!assinatura.cancel_at_period_end && assinatura.status !== 'canceled' && assinatura.plano_id && (
+                {!isCanceledAtPeriodEnd && assinatura.status !== 'canceled' && (
                   <Button variant="outline" onClick={() => setCancelDialogOpen(true)}>
+                    <XCircle className="w-4 h-4 mr-2" />
                     Cancelar Assinatura
                   </Button>
                 )}
-                {assinatura.status === 'active' && pagamentos.length > 0 && (
+                {(assinatura.status === 'active' || assinatura.status === 'trialing') && (
                   <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
+                    <Receipt className="w-4 h-4 mr-2" />
                     Solicitar Reembolso
                   </Button>
                 )}
