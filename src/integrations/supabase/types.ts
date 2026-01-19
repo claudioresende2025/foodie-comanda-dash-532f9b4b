@@ -1672,6 +1672,47 @@ export type Database = {
           },
         ]
       }
+      webhook_logs: {
+        Row: {
+          created_at: string | null
+          empresa_id: string | null
+          error_message: string | null
+          event: string
+          id: string
+          payload: Json | null
+          referencia: string | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          empresa_id?: string | null
+          error_message?: string | null
+          event: string
+          id?: string
+          payload?: Json | null
+          referencia?: string | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          empresa_id?: string | null
+          error_message?: string | null
+          event?: string
+          id?: string
+          payload?: Json | null
+          referencia?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_logs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
