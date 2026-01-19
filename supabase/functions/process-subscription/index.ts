@@ -177,6 +177,62 @@ serve(async (req) => {
 
     logStep("Assinatura salva com sucesso", { empresaId, planoId, planoNome: planoCheck.nome, status });
 
+    // Buscar assinatura para obter o ID
+    const { data: assinaturaData } = await supabase
+      .from('assinaturas')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .single();
+
+    // Buscar preço do plano
+    const { data: planoPreco } = await supabase
+      .from('planos')
+      .select('preco_mensal, preco_anual')
+      .eq('id', planoId)
+      .single();
+
+    const valorPagamento = periodo === 'anual' 
+      ? (planoPreco?.preco_anual || 0) 
+      : (planoPreco?.preco_mensal || 0);
+
+    // Registrar pagamento inicial (se houver payment_intent na session)
+    if (session.payment_intent && assinaturaData?.id) {
+      // Verificar se já existe pagamento com esse payment_intent
+      const { data: existingPayment } = await supabase
+        .from('pagamentos_assinatura')
+        .select('id')
+        .eq('stripe_payment_intent_id', session.payment_intent)
+        .maybeSingle();
+
+      if (!existingPayment) {
+        const { error: pagamentoError } = await supabase
+          .from('pagamentos_assinatura')
+          .insert({
+            empresa_id: empresaId,
+            assinatura_id: assinaturaData.id,
+            valor: valorPagamento,
+            status: 'succeeded',
+            metodo_pagamento: 'stripe',
+            descricao: `Assinatura ${planoCheck.nome} - ${periodo}`,
+            stripe_payment_intent_id: session.payment_intent,
+            metadata: {
+              stripe_session_id: sessionId,
+              stripe_subscription_id: subscription.id,
+              stripe_customer_id: session.customer,
+              plano_nome: planoCheck.nome
+            }
+          });
+
+        if (pagamentoError) {
+          logStep("Erro ao registrar pagamento", { error: pagamentoError.message });
+        } else {
+          logStep("Pagamento inicial registrado com sucesso");
+        }
+      } else {
+        logStep("Pagamento já registrado anteriormente");
+      }
+    }
+
     return new Response(JSON.stringify({ 
       success: true,
       empresaId,
@@ -184,7 +240,7 @@ serve(async (req) => {
       planoNome: planoCheck.nome,
       status,
       subscriptionId: subscription.id
-    }), { 
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
 
