@@ -427,7 +427,7 @@ export default function Assinatura() {
                     </div>
                     <div>
                       <CardTitle className="flex items-center gap-2">
-                        {assinatura.plano?.nome ? `Plano ${assinatura.plano.nome}` : 'Período de Teste'}
+                        {assinatura.plano?.nome || 'Período de Teste'}
                         <Badge className={statusConfig?.color}>{statusConfig?.label}</Badge>
                       </CardTitle>
                       <CardDescription>
@@ -527,7 +527,7 @@ export default function Assinatura() {
             {/* Recursos do Plano */}
             {(() => {
               const resourcesDisplay: Record<string, { label: string; included: boolean }[]> = {
-                'Básico': [
+                'Iniciante': [
                   { label: 'Dashboard: Básico (Vendas do dia)', included: true },
                   { label: 'Mesas: Limitado (até 10 mesas)', included: true },
                   { label: 'Delivery: Básico (WhatsApp)', included: true },
@@ -567,12 +567,13 @@ export default function Assinatura() {
 
               const getPlanResources = (planName: string, planSlug?: string) => {
                 if (!planName && !planSlug) return [];
-                const nameLower = (planName || '').toLowerCase();
                 const slugLower = (planSlug || '').toLowerCase();
-                // Verificar por slug primeiro (mais preciso)
-                if (slugLower === 'bronze' || nameLower.includes('básico') || nameLower.includes('bronze') || nameLower.includes('basico') || nameLower.includes('iniciante')) return resourcesDisplay['Básico'];
-                if (slugLower === 'prata' || nameLower.includes('prata') || nameLower.includes('crescimento')) return resourcesDisplay['Profissional'];
-                if (slugLower === 'ouro' || nameLower.includes('ouro') || nameLower.includes('enterprise') || nameLower.includes('profissional')) return resourcesDisplay['Enterprise'];
+                // Verificar por slug (mais preciso)
+                if (slugLower === 'bronze') return resourcesDisplay['Iniciante'];
+                if (slugLower === 'prata') return resourcesDisplay['Profissional'];
+                if (slugLower === 'ouro') return resourcesDisplay['Enterprise'];
+                // Fallback pelo nome
+                if (planName in resourcesDisplay) return resourcesDisplay[planName];
                 return [];
               };
 
