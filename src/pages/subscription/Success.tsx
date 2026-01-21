@@ -8,6 +8,12 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { CheckCircle2, Loader2, Building2, UserPlus } from 'lucide-react';
 
+const logStep = (step: string, details?: any) => {
+  const timestamp = new Date().toISOString();
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[SubscriptionSuccess ${timestamp}] ${step}${detailsStr}`);
+};
+
 export default function SubscriptionSuccess() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -33,6 +39,7 @@ export default function SubscriptionSuccess() {
     const sid = params.get('session_id');
     const pid = params.get('planoId');
     const per = params.get('periodo');
+    logStep('URL params extracted', { sessionId: sid, planoId: pid, periodo: per });
     setSessionId(sid);
     if (pid) setPlanoId(pid);
     if (per) setPeriodo(per);
@@ -41,60 +48,81 @@ export default function SubscriptionSuccess() {
   // Verificar se usuário já está logado e tem empresa
   useEffect(() => {
     const checkExistingUser = async () => {
+      logStep('checkExistingUser started');
+      
       if (!sessionId) {
+        logStep('No sessionId, showing form');
         setIsLoading(false);
         setShowForm(true);
         return;
       }
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        logStep('Checking current user...');
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError) {
+          logStep('Error getting user', { error: userError.message });
+        }
         
         if (!user) {
-          // Usuário não logado, mostrar formulário de cadastro
+          logStep('No user logged in, showing form');
           setIsLoading(false);
           setShowForm(true);
           return;
         }
 
+        logStep('User found', { userId: user.id, email: user.email });
+
         // Usuário logado, verificar se tem empresa
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('empresa_id')
           .eq('id', user.id)
           .single();
 
+        if (profileError) {
+          logStep('Error fetching profile', { error: profileError.message });
+        }
+
         if (!profile?.empresa_id) {
-          // Usuário logado mas sem empresa, mostrar formulário
+          logStep('User has no empresa_id, showing form');
           setIsLoading(false);
           setShowForm(true);
           return;
         }
 
-        // Usuário logado COM empresa - processar assinatura e redirecionar
-        console.log('[SubscriptionSuccess] Usuário logado com empresa, processando assinatura...');
+        logStep('User has empresa, processing subscription', { empresaId: profile.empresa_id });
         
-        const { error } = await supabase.functions.invoke('process-subscription', {
-          body: {
-            sessionId,
-            empresaId: profile.empresa_id,
-            planoId,
-            periodo,
-          },
-        });
+        try {
+          const { data, error } = await supabase.functions.invoke('process-subscription', {
+            body: {
+              sessionId,
+              empresaId: profile.empresa_id,
+              planoId,
+              periodo,
+            },
+          });
 
-        if (error) {
-          console.error('Erro ao processar assinatura:', error);
-          toast.error('Erro ao processar assinatura. Tente novamente.');
+          if (error) {
+            logStep('process-subscription function error', { error: error.message });
+            toast.error('Erro ao processar assinatura. Tente novamente.');
+            setIsLoading(false);
+            setShowForm(true);
+            return;
+          }
+
+          logStep('process-subscription success', { data });
+          toast.success('Assinatura atualizada com sucesso!');
+          navigate('/admin/assinatura');
+        } catch (fnError: any) {
+          logStep('process-subscription exception', { error: fnError.message });
+          toast.error('Erro ao conectar com o servidor. Tente novamente.');
           setIsLoading(false);
           setShowForm(true);
-          return;
         }
-
-        toast.success('Assinatura atualizada com sucesso!');
-        navigate('/admin/assinatura');
       } catch (e: any) {
-        console.error('Erro ao verificar usuário:', e);
+        logStep('checkExistingUser exception', { error: e.message });
         setIsLoading(false);
         setShowForm(true);
       }
@@ -107,7 +135,10 @@ export default function SubscriptionSuccess() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    logStep('handleSubmit started');
+    
     if (!sessionId) {
+      logStep('No sessionId in handleSubmit');
       return toast.error('Sessão do Stripe não encontrada. Abra o link de sucesso novamente.');
     }
     if (!userForm.email || !userForm.password || !userForm.nome) {
@@ -118,17 +149,44 @@ export default function SubscriptionSuccess() {
     }
 
     setIsLoading(true);
+    let userId: string | null = null;
+    let empresaId: string | null = null;
+
+    // Etapa 1: Signup
     try {
+      logStep('Etapa 1: Iniciando signup...', { email: userForm.email });
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: userForm.email,
         password: userForm.password,
         options: { data: { nome: userForm.nome } },
       });
-      if (signUpError) throw signUpError;
+      
+      if (signUpError) {
+        logStep('Etapa 1 FALHOU: Erro no signup', { error: signUpError.message, code: signUpError.status });
+        throw new Error(`Falha no cadastro: ${signUpError.message}`);
+      }
 
-      const userId = signUpData.user?.id;
-      if (!userId) throw new Error('Usuário não autenticado após cadastro.');
+      userId = signUpData.user?.id || null;
+      if (!userId) {
+        logStep('Etapa 1 FALHOU: userId não retornado');
+        throw new Error('Usuário não autenticado após cadastro.');
+      }
+      
+      logStep('Etapa 1 OK: Signup concluído', { userId });
+    } catch (err: any) {
+      logStep('Etapa 1 EXCEÇÃO', { error: err.message });
+      toast.error(err.message || 'Erro no cadastro de usuário.');
+      setIsLoading(false);
+      return;
+    }
 
+    // Aguardar trigger handle_new_user criar o profile
+    logStep('Aguardando trigger criar profile (1.5s)...');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Etapa 2: Criar empresa
+    try {
+      logStep('Etapa 2: Criando empresa...', { nome_fantasia: empresaForm.nome_fantasia });
       const { data: empresa, error: empErr } = await supabase
         .from('empresas')
         .insert({
@@ -138,39 +196,109 @@ export default function SubscriptionSuccess() {
         })
         .select()
         .single();
-      if (empErr || !empresa) throw empErr || new Error('Falha ao criar empresa.');
+      
+      if (empErr) {
+        logStep('Etapa 2 FALHOU: Erro ao criar empresa', { error: empErr.message, code: empErr.code, details: empErr.details });
+        throw new Error(`Falha ao criar empresa: ${empErr.message}`);
+      }
+      
+      if (!empresa) {
+        logStep('Etapa 2 FALHOU: empresa não retornada');
+        throw new Error('Empresa não foi criada corretamente.');
+      }
+      
+      empresaId = empresa.id;
+      logStep('Etapa 2 OK: Empresa criada', { empresaId });
+    } catch (err: any) {
+      logStep('Etapa 2 EXCEÇÃO', { error: err.message });
+      toast.error(err.message || 'Erro ao criar empresa.');
+      setIsLoading(false);
+      return;
+    }
 
+    // Etapa 3: Atualizar profile com empresa_id
+    try {
+      logStep('Etapa 3: Atualizando profile...', { userId, empresaId });
       const { error: profErr } = await supabase
         .from('profiles')
-        .update({ empresa_id: empresa.id })
+        .update({ empresa_id: empresaId })
         .eq('id', userId);
-      if (profErr) throw profErr;
+      
+      if (profErr) {
+        logStep('Etapa 3 FALHOU: Erro ao atualizar profile', { error: profErr.message, code: profErr.code });
+        throw new Error(`Falha ao vincular empresa ao perfil: ${profErr.message}`);
+      }
+      
+      logStep('Etapa 3 OK: Profile atualizado');
+    } catch (err: any) {
+      logStep('Etapa 3 EXCEÇÃO', { error: err.message });
+      toast.error(err.message || 'Erro ao vincular empresa.');
+      setIsLoading(false);
+      return;
+    }
 
-      await supabase.from('user_roles').insert({
+    // Etapa 4: Criar role de proprietário
+    try {
+      logStep('Etapa 4: Criando role de proprietário...', { userId, empresaId });
+      const { error: roleErr } = await supabase.from('user_roles').insert({
         user_id: userId,
-        empresa_id: empresa.id,
+        empresa_id: empresaId,
         role: 'proprietario',
       });
+      
+      if (roleErr) {
+        logStep('Etapa 4 AVISO: Erro ao criar role (não fatal)', { error: roleErr.message });
+        // Não falhar por isso, pois o usuário pode continuar
+      } else {
+        logStep('Etapa 4 OK: Role criada');
+      }
+    } catch (err: any) {
+      logStep('Etapa 4 AVISO: Exceção ao criar role (não fatal)', { error: err.message });
+    }
 
+    // Etapa 5: Processar assinatura (com fallback)
+    try {
+      logStep('Etapa 5: Processando assinatura...', { sessionId, empresaId, planoId, periodo });
       const { data: linkRes, error: linkErr } = await supabase.functions.invoke('process-subscription', {
         body: {
           sessionId,
-          empresaId: empresa.id,
+          empresaId,
           planoId,
           periodo,
         },
       });
+      
       if (linkErr) {
-        toast.error(linkErr.message || 'Falha ao vincular assinatura.');
+        logStep('Etapa 5 AVISO: Erro ao vincular assinatura', { error: linkErr.message });
+        // Salvar para tentar novamente depois
+        localStorage.setItem('pending_subscription', JSON.stringify({ 
+          sessionId, 
+          empresaId, 
+          planoId, 
+          periodo,
+          timestamp: Date.now() 
+        }));
+        toast.warning('Cadastro criado! A assinatura será ativada em breve.');
       } else {
+        logStep('Etapa 5 OK: Assinatura vinculada', { response: linkRes });
         toast.success('Assinatura vinculada com sucesso!');
       }
-
-      navigate('/admin/assinatura');
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao concluir cadastro.');
-      setIsLoading(false);
+    } catch (fnError: any) {
+      logStep('Etapa 5 EXCEÇÃO: Edge function não disponível', { error: fnError.message });
+      // Salvar para tentar novamente depois
+      localStorage.setItem('pending_subscription', JSON.stringify({ 
+        sessionId, 
+        empresaId, 
+        planoId, 
+        periodo,
+        timestamp: Date.now() 
+      }));
+      toast.warning('Cadastro criado! A assinatura será ativada automaticamente.');
     }
+
+    // Sempre navegar para o painel (mesmo se assinatura não foi vinculada)
+    logStep('Navegando para /admin/assinatura');
+    navigate('/admin/assinatura');
   };
 
   if (isLoading && !showForm) {
