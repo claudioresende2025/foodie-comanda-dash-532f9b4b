@@ -195,38 +195,49 @@ serve(async (req) => {
       ? (planoPreco?.preco_anual || 0) 
       : (planoPreco?.preco_mensal || 0);
 
-    // Registrar pagamento inicial (se houver payment_intent na session)
-    if (session.payment_intent && assinaturaData?.id) {
-      // Verificar se já existe pagamento com esse payment_intent
+    // Registrar pagamento inicial (se houver payment_intent na session ou se foi trial)
+    if (assinaturaData?.id) {
+      const paymentIntentId = session.payment_intent || `trial_${sessionId}`;
+      
+      // Verificar se já existe pagamento com esse identificador
       const { data: existingPayment } = await supabase
         .from('pagamentos_assinatura')
         .select('id')
-        .eq('stripe_payment_intent_id', session.payment_intent)
+        .eq('stripe_payment_intent_id', paymentIntentId)
         .maybeSingle();
 
       if (!existingPayment) {
+        // Se é trial, registrar como pagamento pendente ou trial com valor 0
+        const isTrial = status === 'trialing' || subscription.status === 'trialing';
+        const pagamentoStatus = isTrial ? 'trial' : 'succeeded';
+        const pagamentoValor = isTrial ? 0 : valorPagamento;
+        const descricao = isTrial 
+          ? `Trial - ${planoCheck.nome} (${periodo})` 
+          : `Assinatura ${planoCheck.nome} - ${periodo}`;
+
         const { error: pagamentoError } = await supabase
           .from('pagamentos_assinatura')
           .insert({
             empresa_id: empresaId,
             assinatura_id: assinaturaData.id,
-            valor: valorPagamento,
-            status: 'succeeded',
-            metodo_pagamento: 'stripe',
-            descricao: `Assinatura ${planoCheck.nome} - ${periodo}`,
-            stripe_payment_intent_id: session.payment_intent,
+            valor: pagamentoValor,
+            status: pagamentoStatus,
+            metodo_pagamento: isTrial ? 'trial' : 'stripe',
+            descricao: descricao,
+            stripe_payment_intent_id: paymentIntentId,
             metadata: {
               stripe_session_id: sessionId,
               stripe_subscription_id: subscription.id,
               stripe_customer_id: session.customer,
-              plano_nome: planoCheck.nome
+              plano_nome: planoCheck.nome,
+              is_trial: isTrial
             }
           });
 
         if (pagamentoError) {
           logStep("Erro ao registrar pagamento", { error: pagamentoError.message });
         } else {
-          logStep("Pagamento inicial registrado com sucesso");
+          logStep("Pagamento registrado com sucesso", { tipo: isTrial ? 'trial' : 'pagamento', valor: pagamentoValor });
         }
       } else {
         logStep("Pagamento já registrado anteriormente");

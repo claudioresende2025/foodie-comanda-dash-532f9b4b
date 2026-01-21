@@ -61,6 +61,7 @@ interface Assinatura {
   plano: {
     id: string;
     nome: string;
+    slug?: string;
     preco_mensal: number;
     preco_anual: number;
     recursos: string[];
@@ -564,16 +565,18 @@ export default function Assinatura() {
                 ],
               };
 
-              const getPlanResources = (planName: string) => {
-                if (!planName) return [];
-                const nameLower = planName.toLowerCase();
-                if (nameLower.includes('básico') || nameLower.includes('bronze') || nameLower.includes('basico')) return resourcesDisplay['Básico'];
-                if (nameLower.includes('profissional') || nameLower.includes('prata')) return resourcesDisplay['Profissional'];
-                if (nameLower.includes('enterprise') || nameLower.includes('ouro')) return resourcesDisplay['Enterprise'];
+              const getPlanResources = (planName: string, planSlug?: string) => {
+                if (!planName && !planSlug) return [];
+                const nameLower = (planName || '').toLowerCase();
+                const slugLower = (planSlug || '').toLowerCase();
+                // Verificar por slug primeiro (mais preciso)
+                if (slugLower === 'bronze' || nameLower.includes('básico') || nameLower.includes('bronze') || nameLower.includes('basico') || nameLower.includes('iniciante')) return resourcesDisplay['Básico'];
+                if (slugLower === 'prata' || nameLower.includes('prata') || nameLower.includes('crescimento')) return resourcesDisplay['Profissional'];
+                if (slugLower === 'ouro' || nameLower.includes('ouro') || nameLower.includes('enterprise') || nameLower.includes('profissional')) return resourcesDisplay['Enterprise'];
                 return [];
               };
 
-              const visualResources = getPlanResources(assinatura.plano?.nome || '');
+              const visualResources = getPlanResources(assinatura.plano?.nome || '', assinatura.plano?.slug);
               const resourcesToShow = visualResources.length > 0 
                 ? visualResources 
                 : (assinatura.plano?.recursos || []).map(r => ({ label: r, included: true }));
@@ -632,24 +635,33 @@ export default function Assinatura() {
                       >
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            pagamento.status === 'succeeded' ? 'bg-green-100' : 'bg-red-100'
+                            pagamento.status === 'succeeded' ? 'bg-green-100' : 
+                            pagamento.status === 'trial' ? 'bg-blue-100' : 'bg-red-100'
                           }`}>
                             {pagamento.status === 'succeeded' ? (
                               <CheckCircle2 className="w-4 h-4 text-green-600" />
+                            ) : pagamento.status === 'trial' ? (
+                              <Clock className="w-4 h-4 text-blue-600" />
                             ) : (
                               <XCircle className="w-4 h-4 text-red-600" />
                             )}
                           </div>
                           <div>
-                            <p className="font-medium">{formatCurrency(pagamento.valor)}</p>
+                            <p className="font-medium">
+                              {pagamento.status === 'trial' ? 'Período de Teste' : formatCurrency(pagamento.valor)}
+                            </p>
                             <p className="text-xs text-muted-foreground">
                               {format(new Date(pagamento.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <Badge variant={pagamento.status === 'succeeded' ? 'default' : 'destructive'}>
-                            {pagamento.status === 'succeeded' ? 'Pago' : 'Falhou'}
+                          <Badge variant={
+                            pagamento.status === 'succeeded' ? 'default' : 
+                            pagamento.status === 'trial' ? 'secondary' : 'destructive'
+                          }>
+                            {pagamento.status === 'succeeded' ? 'Pago' : 
+                             pagamento.status === 'trial' ? 'Trial' : 'Falhou'}
                           </Badge>
                           {pagamento.metadata?.hosted_invoice_url && (
                             <Button 
