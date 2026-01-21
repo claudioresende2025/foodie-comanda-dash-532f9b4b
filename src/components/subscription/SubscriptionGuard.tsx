@@ -234,7 +234,8 @@ export function useSubscription() {
       }
 
       // Trial expirado sem assinatura ativa = bloqueado
-      if (assinatura.status === 'trial') {
+      // Suporta ambos: 'trial' e 'trialing' (Stripe usa 'trialing')
+      if (assinatura.status === 'trial' || assinatura.status === 'trialing') {
         const trialFim = assinatura.trial_fim ? new Date(assinatura.trial_fim) : null;
         if (trialFim && trialFim < now) {
           setStatus({ 
@@ -251,13 +252,18 @@ export function useSubscription() {
           const daysRemaining = Math.ceil((trialFim.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
           setStatus({ 
             blocked: false, 
-            status: 'trial',
+            status: 'trialing',
             trial_ends_at: assinatura.trial_fim,
             days_remaining: daysRemaining
           });
           setIsLoading(false);
           return;
         }
+        
+        // Trial sem data definida = libera
+        setStatus({ blocked: false, status: 'trialing' });
+        setIsLoading(false);
+        return;
       }
 
       // Verifica reembolsos aprovados
@@ -310,8 +316,8 @@ export function useSubscription() {
     status,
     isLoading,
     isBlocked: status.blocked,
-    isTrialing: status.status === 'trial',
-    isActive: status.status === 'active' || status.status === 'trial',
+    isTrialing: status.status === 'trial' || status.status === 'trialing',
+    isActive: status.status === 'active' || status.status === 'trial' || status.status === 'trialing',
     daysRemaining: status.days_remaining || 0,
     reason: status.reason,
     refetch: fetchSubscriptionStatus,
