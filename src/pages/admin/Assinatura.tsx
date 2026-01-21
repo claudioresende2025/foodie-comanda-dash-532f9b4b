@@ -427,7 +427,13 @@ export default function Assinatura() {
                     </div>
                     <div>
                       <CardTitle className="flex items-center gap-2">
-                        {assinatura.plano?.nome || 'Período de Teste'}
+                        {(() => {
+                          const slug = assinatura.plano?.slug?.toLowerCase();
+                          if (slug === 'bronze') return 'Plano Iniciante';
+                          if (slug === 'prata') return 'Plano Profissional';
+                          if (slug === 'ouro') return 'Plano Ouro (Enterprise)';
+                          return assinatura.plano?.nome || 'Período de Teste';
+                        })()}
                         <Badge className={statusConfig?.color}>{statusConfig?.label}</Badge>
                       </CardTitle>
                       <CardDescription>
@@ -456,18 +462,24 @@ export default function Assinatura() {
               </CardHeader>
 
               {/* Trial Progress */}
-              {assinatura.status === 'trialing' && (
+              {(assinatura.status === 'trialing' || assinatura.status === 'trial') && (
                 <CardContent className="pt-0">
-                  <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-blue-900">Período de teste</span>
-                      <span className="text-sm text-blue-700">
-                        {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia' : 'dias'} restantes
+                      <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Período de teste</span>
+                      <span className="text-sm text-blue-700 dark:text-blue-300">
+                        {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia restante' : 'dias restantes'}
                       </span>
                     </div>
-                    <Progress value={((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100} className="h-2" />
-                    <p className="text-xs text-blue-600 mt-2">
-                      Seu cartão será cobrado em {getNextChargeDate()}
+                    <Progress 
+                      value={Math.min(100, Math.max(0, ((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100))} 
+                      className="h-2" 
+                    />
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                      {assinatura.trial_fim 
+                        ? `Seu período de teste termina em ${formatDateBR(assinatura.trial_fim)}`
+                        : `Seu cartão será cobrado em ${getNextChargeDate()}`
+                      }
                     </p>
                   </div>
                 </CardContent>
@@ -584,10 +596,18 @@ export default function Assinatura() {
 
               if (resourcesToShow.length === 0) return null;
 
+              const getPlanDisplayTitle = () => {
+                const slug = assinatura.plano?.slug?.toLowerCase();
+                if (slug === 'bronze') return 'Plano Iniciante';
+                if (slug === 'prata') return 'Plano Profissional';
+                if (slug === 'ouro') return 'Plano Ouro (Enterprise)';
+                return assinatura.plano?.nome || 'trial';
+              };
+
               return (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Recursos {assinatura.plano_id ? 'do seu plano' : 'inclusos no trial'}</CardTitle>
+                    <CardTitle>Recursos do {getPlanDisplayTitle()}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid md:grid-cols-2 gap-3">
