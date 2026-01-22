@@ -27,16 +27,28 @@ export default function DeliverySuccess() {
     try {
       console.log('[DeliverySuccess] Completando pedido com sessionId:', sessionId);
       
-      const { data, error } = await supabase.functions.invoke('complete-delivery-order', {
-        body: { sessionId },
+      // IMPORTANTE: Chamar edge function via fetch direto para Lovable Cloud
+      // As edge functions estão deployadas lá e configuradas para gravar no banco externo
+      const LOVABLE_CLOUD_URL = "https://jejpufnzaineihemdrgd.supabase.co/functions/v1";
+      const LOVABLE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplanB1Zm56YWluZWloZW1kcmdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3ODgxMDAsImV4cCI6MjA4MDM2NDEwMH0.b0sXHLsReI8DOSN-IKz1PxSF9pQ3zjkkK1PKsCQkHMg";
+      
+      const response = await fetch(`${LOVABLE_CLOUD_URL}/complete-delivery-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': LOVABLE_ANON_KEY,
+          'Authorization': `Bearer ${LOVABLE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ sessionId }),
       });
 
-      if (error) {
-        console.error('[DeliverySuccess] Erro ao completar pedido:', error);
-        throw error;
-      }
-
+      const data = await response.json();
       console.log('[DeliverySuccess] Resposta:', data);
+
+      if (!response.ok) {
+        console.error('[DeliverySuccess] Erro ao completar pedido:', data);
+        throw new Error(data.error || 'Erro ao completar pedido');
+      }
 
       if (data?.success && data?.orderId) {
         setSuccess(true);
@@ -45,9 +57,9 @@ export default function DeliverySuccess() {
       } else {
         setError(data?.error || 'Erro ao criar pedido após pagamento');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[DeliverySuccess] Erro:', err);
-      setError('Erro ao completar pedido. Entre em contato com o suporte.');
+      setError(err.message || 'Erro ao completar pedido. Entre em contato com o suporte.');
     } finally {
       setIsLoading(false);
     }

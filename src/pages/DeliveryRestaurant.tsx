@@ -603,29 +603,42 @@ export default function DeliveryRestaurant() {
         setIsCheckoutOpen(false);
         clearCart();
       } else {
-        // Para cartão: enviar dados para criar checkout do Stripe
+        // Para cartão: enviar dados para criar checkout do Stripe via Lovable Cloud
         // O pedido só será criado APÓS o pagamento ser confirmado
         console.log('[DeliveryRestaurant] Criando checkout session com orderData:', orderData);
         
-        const { data, error: sErr } = await supabase.functions.invoke("create-delivery-checkout", {
-          body: {
+        // IMPORTANTE: Chamar edge function via fetch direto para Lovable Cloud
+        // As edge functions estão deployadas lá e configuradas para gravar no banco externo
+        const LOVABLE_CLOUD_URL = "https://jejpufnzaineihemdrgd.supabase.co/functions/v1";
+        const LOVABLE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplanB1Zm56YWluZWloZW1kcmdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3ODgxMDAsImV4cCI6MjA4MDM2NDEwMH0.b0sXHLsReI8DOSN-IKz1PxSF9pQ3zjkkK1PKsCQkHMg";
+        
+        const response = await fetch(`${LOVABLE_CLOUD_URL}/create-delivery-checkout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': LOVABLE_ANON_KEY,
+            'Authorization': `Bearer ${LOVABLE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
             orderData: orderData,
             total: totalComDesconto,
-          },
+          }),
         });
 
-        if (sErr) {
-          console.error('[DeliveryRestaurant] Erro ao criar checkout:', sErr);
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          console.error('[DeliveryRestaurant] Erro ao criar checkout:', data);
           
           // Mensagens de erro mais específicas
           let errorMessage = "Erro ao processar pagamento com cartão.";
           
-          if (sErr.message?.includes("STRIPE_SECRET_KEY")) {
+          if (data.error?.includes("STRIPE_SECRET_KEY")) {
             errorMessage = "Sistema de pagamento não configurado. Entre em contato com o restaurante.";
-          } else if (sErr.message?.includes("valor")) {
+          } else if (data.error?.includes("valor")) {
             errorMessage = "Erro na validação do valor. Tente atualizar a página.";
-          } else if (sErr.message) {
-            errorMessage = sErr.message;
+          } else if (data.error) {
+            errorMessage = data.error;
           }
           
           throw new Error(errorMessage);
