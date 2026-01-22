@@ -35,6 +35,8 @@ export default function DeliveryRestaurant() {
   const [showPixModal, setShowPixModal] = useState(false);
   const [valorPix, setValorPix] = useState(0);
   const [pedidoId, setPedidoId] = useState<string | null>(null);
+  const [pixConfirmado, setPixConfirmado] = useState(false);
+  const [verificandoPix, setVerificandoPix] = useState(false);
 
   // Estados para endereços salvos
   const [enderecosSalvos, setEnderecosSalvos] = useState<any[]>([]);
@@ -359,6 +361,41 @@ export default function DeliveryRestaurant() {
     fetchData();
     checkAuth();
   }, [fetchData, checkAuth]);
+
+  // Polling para verificar confirmação do pagamento PIX
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (showPixModal && pedidoId && !pixConfirmado) {
+      setVerificandoPix(true);
+      
+      interval = setInterval(async () => {
+        try {
+          const { data } = await supabase
+            .from("pedidos_delivery")
+            .select("status")
+            .eq("id", pedidoId)
+            .single();
+          
+          if (data && data.status !== "pendente") {
+            setPixConfirmado(true);
+            setVerificandoPix(false);
+            if (interval) clearInterval(interval);
+          }
+        } catch (err) {
+          console.error('[PIX Check] Error checking status:', err);
+        }
+      }, 5000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+      if (!showPixModal) {
+        setPixConfirmado(false);
+        setVerificandoPix(false);
+      }
+    };
+  }, [showPixModal, pedidoId, pixConfirmado]);
 
   const handleCEPChange = async (value: string) => {
     const maskedCEP = maskCEP(value);
@@ -1103,8 +1140,41 @@ export default function DeliveryRestaurant() {
               </div>
             )}
 
+            {/* Instruções de pagamento */}
+            <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
+              <p>1. Abra o app do seu banco</p>
+              <p>2. Escaneie o QR Code ou copie o código</p>
+              <p>3. Confirme o pagamento</p>
+            </div>
+
+            {/* Status de verificação do pagamento */}
+            {!pixConfirmado && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  {verificandoPix && <Loader2 className="w-4 h-4 animate-spin text-amber-600" />}
+                  <p className="text-amber-700 text-sm font-medium">
+                    Aguardando confirmação do pagamento...
+                  </p>
+                </div>
+                <p className="text-amber-600 text-xs">
+                  O restaurante precisa confirmar o recebimento
+                </p>
+              </div>
+            )}
+
+            {pixConfirmado && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4 text-center">
+                <Check className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                <p className="text-green-700 text-sm font-medium">
+                  Pagamento confirmado!
+                </p>
+              </div>
+            )}
+
+            {/* Botão principal - desabilitado até confirmar */}
             <Button
-              className="w-full mt-6"
+              className="w-full mt-4"
+              disabled={!pixConfirmado}
               onClick={() => {
                 setShowPixModal(false);
                 if (pedidoId) {
@@ -1114,7 +1184,19 @@ export default function DeliveryRestaurant() {
                 }
               }}
             >
-              Acompanhar Pedido
+              {pixConfirmado ? "Acompanhar Pedido" : "Aguardando Confirmação..."}
+            </Button>
+
+            {/* Botão secundário para voltar */}
+            <Button
+              variant="outline"
+              className="w-full mt-2"
+              onClick={() => {
+                setShowPixModal(false);
+                navigate("/delivery");
+              }}
+            >
+              Voltar aos Restaurantes
             </Button>
           </div>
         </SheetContent>
