@@ -106,7 +106,7 @@ export default function PedidosDelivery() {
             complemento,
             referencia
           ),
-          itens_delivery!itens_delivery_pedido_delivery_id_fkey (
+          itens_delivery (
             id,
             nome_produto,
             quantidade,

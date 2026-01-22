@@ -94,7 +94,7 @@ export default function DeliveryProfile() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success('Você saiu da conta');
-    navigate('/delivery');
+    window.location.href = '/delivery/auth';
   };
 
   const handleChangePassword = async () => {
