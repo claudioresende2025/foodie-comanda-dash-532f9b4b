@@ -18,6 +18,7 @@ import { ProductCard } from "@/components/delivery/ProductCard";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
 import { useCart } from "@/hooks/useCart";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export default function DeliveryRestaurant() {
   const { empresaId } = useParams();
@@ -72,6 +73,8 @@ export default function DeliveryRestaurant() {
     config?.taxa_entrega || 0,
   );
 
+  // Push notifications
+  const { requestPermission, notifyPixConfirmed, permission } = usePushNotifications({ type: 'delivery' });
   // Calcular valor do desconto de pontos de fidelidade
   const descontoPontos = usarPontosFidelidade && fidelidadeData
     ? (pontosAUtilizar * (fidelidadeData.reais_por_ponto || 0.01))
@@ -369,6 +372,11 @@ export default function DeliveryRestaurant() {
     if (showPixModal && pedidoId && !pixConfirmado) {
       setVerificandoPix(true);
       
+      // Solicitar permissão para notificações push
+      if (permission === 'default') {
+        requestPermission();
+      }
+      
       interval = setInterval(async () => {
         try {
           const { data } = await supabase
@@ -380,6 +388,10 @@ export default function DeliveryRestaurant() {
           if (data && data.status !== "pendente") {
             setPixConfirmado(true);
             setVerificandoPix(false);
+            
+            // Disparar notificação push quando PIX for confirmado
+            notifyPixConfirmed();
+            
             if (interval) clearInterval(interval);
           }
         } catch (err) {
@@ -395,7 +407,7 @@ export default function DeliveryRestaurant() {
         setVerificandoPix(false);
       }
     };
-  }, [showPixModal, pedidoId, pixConfirmado]);
+  }, [showPixModal, pedidoId, pixConfirmado, permission, requestPermission, notifyPixConfirmed]);
 
   const handleCEPChange = async (value: string) => {
     const maskedCEP = maskCEP(value);
@@ -1133,10 +1145,17 @@ export default function DeliveryRestaurant() {
                 valor={valorPix}
                 nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
                 cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
+                expiracaoMinutos={5}
+                onExpired={() => {
+                  console.log('[PIX] QR Code expirado');
+                }}
+                onRefresh={() => {
+                  console.log('[PIX] Novo código gerado');
+                }}
               />
             ) : (
-              <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-6 text-center">
-                <p className="text-red-700 font-semibold">⚠️ Chave PIX não configurada</p>
+              <div className="bg-destructive/10 p-4 rounded-lg border border-destructive/20 mb-6 text-center">
+                <p className="text-destructive font-semibold">⚠️ Chave PIX não configurada</p>
               </div>
             )}
 
