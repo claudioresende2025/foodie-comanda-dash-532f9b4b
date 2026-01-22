@@ -313,17 +313,31 @@ export default function Assinatura() {
   // Usar os nomes corretos das colunas: data_inicio, data_fim, trial_fim
   const trialStartDateRaw = resolveDate(assinatura?.data_inicio) || resolveDate(assinatura?.updated_at);
   const trialEndDateRaw = resolveDate(assinatura?.trial_fim);
+  
+  // Determinar dias de trial baseado no plano (Ouro = 7 dias, outros = 3 dias)
+  const planSlug = assinatura?.plano?.slug?.toLowerCase();
+  const defaultTrialDays = planSlug === 'ouro' ? 7 : 3;
+  
   const computedTrialEnd = (() => {
     if (trialEndDateRaw) return trialEndDateRaw;
-    if (trialStartDateRaw) return new Date(trialStartDateRaw.getTime() + 3 * 24 * 60 * 60 * 1000);
+    if (trialStartDateRaw) return new Date(trialStartDateRaw.getTime() + defaultTrialDays * 24 * 60 * 60 * 1000);
     return null;
   })();
+  
+  // Calcular dias restantes - incluindo o dia atual
   const trialDaysRemaining = computedTrialEnd
     ? Math.max(0, Math.ceil((computedTrialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-    : 3;
+    : defaultTrialDays;
+  
+  // Calcular total de dias do trial
   const trialDaysTotal = computedTrialEnd && trialStartDateRaw
     ? Math.max(1, Math.ceil((computedTrialEnd.getTime() - trialStartDateRaw.getTime()) / (1000 * 60 * 60 * 24)))
-    : 3;
+    : defaultTrialDays;
+  
+  // Calcular progresso de forma segura
+  const trialProgress = trialDaysTotal > 0 
+    ? Math.min(100, Math.max(0, ((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100))
+    : 0;
 
   const isValidDate = (value?: any) => {
     if (!value) return false;
@@ -464,20 +478,26 @@ export default function Assinatura() {
               {/* Trial Progress */}
               {(assinatura.status === 'trialing' || assinatura.status === 'trial') && (
                 <CardContent className="pt-0">
-                  <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4">
+                  <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Período de teste</span>
-                      <span className="text-sm text-blue-700 dark:text-blue-300">
+                      <span className="text-sm font-medium text-foreground">Período de teste</span>
+                      <span className={`text-sm font-semibold ${
+                        trialDaysRemaining <= 1 
+                          ? 'text-destructive' 
+                          : trialDaysRemaining <= 2 
+                            ? 'text-orange-600 dark:text-orange-400'
+                            : 'text-primary'
+                      }`}>
                         {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia restante' : 'dias restantes'}
                       </span>
                     </div>
                     <Progress 
-                      value={Math.min(100, Math.max(0, ((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100))} 
-                      className="h-2" 
+                      value={trialProgress}
+                      className={`h-3 ${trialDaysRemaining <= 1 ? '[&>div]:bg-destructive' : ''}`}
                     />
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                      {assinatura.trial_fim 
-                        ? `Seu período de teste termina em ${formatDateBR(assinatura.trial_fim)}`
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {computedTrialEnd 
+                        ? `Seu período de teste termina em ${formatDateBR(computedTrialEnd)}`
                         : `Seu cartão será cobrado em ${getNextChargeDate()}`
                       }
                     </p>

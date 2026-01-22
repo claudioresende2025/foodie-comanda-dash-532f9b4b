@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
+import { UpgradeModal } from '@/components/UpgradeModal';
 
 interface SubscriptionStatus {
   blocked: boolean;
@@ -18,7 +19,7 @@ interface SubscriptionGuardProps {
 
 export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const navigate = useNavigate();
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading, signOut } = useAuth();
   const { status, isLoading, isBlocked, reason } = useSubscription();
 
   // Se ainda está carregando auth ou subscription, mostra loading
@@ -35,13 +36,14 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     return <>{children}</>;
   }
 
-  // Se está bloqueado, redireciona para página de bloqueio
+  // Se está bloqueado, mostra modal de upgrade com opção de sair
   if (isBlocked) {
     return (
       <BlockedAccessContent 
         reason={reason || 'Sua assinatura não está ativa'} 
         status={status.status}
         onRenew={() => navigate('/planos')}
+        onExit={() => signOut()}
       />
     );
   }
@@ -49,91 +51,96 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   return <>{children}</>;
 }
 
-// Componente de tela de bloqueio inline
+// Componente de tela de bloqueio com modal elegante
 function BlockedAccessContent({ 
   reason, 
   status, 
-  onRenew 
+  onRenew,
+  onExit
 }: { 
   reason: string; 
   status: string;
   onRenew: () => void;
+  onExit: () => void;
 }) {
-  const { signOut } = useAuth();
+  const [showModal, setShowModal] = useState(true);
   
-  const getStatusMessage = () => {
+  const getBlockingMessage = () => {
     switch (status) {
       case 'canceled':
-        return {
-          title: 'Assinatura Cancelada',
-          description: 'Sua assinatura foi cancelada. Para continuar utilizando o sistema, escolha um novo plano.',
-          icon: '🚫'
-        };
+        return 'Sua assinatura foi cancelada. Escolha um plano para continuar utilizando o sistema.';
       case 'expired':
-        return {
-          title: 'Assinatura Expirada',
-          description: 'Sua assinatura expirou. Renove seu plano para continuar tendo acesso ao sistema.',
-          icon: '⏰'
-        };
+        return 'Seu período de teste expirou. Escolha um plano para continuar utilizando o sistema.';
       case 'past_due':
-        return {
-          title: 'Pagamento Pendente',
-          description: 'Existe um pagamento pendente na sua assinatura. Regularize para continuar usando o sistema.',
-          icon: '💳'
-        };
+        return 'Existe um pagamento pendente na sua assinatura. Regularize para continuar usando o sistema.';
       case 'refunded':
-        return {
-          title: 'Reembolso Processado',
-          description: 'Um reembolso foi processado para sua conta. Para continuar utilizando o sistema, escolha um novo plano.',
-          icon: '💰'
-        };
+        return 'Um reembolso foi processado para sua conta. Escolha um novo plano para continuar.';
       case 'no_subscription':
-        return {
-          title: 'Sem Assinatura Ativa',
-          description: 'Você ainda não possui uma assinatura ativa. Escolha um plano para começar.',
-          icon: '📋'
-        };
+        return 'Você ainda não possui uma assinatura ativa. Escolha um plano para começar.';
       default:
-        return {
-          title: 'Acesso Bloqueado',
-          description: reason,
-          icon: '🔒'
-        };
+        return reason;
     }
   };
 
-  const { title, description, icon } = getStatusMessage();
+  const getBackgroundIcon = () => {
+    switch (status) {
+      case 'canceled': return '🚫';
+      case 'expired': return '⏰';
+      case 'past_due': return '💳';
+      case 'refunded': return '💰';
+      case 'no_subscription': return '📋';
+      default: return '🔒';
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <div className="max-w-md w-full bg-card rounded-xl shadow-lg p-8 text-center space-y-6">
-        <div className="text-6xl">{icon}</div>
-        
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-          <p className="text-muted-foreground">{description}</p>
-        </div>
-
-        <div className="space-y-3 pt-4">
-          <button
-            onClick={onRenew}
-            className="w-full bg-primary text-primary-foreground py-3 px-6 rounded-lg font-medium hover:bg-primary/90 transition-colors"
-          >
-            Ver Planos Disponíveis
-          </button>
+      {/* Background overlay */}
+      <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" />
+      
+      {/* Modal de planos com opção de sair */}
+      <UpgradeModal 
+        open={showModal}
+        onOpenChange={() => {}} // Não permite fechar sem ação
+        feature={null}
+        currentPlan={null}
+        showExitButton={true}
+        onExit={onExit}
+        blockingReason={getBlockingMessage()}
+        isBlocking={true}
+      />
+      
+      {/* Fallback visual quando modal fechado (não deveria acontecer) */}
+      {!showModal && (
+        <div className="relative max-w-md w-full bg-card rounded-xl shadow-lg p-8 text-center space-y-6 z-10">
+          <div className="text-6xl">{getBackgroundIcon()}</div>
           
-          <button
-            onClick={() => signOut()}
-            className="w-full bg-muted text-muted-foreground py-3 px-6 rounded-lg font-medium hover:bg-muted/80 transition-colors"
-          >
-            Sair da Conta
-          </button>
-        </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-foreground">Acesso Bloqueado</h1>
+            <p className="text-muted-foreground">{getBlockingMessage()}</p>
+          </div>
 
-        <p className="text-xs text-muted-foreground pt-4">
-          Precisa de ajuda? Entre em contato com nosso suporte.
-        </p>
-      </div>
+          <div className="space-y-3 pt-4">
+            <button
+              onClick={onRenew}
+              className="w-full bg-primary text-primary-foreground py-3 px-6 rounded-lg font-medium hover:bg-primary/90 transition-colors"
+            >
+              Ver Planos Disponíveis
+            </button>
+            
+            <button
+              onClick={onExit}
+              className="w-full bg-muted text-muted-foreground py-3 px-6 rounded-lg font-medium hover:bg-muted/80 transition-colors"
+            >
+              Sair da Conta
+            </button>
+          </div>
+
+          <p className="text-xs text-muted-foreground pt-4">
+            Precisa de ajuda? Entre em contato com nosso suporte.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

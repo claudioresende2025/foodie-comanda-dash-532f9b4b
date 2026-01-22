@@ -113,8 +113,8 @@ export default function SubscriptionSuccess() {
           }
 
           logStep('process-subscription success', { data });
-          toast.success('Assinatura atualizada com sucesso!');
-          navigate('/admin/assinatura');
+          toast.success('Assinatura ativada com sucesso! Bem-vindo ao painel.');
+          navigate('/admin');
         } catch (fnError: any) {
           logStep('process-subscription exception', { error: fnError.message });
           toast.error('Erro ao conectar com o servidor. Tente novamente.');
@@ -296,9 +296,9 @@ export default function SubscriptionSuccess() {
       toast.warning('Cadastro criado! A assinatura será ativada automaticamente.');
     }
 
-    // Sempre navegar para o painel (mesmo se assinatura não foi vinculada)
-    logStep('Navegando para /admin/assinatura');
-    navigate('/admin/assinatura');
+    // Sempre navegar para o painel principal (dashboard)
+    logStep('Navegando para /admin (dashboard)');
+    navigate('/admin');
   };
 
   if (isLoading && !showForm) {
