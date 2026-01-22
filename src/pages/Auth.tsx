@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,9 +26,22 @@ export default function Auth() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Ouvir mudanças de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        // Usuário fez logout - permitir exibir formulário
+        return;
+      } else if (session) {
+        navigate('/admin');
+      }
+    });
+
+    // Verificar se já está logado
     if (user) {
       navigate('/admin');
     }
+
+    return () => subscription.unsubscribe();
   }, [user, navigate]);
 
   const validateLogin = () => {

@@ -31,8 +31,21 @@ export const DeliveryHeader = memo(function DeliveryHeader({
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/delivery/auth';
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Erro ao fazer logout:', error);
+        return;
+      }
+      
+      // Limpar storage local do Supabase
+      localStorage.removeItem('sb-zlwpxflqtyhdwanmupgy-auth-token');
+      sessionStorage.clear();
+      
+      window.location.href = '/delivery/auth';
+    } catch (err) {
+      console.error('Exceção no logout:', err);
+    }
   };
 
   return (

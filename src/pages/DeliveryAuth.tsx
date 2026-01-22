@@ -214,17 +214,37 @@ export default function DeliveryAuth() {
     };
   }, []);
 
-  // Verificar se já está logado
+  // Verificar se já está logado com listener reativo
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+    let mounted = true;
+
+    // Verificar sessão inicial
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted && session) {
+        const redirectTo = location.state?.from || '/delivery';
+        navigate(redirectTo, { replace: true });
+      } else if (mounted) {
+        setCheckingAuth(false);
+      }
+    });
+
+    // Ouvir mudanças de autenticação (incluindo SIGNED_OUT)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        // Usuário fez logout - mostrar formulário
+        if (mounted) {
+          setCheckingAuth(false);
+        }
+      } else if (session && mounted) {
         const redirectTo = location.state?.from || '/delivery';
         navigate(redirectTo, { replace: true });
       }
-      setCheckingAuth(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
     };
-    checkSession();
   }, [navigate, location.state]);
 
   const handleLogin = async (e: React.FormEvent) => {

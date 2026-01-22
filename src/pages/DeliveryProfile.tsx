@@ -92,9 +92,24 @@ export default function DeliveryProfile() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    toast.success('Você saiu da conta');
-    window.location.href = '/delivery/auth';
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Erro ao fazer logout:', error);
+        toast.error('Erro ao sair. Tente novamente.');
+        return;
+      }
+      
+      // Limpar storage local do Supabase
+      localStorage.removeItem('sb-zlwpxflqtyhdwanmupgy-auth-token');
+      sessionStorage.clear();
+      
+      toast.success('Você saiu da conta');
+      window.location.href = '/delivery/auth';
+    } catch (err) {
+      console.error('Exceção no logout:', err);
+      toast.error('Erro ao sair. Tente novamente.');
+    }
   };
 
   const handleChangePassword = async () => {

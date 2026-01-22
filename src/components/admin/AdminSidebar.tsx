@@ -100,9 +100,19 @@ export function AdminSidebar() {
   } = useUserRole();
 
   const handleLogout = async () => {
-    await signOut();
-    toast.success('Logout realizado com sucesso!');
-    window.location.href = '/auth';
+    try {
+      await signOut();
+      
+      // Limpar storage local do Supabase
+      localStorage.removeItem('sb-zlwpxflqtyhdwanmupgy-auth-token');
+      sessionStorage.clear();
+      
+      toast.success('Logout realizado com sucesso!');
+      window.location.href = '/auth';
+    } catch (err) {
+      console.error('Exceção no logout:', err);
+      toast.error('Erro ao sair. Tente novamente.');
+    }
   };
 
   const handleMenuClick = () => {
