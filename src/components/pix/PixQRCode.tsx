@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Clock, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PixQRCodeProps {
@@ -12,6 +12,9 @@ interface PixQRCodeProps {
   nomeRecebedor?: string;
   cidade?: string;
   txid?: string;
+  expiracaoMinutos?: number;
+  onExpired?: () => void;
+  onRefresh?: () => void;
 }
 
 // Funções para gerar o BR Code (PIX) - Especificação BACEN v3.1
@@ -51,40 +54,30 @@ function normalizeText(text: string): string {
 function detectPixKeyType(key: string): 'cpf' | 'cnpj' | 'phone' | 'email' | 'evp' | 'unknown' {
   const cleanKey = key.trim();
   
-  // Email: contém @ e .
   if (cleanKey.includes('@') && cleanKey.includes('.')) {
     return 'email';
   }
   
-  // Chave aleatória (EVP): formato UUID (32 hex + 4 hífens = 36 chars)
   const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
   if (uuidRegex.test(cleanKey)) {
     return 'evp';
   }
   
-  // Telefone: começa com +55 ou tem formato de telefone
   if (cleanKey.startsWith('+55') || cleanKey.startsWith('+')) {
     return 'phone';
   }
   
   const onlyDigits = cleanKey.replace(/\D/g, '');
   
-  // CNPJ: 14 dígitos
   if (onlyDigits.length === 14) {
     return 'cnpj';
   }
   
-  // CPF: 11 dígitos (mas verificar se não é telefone)
-  // Telefones brasileiros: DDD (2 dígitos) + número (8 ou 9 dígitos) = 10 ou 11 dígitos
-  // CPF: 11 dígitos
-  // Para diferenciar: se a chave original tem caracteres de telefone (parênteses, hífen, espaços típicos de telefone)
-  // ou começa com 55, provavelmente é telefone
   if (onlyDigits.length === 11) {
-    // Verifica padrões típicos de telefone
     const phonePatterns = [
-      /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/, // (11) 99999-9999 ou (11)999999999
-      /^\d{2}\s?\d{4,5}-?\d{4}$/,     // 11 99999-9999
-      /^55\d{10,11}$/                  // 5511999999999
+      /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/,
+      /^\d{2}\s?\d{4,5}-?\d{4}$/,
+      /^55\d{10,11}$/
     ];
     
     const looksLikePhone = phonePatterns.some(pattern => pattern.test(cleanKey.replace(/\s/g, '')));
@@ -92,7 +85,6 @@ function detectPixKeyType(key: string): 'cpf' | 'cnpj' | 'phone' | 'email' | 'ev
       return 'phone';
     }
     
-    // Se começa com 55, provavelmente é telefone com código do país
     if (onlyDigits.startsWith('55')) {
       return 'phone';
     }
@@ -100,7 +92,6 @@ function detectPixKeyType(key: string): 'cpf' | 'cnpj' | 'phone' | 'email' | 'ev
     return 'cpf';
   }
   
-  // Telefone: 10-13 dígitos (sem considerar os 11 que já foram tratados acima)
   if (onlyDigits.length >= 10 && onlyDigits.length <= 13) {
     return 'phone';
   }
@@ -127,25 +118,24 @@ function formatPixKey(key: string): string {
       return onlyDigits;
     
     case 'phone':
-      // Telefone precisa estar no formato +55DDDNNNNNNNNN
       if (cleanKey.startsWith('+55')) {
-        // Já está no formato correto, só limpa
         return '+55' + cleanKey.replace(/\D/g, '').replace(/^55/, '');
       }
       if (cleanKey.startsWith('+')) {
         return cleanKey.replace(/[^\d+]/g, '');
       }
-      // Remove 55 do início se existir e adiciona +55
       if (onlyDigits.startsWith('55') && onlyDigits.length >= 12) {
         return '+' + onlyDigits;
       }
-      // Adiciona +55 ao número
       return '+55' + onlyDigits;
     
     default:
-      // Retorna como está (pode ser uma chave válida que não reconhecemos)
       return cleanKey;
   }
+}
+
+function generateTxid(): string {
+  return 'PIX' + Date.now().toString(36).toUpperCase();
 }
 
 function generatePixBRCode(
@@ -155,7 +145,6 @@ function generatePixBRCode(
   cidade: string,
   txid: string = '***'
 ): string {
-  // Validação da chave
   if (!chavePix || chavePix.trim() === '') {
     throw new Error('Chave PIX é obrigatória');
   }
@@ -170,58 +159,88 @@ function generatePixBRCode(
   const cidadeNorm = normalizeText(cidade).substring(0, 15) || 'CIDADE';
   const txidNorm = txid.replace(/[^a-zA-Z0-9*]/g, '').substring(0, 25) || '***';
   
-  // ========== MONTAGEM DO PAYLOAD EMV ==========
-  
-  // ID 00 - Payload Format Indicator (obrigatório, fixo "01")
   const id00 = formatEMV('00', '01');
   
-  // ID 26 - Merchant Account Information (PIX específico)
-  //   Sub-ID 00: GUI = "br.gov.bcb.pix"
-  //   Sub-ID 01: Chave PIX
   const subId00 = formatEMV('00', 'br.gov.bcb.pix');
   const subId01 = formatEMV('01', chaveFormatada);
   const id26 = formatEMV('26', subId00 + subId01);
   
-  // ID 52 - Merchant Category Code (obrigatório, "0000" para não especificado)
   const id52 = formatEMV('52', '0000');
-  
-  // ID 53 - Transaction Currency (obrigatório, "986" = BRL)
   const id53 = formatEMV('53', '986');
   
-  // ID 54 - Transaction Amount (opcional)
   let id54 = '';
   if (valor > 0) {
     id54 = formatEMV('54', valor.toFixed(2));
   }
   
-  // ID 58 - Country Code (obrigatório, "BR")
   const id58 = formatEMV('58', 'BR');
-  
-  // ID 59 - Merchant Name (obrigatório, máx 25 chars)
   const id59 = formatEMV('59', nomeNorm);
-  
-  // ID 60 - Merchant City (obrigatório, máx 15 chars)
   const id60 = formatEMV('60', cidadeNorm);
   
-  // ID 62 - Additional Data Field Template
-  //   Sub-ID 05: Reference Label (TXID)
   const subId05 = formatEMV('05', txidNorm);
   const id62 = formatEMV('62', subId05);
   
-  // Monta payload base (sem CRC)
   const payloadBase = id00 + id26 + id52 + id53 + id54 + id58 + id59 + id60 + id62;
   
-  // ID 63 - CRC16 (obrigatório, sempre no final)
-  // Adiciona "6304" antes de calcular o CRC
   const payloadParaCRC = payloadBase + '6304';
   const crc = crc16CCITT(payloadParaCRC);
   
-  // Payload final
   return payloadParaCRC + crc;
 }
 
-export function PixQRCode({ chavePix, valor, nomeRecebedor = 'RESTAURANTE', cidade = 'SAO PAULO', txid }: PixQRCodeProps) {
+export function PixQRCode({ 
+  chavePix, 
+  valor, 
+  nomeRecebedor = 'RESTAURANTE', 
+  cidade = 'SAO PAULO', 
+  txid,
+  expiracaoMinutos = 5,
+  onExpired,
+  onRefresh
+}: PixQRCodeProps) {
   const [copied, setCopied] = useState(false);
+  const [txidAtual, setTxidAtual] = useState(txid || generateTxid());
+  const [tempoRestante, setTempoRestante] = useState(expiracaoMinutos * 60);
+  const [expirado, setExpirado] = useState(false);
+
+  // Countdown timer
+  useEffect(() => {
+    if (expirado || tempoRestante <= 0) {
+      if (!expirado) {
+        setExpirado(true);
+        onExpired?.();
+      }
+      return;
+    }
+    
+    const timer = setInterval(() => {
+      setTempoRestante(prev => {
+        if (prev <= 1) {
+          setExpirado(true);
+          onExpired?.();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [tempoRestante, expirado, onExpired]);
+
+  const formatarTempo = (segundos: number) => {
+    const min = Math.floor(segundos / 60);
+    const seg = segundos % 60;
+    return `${min}:${seg.toString().padStart(2, '0')}`;
+  };
+
+  const handleRefresh = useCallback(() => {
+    const novoTxid = generateTxid();
+    setTxidAtual(novoTxid);
+    setTempoRestante(expiracaoMinutos * 60);
+    setExpirado(false);
+    onRefresh?.();
+    toast.success('Novo código PIX gerado!');
+  }, [expiracaoMinutos, onRefresh]);
 
   if (!chavePix) {
     return (
@@ -232,9 +251,13 @@ export function PixQRCode({ chavePix, valor, nomeRecebedor = 'RESTAURANTE', cida
     );
   }
 
-  const brCode = generatePixBRCode(chavePix, valor, nomeRecebedor, cidade, txid);
+  const brCode = generatePixBRCode(chavePix, valor, nomeRecebedor, cidade, txidAtual);
 
   const handleCopy = async () => {
+    if (expirado) {
+      toast.error('Código expirado. Gere um novo código.');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(brCode);
       setCopied(true);
@@ -247,8 +270,32 @@ export function PixQRCode({ chavePix, valor, nomeRecebedor = 'RESTAURANTE', cida
 
   return (
     <div className="flex flex-col items-center space-y-4">
+      {/* Timer de expiração */}
+      <div className={`w-full text-center py-2 px-4 rounded-lg ${
+        expirado 
+          ? 'bg-destructive/10 text-destructive' 
+          : tempoRestante < 60 
+            ? 'bg-amber-100 text-amber-700' 
+            : 'bg-blue-100 text-blue-700'
+      }`}>
+        {expirado ? (
+          <div className="flex flex-col items-center gap-2">
+            <p className="font-medium">QR Code expirado</p>
+            <Button size="sm" variant="outline" onClick={handleRefresh}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Gerar novo código
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2">
+            <Clock className="w-4 h-4" />
+            <span>Expira em: <strong>{formatarTempo(tempoRestante)}</strong></span>
+          </div>
+        )}
+      </div>
+
       {/* QR Code */}
-      <div className="p-4 bg-white rounded-lg border">
+      <div className={`p-4 bg-white rounded-lg border ${expirado ? 'opacity-40' : ''}`}>
         <QRCodeSVG
           value={brCode}
           size={200}
@@ -271,24 +318,19 @@ export function PixQRCode({ chavePix, valor, nomeRecebedor = 'RESTAURANTE', cida
         <div className="flex gap-2">
           <Input
             readOnly
-            value={brCode}
+            value={expirado ? 'Código expirado' : brCode}
             className="text-xs font-mono"
+            disabled={expirado}
           />
           <Button
             variant="secondary"
             size="icon"
             onClick={handleCopy}
+            disabled={expirado}
           >
             {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
           </Button>
         </div>
-      </div>
-
-      {/* Instruções */}
-      <div className="text-center text-xs text-muted-foreground space-y-1">
-        <p>1. Abra o app do seu banco</p>
-        <p>2. Escaneie o QR Code ou copie o código</p>
-        <p>3. Confirme o pagamento</p>
       </div>
     </div>
   );

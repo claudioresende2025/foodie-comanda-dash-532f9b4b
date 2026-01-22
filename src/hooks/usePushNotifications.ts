@@ -113,6 +113,7 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
           if (!newStatus) return;
           
           const statusMessages: Record<string, string> = {
+            pago: 'Pagamento PIX confirmado! Seu pedido será preparado.',
             confirmado: 'Seu pedido foi confirmado!',
             em_preparo: 'Seu pedido está sendo preparado!',
             saiu_entrega: 'Seu pedido saiu para entrega!',
@@ -123,7 +124,8 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
           if (message) {
             showLocalNotification('Food Delivery', {
               body: message,
-              data: { orderId, status: newStatus }
+              data: { orderId, status: newStatus },
+              requireInteraction: newStatus === 'pago'
             });
           }
         }
@@ -205,6 +207,15 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
     };
   }, [profile?.empresa_id, showLocalNotification]);
 
+  // Notificação específica para confirmação de PIX
+  const notifyPixConfirmed = useCallback(() => {
+    showLocalNotification('Pagamento Confirmado!', {
+      body: 'Seu pagamento PIX foi recebido. O restaurante vai preparar seu pedido!',
+      tag: 'pix-confirmed',
+      requireInteraction: true
+    });
+  }, [showLocalNotification]);
+
   return {
     isSupported,
     permission,
@@ -213,7 +224,8 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
     subscribeToNotifications,
     showLocalNotification,
     subscribeToDeliveryUpdates,
-    subscribeToAdminUpdates
+    subscribeToAdminUpdates,
+    notifyPixConfirmed
   };
 };
 
