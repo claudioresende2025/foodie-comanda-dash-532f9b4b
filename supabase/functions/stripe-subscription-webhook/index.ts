@@ -12,6 +12,41 @@ const logStep = (step: string, details?: any) => {
   console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
 
+// Helper para enviar e-mail via Resend
+async function sendEmailNotification(
+  type: string, 
+  to: string, 
+  data: Record<string, any>
+) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    
+    if (!supabaseUrl || !anonKey) {
+      logStep("E-mail: variáveis não configuradas");
+      return;
+    }
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({ type, to, data }),
+    });
+    
+    if (response.ok) {
+      logStep("E-mail enviado com sucesso", { type, to });
+    } else {
+      const error = await response.text();
+      logStep("Falha ao enviar e-mail", { type, to, error });
+    }
+  } catch (e: any) {
+    logStep("Erro ao enviar e-mail (não fatal)", { error: e.message });
+  }
+}
+
 // Função para verificar assinatura do webhook
 async function verifyStripeSignature(payload: string, sigHeader: string, secret: string): Promise<boolean> {
   try {
@@ -376,6 +411,21 @@ async function handleCheckoutCompleted(session: any, supabase: any, stripeKey: s
   }
   
   logStep("Pagamento registrado com sucesso");
+
+  // Enviar e-mail de confirmação de assinatura
+  const customerEmail = session.customer_details?.email || session.customer_email;
+  const customerName = session.customer_details?.name || 'Cliente';
+  
+  if (customerEmail) {
+    await sendEmailNotification('subscription_confirmed', customerEmail, {
+      nome: customerName,
+      plano: planoInfo?.nome || 'Plano',
+      valor: `R$ ${valorPagamento.toFixed(2)}`,
+      proximaCobranca: dataFim.toLocaleDateString('pt-BR'),
+      dashboardUrl: 'https://foodie-comanda-dash.lovable.app/admin'
+    });
+  }
+
   return { success: true, message: "Checkout processado com sucesso" };
 }
 
@@ -451,6 +501,18 @@ async function handlePaymentSucceeded(invoice: any, supabase: any, stripeKey: st
       return { success: false, message: insertError.message };
     }
     logStep("Pagamento de renovação registrado");
+
+    // Enviar recibo por e-mail
+    const customerEmail = invoice.customer_email;
+    if (customerEmail) {
+      await sendEmailNotification('payment_receipt', customerEmail, {
+        nome: invoice.customer_name || 'Cliente',
+        descricao: `Renovação - ${assinatura.planos?.nome || 'Plano'}`,
+        valor: `R$ ${(invoice.amount_paid / 100).toFixed(2)}`,
+        data: new Date().toLocaleDateString('pt-BR'),
+        metodo: 'Cartão de Crédito'
+      });
+    }
   } else {
     logStep("Pagamento já registrado ou sem payment_intent");
   }
@@ -504,6 +566,17 @@ async function handlePaymentFailed(invoice: any, supabase: any): Promise<{ succe
       }
     });
 
+  // Enviar e-mail de aviso sobre falha no pagamento
+  const customerEmail = invoice.customer_email;
+  if (customerEmail) {
+    await sendEmailNotification('trial_reminder', customerEmail, {
+      nome: invoice.customer_name || 'Cliente',
+      plano: assinatura.planos?.nome || 'Plano',
+      diasRestantes: 0,
+      checkoutUrl: 'https://foodie-comanda-dash.lovable.app/planos'
+    });
+  }
+
   logStep("Falha de pagamento registrada");
   return { success: true, message: "Falha registrada" };
 }
@@ -525,17 +598,31 @@ async function handleSubscriptionUpdated(subscription: any, supabase: any, strip
 
   const priceId = subscription.items?.data?.[0]?.price?.id;
   let novoPlanoId = assinatura.plano_id;
+  let planoMudou = false;
 
   if (priceId) {
     const { data: plano } = await supabase
       .from('planos')
-      .select('id')
+      .select('id, nome')
       .or(`stripe_price_id_mensal.eq.${priceId},stripe_price_id_anual.eq.${priceId}`)
       .single();
 
     if (plano && plano.id !== assinatura.plano_id) {
       novoPlanoId = plano.id;
+      planoMudou = true;
       logStep("Mudança de plano detectada", { de: assinatura.plano_id, para: novoPlanoId });
+
+      // Enviar e-mail de confirmação de mudança de plano
+      const customer = await stripeRequest(`/customers/${subscription.customer}`, stripeKey);
+      if (customer?.email) {
+        await sendEmailNotification('subscription_confirmed', customer.email, {
+          nome: customer.name || 'Cliente',
+          plano: plano.nome,
+          valor: 'Conforme plano escolhido',
+          proximaCobranca: new Date(subscription.current_period_end * 1000).toLocaleDateString('pt-BR'),
+          dashboardUrl: 'https://foodie-comanda-dash.lovable.app/admin'
+        });
+      }
     }
   }
 
@@ -562,7 +649,7 @@ async function handleSubscriptionUpdated(subscription: any, supabase: any, strip
     })
     .eq('id', assinatura.id);
 
-  logStep("Assinatura atualizada", { status: novoStatus, planoId: novoPlanoId });
+  logStep("Assinatura atualizada", { status: novoStatus, planoId: novoPlanoId, planoMudou });
   return { success: true, message: "Subscription atualizada" };
 }
 
