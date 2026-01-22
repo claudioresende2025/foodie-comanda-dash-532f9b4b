@@ -102,7 +102,7 @@ export function AdminSidebar() {
   const handleLogout = async () => {
     await signOut();
     toast.success('Logout realizado com sucesso!');
-    navigate('/auth');
+    window.location.href = '/auth';
   };
 
   const handleMenuClick = () => {
