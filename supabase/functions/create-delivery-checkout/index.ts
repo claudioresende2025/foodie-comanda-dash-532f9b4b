@@ -22,8 +22,20 @@ serve(async (req) => {
 
     // Verificar variáveis de ambiente
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    // IMPORTANTE: Usar banco externo (zlwpxflqtyhdwanmupgy) via secrets
+    const externalSupabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+    const externalSupabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+    
+    // Fallback para variáveis padrão se externas não estiverem configuradas
+    const supabaseUrl = externalSupabaseUrl || Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = externalSupabaseServiceKey || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    logStep("Environment check", { 
+      hasStripeKey: !!stripeKey, 
+      usingExternalDb: !!externalSupabaseUrl,
+      supabaseUrl: supabaseUrl?.substring(0, 40) + "..."
+    });
 
     if (!stripeKey) {
       logStep("ERROR: STRIPE_SECRET_KEY not found");
@@ -86,7 +98,7 @@ serve(async (req) => {
       return json;
     };
 
-    // Criar cliente Supabase com service role
+    // Criar cliente Supabase com service role - usando banco externo
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
@@ -133,7 +145,7 @@ serve(async (req) => {
       amountInCents: Math.round(validatedTotal * 100) 
     });
 
-    const origin = req.headers.get("origin") || "https://preview--foodcomandapro.lovable.app";
+    const origin = req.headers.get("origin") || "https://foodie-comanda-dash.lovable.app";
     logStep("Using origin", { origin });
 
     const sessionPayload: any = {
