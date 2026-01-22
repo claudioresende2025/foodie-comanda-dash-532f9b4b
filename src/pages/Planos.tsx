@@ -139,11 +139,12 @@ export default function Planos() {
       const displayOrder = ['Básico', 'Profissional', 'Enterprise'];
 
       // Overrides visuais conforme imagem fornecida
+      // Desconto de ~17% no plano anual (10 meses pelo preço de 12)
       const displayOverrides: Record<string, any> = {
         'Básico': {
           nome: 'Plano Iniciante (Bronze)',
           preco_mensal: 149.90,
-          preco_anual: 149.90 * 12,
+          preco_anual: 149.90 * 10, // 17% desconto (paga 10, usa 12)
           trial_days: 3,
           descricao: 'Plano Iniciante - Ideal para lanchonetes e MEI',
           destaque: false,
@@ -162,7 +163,7 @@ export default function Planos() {
         'Profissional': {
           nome: 'Plano Profissional (Prata)',
           preco_mensal: 299.90,
-          preco_anual: 299.90 * 12,
+          preco_anual: 299.90 * 10, // 17% desconto (paga 10, usa 12)
           trial_days: 3,
           descricao: 'Plano Crescimento - Ideal para restaurantes com mesas',
           destaque: true,
@@ -179,9 +180,9 @@ export default function Planos() {
           ],
         },
         'Enterprise': {
-          nome: 'Plano Enteerprise (Ouro)',
+          nome: 'Plano Enterprise (Ouro)',
           preco_mensal: 549.90,
-          preco_anual: 549.90 * 12,
+          preco_anual: 549.90 * 10, // 17% desconto (paga 10, usa 12)
           trial_days: 7,
           descricao: 'Plano Profissional - Operações de Alto Volume',
           destaque: false,
