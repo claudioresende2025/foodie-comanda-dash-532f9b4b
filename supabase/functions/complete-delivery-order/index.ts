@@ -155,7 +155,21 @@ serve(async (req) => {
         valor_desconto: parseFloat(orderData.descontoCupom || orderData.desconto || 0),
       });
 
-      logStep("Coupon usage registered", { cupomId: orderData.cupomId });
+      // CORREÇÃO: Incrementar uso_atual do cupom
+      const { data: cupomAtual } = await supabase
+        .from("cupons")
+        .select("uso_atual")
+        .eq("id", orderData.cupomId)
+        .single();
+      
+      if (cupomAtual) {
+        await supabase
+          .from("cupons")
+          .update({ uso_atual: (cupomAtual.uso_atual || 0) + 1 })
+          .eq("id", orderData.cupomId);
+      }
+
+      logStep("Coupon usage registered and counter incremented", { cupomId: orderData.cupomId });
     }
 
     // Registrar uso da fidelidade se aplicável
@@ -193,6 +207,90 @@ serve(async (req) => {
           pontosUsados: orderData.pontosUsados,
           valorRecompensa: orderData.valorRecompensa 
         });
+      }
+    }
+
+    // NOVO: Acumular pontos de fidelidade após compra (quando não resgatou pontos)
+    if (orderData.empresaId && orderData.userId && !orderData.pontosUsados) {
+      try {
+        // Buscar config de fidelidade da empresa
+        const { data: fidelidadeConfig } = await supabase
+          .from("fidelidade_config")
+          .select("*")
+          .eq("empresa_id", orderData.empresaId)
+          .eq("ativo", true)
+          .maybeSingle();
+
+        if (fidelidadeConfig && fidelidadeConfig.pontos_por_real > 0) {
+          const pontosGanhos = Math.floor(parseFloat(orderData.subtotal) * fidelidadeConfig.pontos_por_real);
+          
+          if (pontosGanhos > 0) {
+            // Buscar ou criar registro de pontos do usuário
+            const { data: existingPontos } = await supabase
+              .from("fidelidade_pontos")
+              .select("id, pontos, saldo_pontos")
+              .eq("user_id", orderData.userId)
+              .eq("empresa_id", orderData.empresaId)
+              .maybeSingle();
+
+            if (existingPontos) {
+              // Atualizar pontos existentes
+              const novosPontos = (existingPontos.pontos || existingPontos.saldo_pontos || 0) + pontosGanhos;
+              await supabase
+                .from("fidelidade_pontos")
+                .update({ 
+                  pontos: novosPontos, 
+                  saldo_pontos: novosPontos,
+                  updated_at: new Date().toISOString() 
+                })
+                .eq("id", existingPontos.id);
+
+              // Registrar transação de acúmulo
+              await supabase.from("fidelidade_transacoes").insert({
+                fidelidade_id: existingPontos.id,
+                pedido_delivery_id: pedido.id,
+                pontos: pontosGanhos,
+                descricao: `+${pontosGanhos} pontos pela compra de R$ ${parseFloat(orderData.subtotal).toFixed(2)}`,
+              });
+
+              logStep("Loyalty points accumulated", { 
+                pontosGanhos, 
+                novoTotal: novosPontos,
+                fidelidadeId: existingPontos.id
+              });
+            } else {
+              // Criar novo registro de fidelidade
+              const { data: novaFidelidade, error: fidErr } = await supabase
+                .from("fidelidade_pontos")
+                .insert({
+                  user_id: orderData.userId,
+                  empresa_id: orderData.empresaId,
+                  pontos: pontosGanhos,
+                  saldo_pontos: pontosGanhos,
+                })
+                .select("id")
+                .single();
+
+              if (!fidErr && novaFidelidade) {
+                // Registrar transação inicial
+                await supabase.from("fidelidade_transacoes").insert({
+                  fidelidade_id: novaFidelidade.id,
+                  pedido_delivery_id: pedido.id,
+                  pontos: pontosGanhos,
+                  descricao: `+${pontosGanhos} pontos pela primeira compra`,
+                });
+
+                logStep("New loyalty account created with points", { 
+                  pontosGanhos,
+                  fidelidadeId: novaFidelidade.id
+                });
+              }
+            }
+          }
+        }
+      } catch (loyaltyErr) {
+        // Não falhar o pedido por erro de fidelidade - apenas logar
+        logStep("Warning: Failed to accumulate loyalty points", { error: String(loyaltyErr) });
       }
     }
 
