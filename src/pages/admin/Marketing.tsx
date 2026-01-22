@@ -212,22 +212,44 @@ export default function Marketing() {
     },
   });
 
-  // Criar combo
+  // Criar combo - CORRIGIDO: Agora salva os itens do combo também
   const criarCombo = useMutation({
     mutationFn: async () => {
       if (!empresaId || !comboNome || !comboPreco || produtosSelecionados.length === 0) {
         throw new Error('Preencha todos os campos e selecione pelo menos um produto');
       }
 
-      const { error } = await supabase.from('combos').insert({
+      // Validar preço
+      const precoCombo = parseFloat(comboPreco);
+      if (isNaN(precoCombo) || precoCombo <= 0) {
+        throw new Error('Preço do combo deve ser maior que zero');
+      }
+
+      // 1. Criar o combo
+      const { data: combo, error } = await supabase.from('combos').insert({
         empresa_id: empresaId,
         nome: comboNome,
         descricao: comboDescricao,
-        preco_combo: parseFloat(comboPreco),
+        preco_combo: precoCombo,
         ativo: true,
-      });
+      }).select('id').single();
 
       if (error) throw error;
+
+      // 2. Inserir os itens do combo na tabela combo_itens
+      const itensCombo = produtosSelecionados.map(produtoId => ({
+        combo_id: combo.id,
+        produto_id: produtoId,
+        quantidade: 1,
+      }));
+
+      const { error: itensError } = await supabase.from('combo_itens').insert(itensCombo);
+      
+      if (itensError) {
+        // Se falhar ao inserir itens, deletar o combo criado para manter consistência
+        await supabase.from('combos').delete().eq('id', combo.id);
+        throw new Error('Erro ao salvar produtos do combo: ' + itensError.message);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['combos', empresaId] });
@@ -418,7 +440,9 @@ export default function Marketing() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-3xl font-bold text-green-600">
-                      R$ {cupom.valor.toFixed(2)}
+                      {cupom.tipo === 'percentual' 
+                        ? `${cupom.valor}%` 
+                        : `R$ ${cupom.valor.toFixed(2)}`}
                     </p>
                   </CardContent>
                 </Card>

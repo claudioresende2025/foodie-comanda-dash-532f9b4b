@@ -269,26 +269,82 @@ export default function DeliveryRestaurant() {
       try {
         const { data: combos } = await supabase
           .from('combos')
-          .select('*')
+          .select('*, combo_itens(produto_id, quantidade, produtos(nome))')
           .eq('empresa_id', empresaId)
           .eq('ativo', true)
           .order('created_at', { ascending: false });
 
         if (combos && combos.length > 0) {
-          const combosMapped = combos.map((c: any) => ({
-            id: `combo:${c.id}`,
-            nome: `${c.nome} (Combo)`,
-            descricao: c.descricao || null,
-            preco: c.preco_combo || 0,
-            imagem_url: c.imagem_url || null,
-            is_combo: true,
-            combo_id: c.id,
-          }));
+          const combosMapped = combos.map((c: any) => {
+            // Montar descrição com itens do combo
+            const itensDesc = c.combo_itens?.map((item: any) => 
+              item.produtos?.nome || 'Produto'
+            ).join(', ');
+            
+            return {
+              id: `combo:${c.id}`,
+              nome: `${c.nome} (Combo)`,
+              descricao: itensDesc || c.descricao || null,
+              preco: c.preco_combo || 0,
+              imagem_url: c.imagem_url || null,
+              is_combo: true,
+              combo_id: c.id,
+            };
+          });
 
           produtosList = [...produtosList, ...combosMapped];
         }
       } catch (err) {
         console.warn('[DeliveryRestaurant] Falha ao carregar combos', err);
+      }
+
+      // Buscar promoções ativas e aplicar preços promocionais
+      try {
+        const agora = new Date();
+        const { data: promocoes } = await supabase
+          .from('promocoes')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('ativo', true);
+
+        if (promocoes && promocoes.length > 0) {
+          // Filtrar promoções válidas por data/hora
+          const promocoesAtivas = promocoes.filter((p: any) => {
+            // Verificar data início
+            if (p.data_inicio) {
+              const dataInicio = new Date(p.data_inicio);
+              if (dataInicio > agora) return false;
+            }
+            // Verificar data fim
+            if (p.data_fim) {
+              const dataFim = new Date(p.data_fim);
+              if (dataFim < agora) return false;
+            }
+            // Verificar dias da semana (se definido)
+            if (p.dias_semana && Array.isArray(p.dias_semana) && p.dias_semana.length > 0) {
+              const diaAtual = agora.getDay();
+              if (!p.dias_semana.includes(diaAtual)) return false;
+            }
+            return true;
+          });
+
+          // Mapear promoções como produtos especiais
+          if (promocoesAtivas.length > 0) {
+            const promosMapped = promocoesAtivas.map((p: any) => ({
+              id: `promo:${p.id}`,
+              nome: `🔥 ${p.nome}`,
+              descricao: p.descricao || 'Promoção por tempo limitado!',
+              preco: p.preco_promocional || p.preco || 0,
+              imagem_url: p.imagem_url || null,
+              is_promocao: true,
+              promocao_id: p.id,
+            }));
+
+            produtosList = [...promosMapped, ...produtosList]; // Promoções primeiro
+          }
+        }
+      } catch (err) {
+        console.warn('[DeliveryRestaurant] Falha ao carregar promoções', err);
       }
 
       setProdutos(produtosList);
@@ -430,7 +486,7 @@ export default function DeliveryRestaurant() {
           })),
         );
 
-        // Registrar uso do cupom
+        // Registrar uso do cupom e incrementar contador
         if (cupomAplicado) {
           await supabase.from("cupons_uso").insert({
             cupom_id: cupomAplicado.id,
@@ -438,6 +494,12 @@ export default function DeliveryRestaurant() {
             pedido_delivery_id: ped.id,
             valor_desconto: descontoCupom,
           });
+
+          // CORREÇÃO: Incrementar uso_atual do cupom
+          await supabase
+            .from("cupons")
+            .update({ uso_atual: (cupomAplicado.uso_atual || 0) + 1 })
+            .eq("id", cupomAplicado.id);
         }
 
         // Processar resgate de pontos de fidelidade
@@ -446,6 +508,7 @@ export default function DeliveryRestaurant() {
           const { error: pontoErr } = await supabase
             .from("fidelidade_pontos")
             .update({
+              pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
               saldo_pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
               updated_at: new Date().toISOString(),
             })
@@ -462,6 +525,76 @@ export default function DeliveryRestaurant() {
             descricao: "Resgate em pedido",
             pedido_delivery_id: ped.id,
           });
+        } else if (empresaId && user?.id) {
+          // NOVO: Acumular pontos de fidelidade após compra (quando não resgatou pontos)
+          try {
+            const { data: fidelidadeConfig } = await supabase
+              .from("fidelidade_config")
+              .select("*")
+              .eq("empresa_id", empresaId)
+              .eq("ativo", true)
+              .maybeSingle();
+
+            if (fidelidadeConfig && fidelidadeConfig.pontos_por_real > 0) {
+              const pontosGanhos = Math.floor(subtotal * fidelidadeConfig.pontos_por_real);
+              
+              if (pontosGanhos > 0) {
+                // Buscar registro existente
+                const { data: existingPontos } = await supabase
+                  .from("fidelidade_pontos")
+                  .select("id, pontos, saldo_pontos")
+                  .eq("user_id", user.id)
+                  .eq("empresa_id", empresaId)
+                  .maybeSingle();
+
+                if (existingPontos) {
+                  const novosPontos = (existingPontos.pontos || existingPontos.saldo_pontos || 0) + pontosGanhos;
+                  await supabase
+                    .from("fidelidade_pontos")
+                    .update({ 
+                      pontos: novosPontos, 
+                      saldo_pontos: novosPontos,
+                      updated_at: new Date().toISOString() 
+                    })
+                    .eq("id", existingPontos.id);
+
+                  await supabase.from("fidelidade_transacoes").insert({
+                    fidelidade_id: existingPontos.id,
+                    pedido_delivery_id: ped.id,
+                    pontos: pontosGanhos,
+                    descricao: `+${pontosGanhos} pontos pela compra`,
+                  });
+
+                  toast.success(`Você ganhou ${pontosGanhos} pontos de fidelidade!`);
+                } else {
+                  // Criar novo registro
+                  const { data: novaFidelidade } = await supabase
+                    .from("fidelidade_pontos")
+                    .insert({
+                      user_id: user.id,
+                      empresa_id: empresaId,
+                      pontos: pontosGanhos,
+                      saldo_pontos: pontosGanhos,
+                    })
+                    .select("id")
+                    .single();
+
+                  if (novaFidelidade) {
+                    await supabase.from("fidelidade_transacoes").insert({
+                      fidelidade_id: novaFidelidade.id,
+                      pedido_delivery_id: ped.id,
+                      pontos: pontosGanhos,
+                      descricao: `+${pontosGanhos} pontos pela primeira compra`,
+                    });
+
+                    toast.success(`Bem-vindo ao programa de fidelidade! Você ganhou ${pontosGanhos} pontos!`);
+                  }
+                }
+              }
+            }
+          } catch (loyaltyErr) {
+            console.warn("Erro ao acumular pontos:", loyaltyErr);
+          }
         }
 
         setPedidoId(ped.id);

@@ -179,23 +179,37 @@ export default function Menu() {
     }
   }, [empresaId, mesaId]);
 
-  // Realtime subscription to comanda status to enable PIX confirmation button
+  // Realtime subscription para status da comanda - detectar fechamento
   useEffect(() => {
     if (!comandaId) return;
     const channel = supabase
       .channel('menu-comanda-status')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'comandas', filter: `id=eq.${comandaId}` },
+        { event: 'UPDATE', schema: 'public', table: 'comandas', filter: `id=eq.${comandaId}` },
         (payload) => {
-          if (payload.eventType === 'UPDATE' && (payload.new as any).status === 'fechada') {
-            setPixConfirmEnabled(true);
+          const novoStatus = (payload.new as any).status;
+          
+          // Se comanda foi fechada externamente (pelo caixa)
+          if (novoStatus === 'fechada' || novoStatus === 'cancelada') {
+            setPixConfirmEnabled(novoStatus === 'fechada');
+            
+            // Limpar estado local - impede novos pedidos
+            localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+            setComandaId(null);
+            setCart([]);
+            
+            if (novoStatus === 'fechada') {
+              toast.info('Esta comanda foi fechada pelo caixa. Solicite uma nova para continuar pedindo.');
+            } else {
+              toast.warning('Esta comanda foi cancelada.');
+            }
           }
         }
       ).subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [comandaId]);
+  }, [comandaId, empresaId, mesaId]);
 
   // Marca a mesa como 'ocupada' ao carregar o cardápio via QR (garante persistência após refresh)
   useEffect(() => {

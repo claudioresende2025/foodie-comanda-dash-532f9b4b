@@ -11,27 +11,40 @@ export interface CartItem {
   quantidade: number;
 }
 
+const MAX_QUANTITY = 99;
+const MIN_QUANTITY = 1;
+
 export function useCart(taxaEntrega: number = 0) {
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const addToCart = useCallback((produto: CartItem['produto']) => {
+  const addToCart = useCallback((produto: CartItem['produto'], quantidade: number = 1) => {
+    // Validação: quantidade deve ser positiva e inteira
+    if (!Number.isInteger(quantidade) || quantidade < MIN_QUANTITY) {
+      console.warn('[useCart] Quantidade inválida:', quantidade);
+      return;
+    }
+    
+    // Validação: limitar quantidade máxima
+    const qtdFinal = Math.min(quantidade, MAX_QUANTITY);
+
     setCart(prev => {
       const existing = prev.find(item => item.produto.id === produto.id);
       if (existing) {
+        const novaQtd = Math.min(existing.quantidade + qtdFinal, MAX_QUANTITY);
         return prev.map(item =>
           item.produto.id === produto.id
-            ? { ...item, quantidade: item.quantidade + 1 }
+            ? { ...item, quantidade: novaQtd }
             : item
         );
       }
-      return [...prev, { produto, quantidade: 1 }];
+      return [...prev, { produto, quantidade: qtdFinal }];
     });
   }, []);
 
   const removeFromCart = useCallback((produtoId: string) => {
     setCart(prev => {
       const existing = prev.find(item => item.produto.id === produtoId);
-      if (existing && existing.quantidade > 1) {
+      if (existing && existing.quantidade > MIN_QUANTITY) {
         return prev.map(item =>
           item.produto.id === produtoId
             ? { ...item, quantidade: item.quantidade - 1 }
@@ -40,6 +53,29 @@ export function useCart(taxaEntrega: number = 0) {
       }
       return prev.filter(item => item.produto.id !== produtoId);
     });
+  }, []);
+
+  const setQuantity = useCallback((produtoId: string, quantidade: number) => {
+    // Validação: não permitir valores negativos ou não-inteiros
+    if (!Number.isInteger(quantidade)) {
+      console.warn('[useCart] Quantidade deve ser inteira:', quantidade);
+      return;
+    }
+    
+    if (quantidade <= 0) {
+      // Remover item se quantidade for 0 ou menor
+      setCart(prev => prev.filter(item => item.produto.id !== produtoId));
+      return;
+    }
+    
+    // Limitar ao máximo
+    const qtdFinal = Math.min(quantidade, MAX_QUANTITY);
+    
+    setCart(prev => prev.map(item =>
+      item.produto.id === produtoId
+        ? { ...item, quantidade: qtdFinal }
+        : item
+    ));
   }, []);
 
   const clearCart = useCallback(() => {
@@ -54,6 +90,8 @@ export function useCart(taxaEntrega: number = 0) {
     cart.reduce((sum, item) => {
       const preco = Number(item.produto.preco) || 0;
       const qtd = Number(item.quantidade) || 0;
+      // Validação adicional: preço não pode ser negativo
+      if (preco < 0 || qtd < 0) return sum;
       return sum + (preco * qtd);
     }, 0),
     [cart]
@@ -62,7 +100,8 @@ export function useCart(taxaEntrega: number = 0) {
   const total = useMemo(() => {
     const sub = Number(subtotal) || 0;
     const taxa = Number(taxaEntrega) || 0;
-    return sub + taxa;
+    // Validação: taxa não pode ser negativa
+    return sub + Math.max(0, taxa);
   }, [subtotal, taxaEntrega]);
 
   const itemCount = useMemo(() => 
@@ -74,6 +113,7 @@ export function useCart(taxaEntrega: number = 0) {
     cart,
     addToCart,
     removeFromCart,
+    setQuantity,
     clearCart,
     getQuantity,
     subtotal,
