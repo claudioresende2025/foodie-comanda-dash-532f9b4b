@@ -296,6 +296,25 @@ export default function SubscriptionSuccess() {
       toast.warning('Cadastro criado! A assinatura será ativada automaticamente.');
     }
 
+    // Etapa 6: Enviar e-mail de boas-vindas (não bloqueia o fluxo)
+    try {
+      logStep('Etapa 6: Enviando e-mail de boas-vindas...');
+      await supabase.functions.invoke('send-email', {
+        body: {
+          type: 'welcome',
+          to: userForm.email,
+          data: {
+            nome: userForm.nome,
+            trialDays: 3,
+            loginUrl: `${window.location.origin}/admin`
+          }
+        }
+      });
+      logStep('Etapa 6 OK: E-mail de boas-vindas enviado');
+    } catch (emailError: any) {
+      logStep('Etapa 6 AVISO: Falha ao enviar e-mail (não fatal)', { error: emailError.message });
+    }
+
     // Sempre navegar para o painel principal (dashboard)
     logStep('Navegando para /admin (dashboard)');
     navigate('/admin');
