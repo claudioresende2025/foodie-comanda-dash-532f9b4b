@@ -1,9 +1,9 @@
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, Crown, Zap, Building2 } from 'lucide-react';
+import { Check, X, Crown, Zap, Building2, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 type Props = {
@@ -11,6 +11,11 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   feature?: string | null;
   currentPlan?: string | null;
+  // Novas props para modo de bloqueio
+  showExitButton?: boolean;
+  onExit?: () => void;
+  blockingReason?: string;
+  isBlocking?: boolean;
 };
 
 const planos = [
@@ -83,7 +88,16 @@ const formatPrice = (price: number) => {
   }).format(price);
 };
 
-export function UpgradeModal({ open, onOpenChange, feature, currentPlan }: Props) {
+export function UpgradeModal({ 
+  open, 
+  onOpenChange, 
+  feature, 
+  currentPlan,
+  showExitButton = false,
+  onExit,
+  blockingReason,
+  isBlocking = false
+}: Props) {
   const navigate = useNavigate();
 
   const handleUpgrade = (planoSlug: string) => {
@@ -96,25 +110,32 @@ export function UpgradeModal({ open, onOpenChange, feature, currentPlan }: Props
     navigate('/planos?mode=downgrade');
   };
 
+  // Título e descrição dinâmicos baseado no contexto
+  const getTitle = () => {
+    if (isBlocking) return 'Escolha um Plano para Continuar';
+    return 'Recurso Indisponível';
+  };
+
+  const getDescription = () => {
+    if (blockingReason) return blockingReason;
+    if (feature) return `O recurso "${feature}" não está disponível no seu plano atual.`;
+    return 'Este recurso não está disponível no seu plano atual.';
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={isBlocking ? undefined : onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="relative">
           <DialogTitle className="text-xl font-bold text-center">
-            Recurso Indisponível
+            {getTitle()}
           </DialogTitle>
+          <DialogDescription className="text-center">
+            {getDescription()}
+            {!isBlocking && <><br />Faça upgrade para liberar o acesso completo.</>}
+          </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-6">
-          <p className="text-center text-muted-foreground">
-            {feature 
-              ? `O recurso "${feature}" não está disponível no seu plano atual.`
-              : 'Este recurso não está disponível no seu plano atual.'
-            }
-            <br />
-            Faça upgrade para liberar o acesso completo.
-          </p>
-
           <div className="grid md:grid-cols-3 gap-4">
             {planos.map((plano) => {
               const Icon = plano.icon;
@@ -191,12 +212,23 @@ export function UpgradeModal({ open, onOpenChange, feature, currentPlan }: Props
           </div>
 
           <div className="flex justify-center gap-4 pt-4 border-t">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              Fechar
-            </Button>
-            <Button variant="outline" onClick={handleDowngrade}>
-              Fazer Downgrade
-            </Button>
+            {showExitButton && onExit ? (
+              <>
+                <Button variant="outline" onClick={onExit} className="gap-2">
+                  <LogOut className="w-4 h-4" />
+                  Sair da Conta
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                  Fechar
+                </Button>
+                <Button variant="outline" onClick={handleDowngrade}>
+                  Fazer Downgrade
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </DialogContent>
