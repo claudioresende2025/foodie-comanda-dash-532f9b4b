@@ -585,8 +585,8 @@ export default function Assinatura() {
                     Cancelar Assinatura
                   </Button>
                 )}
-                {/* Só mostrar reembolso se status active E tem pagamentos reais (não trial) */}
-                {assinatura.status === 'active' && hasRealPayments && (
+                {/* Mostrar reembolso para assinaturas ativas ou trial (edge function trata cada caso) */}
+                {['active', 'trialing', 'trial'].includes(assinatura.status) && (
                   <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
                     <Receipt className="w-4 h-4 mr-2" />
                     Solicitar Reembolso
