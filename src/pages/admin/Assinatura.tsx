@@ -55,6 +55,7 @@ interface Assinatura {
   data_fim: string | null;
   trial_fim: string | null;
   canceled_at: string | null;
+  cancel_at_period_end?: boolean;
   updated_at?: string;
   stripe_subscription_id?: string | null;
   plano_id: string | null;
@@ -209,23 +210,54 @@ export default function Assinatura() {
   const handleCancelSubscription = async () => {
     setIsCanceling(true);
     try {
-      // TODO: Implementar cancelamento via Stripe
-      const { error } = await (supabase as any)
-        .from('assinaturas')
-        .update({
-          cancel_at_period_end: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('empresa_id', profile?.empresa_id);
+      // Durante trial: cancelar imediatamente (sem cobrança)
+      const isTrialing = assinatura?.status === 'trialing' || assinatura?.status === 'trial';
+      
+      // Se tem stripe_subscription_id, cancelar via edge function
+      if (assinatura?.stripe_subscription_id) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token || '';
+        
+        const { data, error } = await supabase.functions.invoke('cancel-subscription', {
+          body: {
+            subscriptionId: assinatura.stripe_subscription_id,
+            cancelAtPeriodEnd: !isTrialing, // Trial = cancelar imediato
+            cancelImmediately: isTrialing,
+            empresaId: profile?.empresa_id,
+          },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+        if (data?.success === false) {
+          throw new Error(data?.error || data?.message || 'Erro ao cancelar assinatura');
+        }
+      } else {
+        // Sem stripe_subscription_id: atualizar apenas no banco local
+        const updatePayload = isTrialing
+          ? { status: 'canceled', canceled_at: new Date().toISOString() }
+          : { cancel_at_period_end: true };
+        
+        const { error } = await (supabase as any)
+          .from('assinaturas')
+          .update({ ...updatePayload, updated_at: new Date().toISOString() })
+          .eq('empresa_id', profile?.empresa_id);
 
-      toast.success('Assinatura será cancelada ao fim do período atual');
+        if (error) throw error;
+      }
+
+      toast.success(isTrialing 
+        ? 'Assinatura cancelada com sucesso' 
+        : 'Assinatura será cancelada ao fim do período atual'
+      );
       setCancelDialogOpen(false);
       await fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao cancelar:', err);
-      toast.error('Erro ao cancelar assinatura');
+      toast.error(err?.message || 'Erro ao cancelar assinatura');
     } finally {
       setIsCanceling(false);
     }
@@ -350,8 +382,14 @@ export default function Assinatura() {
     return format(new Date(value), 'dd/MM/yyyy', { locale: ptBR });
   };
   
-  // Verificar se a assinatura foi marcada para cancelar
-  const isCanceledAtPeriodEnd = !!assinatura?.canceled_at && assinatura?.status !== 'canceled';
+  // Verificar se a assinatura foi marcada para cancelar no fim do período
+  const isCanceledAtPeriodEnd = assinatura?.cancel_at_period_end === true && assinatura?.status !== 'canceled';
+  
+  // Verificar se está em trial (para esconder botão de reembolso)
+  const isTrialing = assinatura?.status === 'trialing' || assinatura?.status === 'trial';
+  
+  // Verificar se tem pagamentos reais (succeeded com valor > 0)
+  const hasRealPayments = pagamentos.some(p => p.status === 'succeeded' && p.valor > 0);
   
   const getNextChargeDate = () => {
     if (assinatura?.status === 'trialing') {
@@ -547,7 +585,8 @@ export default function Assinatura() {
                     Cancelar Assinatura
                   </Button>
                 )}
-                {(assinatura.status === 'active' || assinatura.status === 'trialing') && (
+                {/* Só mostrar reembolso se status active E tem pagamentos reais (não trial) */}
+                {assinatura.status === 'active' && hasRealPayments && (
                   <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
                     <Receipt className="w-4 h-4 mr-2" />
                     Solicitar Reembolso
