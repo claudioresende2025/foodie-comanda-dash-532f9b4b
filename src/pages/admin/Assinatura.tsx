@@ -95,6 +95,19 @@ export default function Assinatura() {
   const [isRequestingRefund, setIsRequestingRefund] = useState(false);
   const [isRedirectingPortal, setIsRedirectingPortal] = useState(false);
 
+  // FUNÇÃO ADICIONADA PARA EVITAR DUPLICIDADE DE ASSINATURA
+  const handlePlanChange = () => {
+    if (assinatura?.stripe_subscription_id) {
+      // Se já tem assinatura, manda para planos com flag de UPGRADE
+      // Isso evita que o sistema crie uma nova assinatura do zero
+      navigate(`/planos?upgrade=true&currentPlan=${assinatura.plano_id}&subscription_id=${assinatura.stripe_subscription_id}`);
+      toast.info("Redirecionando para alteração de plano...");
+    } else {
+      // Fluxo normal para quem está em trial ou sem plano
+      navigate('/planos');
+    }
+  };
+
   // Handler para processar sucesso do checkout (upgrade/novo plano)
   useEffect(() => {
     const handleSubscriptionSuccess = async () => {
