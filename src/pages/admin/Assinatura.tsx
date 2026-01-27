@@ -211,7 +211,7 @@ export default function Assinatura() {
     setIsCanceling(true);
     try {
       // Durante trial: cancelar imediatamente (sem cobrança)
-      const isTrialing = assinatura?.status === 'trialing' || assinatura?.status === 'trial';
+      const isTrial = assinatura?.status === 'trialing' || assinatura?.status === 'trial';
       
       // Se tem stripe_subscription_id, cancelar via edge function
       if (assinatura?.stripe_subscription_id) {
@@ -221,8 +221,8 @@ export default function Assinatura() {
         const { data, error } = await supabase.functions.invoke('cancel-subscription', {
           body: {
             subscriptionId: assinatura.stripe_subscription_id,
-            cancelAtPeriodEnd: !isTrialing, // Trial = cancelar imediato
-            cancelImmediately: isTrialing,
+            cancelAtPeriodEnd: !isTrial, // Trial = cancelar imediato
+            cancelImmediately: isTrial,
             empresaId: profile?.empresa_id,
           },
           headers: {
@@ -237,7 +237,7 @@ export default function Assinatura() {
         }
       } else {
         // Sem stripe_subscription_id: atualizar apenas no banco local
-        const updatePayload = isTrialing
+        const updatePayload = isTrial
           ? { status: 'canceled', canceled_at: new Date().toISOString() }
           : { cancel_at_period_end: true };
         
@@ -249,12 +249,20 @@ export default function Assinatura() {
         if (error) throw error;
       }
 
-      toast.success(isTrialing 
-        ? 'Assinatura cancelada com sucesso' 
+      toast.success(isTrial 
+        ? 'Assinatura cancelada. Você será redirecionado...' 
         : 'Assinatura será cancelada ao fim do período atual'
       );
       setCancelDialogOpen(false);
-      await fetchData();
+      
+      // Se foi cancelamento imediato (trial), forçar reload para que SubscriptionGuard bloqueie
+      if (isTrial) {
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 1500);
+      } else {
+        await fetchData();
+      }
     } catch (err: any) {
       console.error('Erro ao cancelar:', err);
       toast.error(err?.message || 'Erro ao cancelar assinatura');
@@ -292,11 +300,20 @@ export default function Assinatura() {
       });
 
       if (error) throw error;
-      if (data?.success === false) {
-        toast.error(data?.error || data?.message || 'Não foi possível registrar a solicitação de reembolso');
+      
+      // Tratar diferentes respostas da edge function
+      if (data?.isTrialing) {
+        // Usuário está em trial - não há cobranças para reembolsar
+        toast.info(data?.message || 'Durante o período de teste não há cobranças para reembolsar. Use "Cancelar Assinatura".');
+      } else if (data?.noPaidPayments) {
+        // Não há pagamentos com valor > 0
+        toast.info(data?.message || 'Não há pagamentos registrados para reembolso.');
+      } else if (data?.success === false) {
+        toast.error(data?.error || data?.message || 'Não foi possível processar o reembolso');
       } else {
         toast.success(data?.message || 'Solicitação de reembolso enviada');
       }
+      
       setRefundDialogOpen(false);
       setRefundMotivo('');
     } catch (err: any) {
