@@ -214,23 +214,39 @@ serve(async (req: Request) => {
         });
       }
 
+      // NOVO: Verificar se está em período de trial
+      const isTrialing = assinatura.status === 'trialing' || assinatura.status === 'trial';
+      if (isTrialing) {
+        return new Response(JSON.stringify({ 
+          success: false,
+          error: "Período de teste gratuito", 
+          message: "Durante o período de teste não há cobranças para reembolsar. Para cancelar sua assinatura, use o botão 'Cancelar Assinatura'.",
+          isTrialing: true
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       empresaId = assinatura.empresa_id;
 
-      // Buscar último pagamento
+      // Buscar último pagamento (incluir mais status e usar maybeSingle)
       const { data: ultimoPagamento } = await supabase
         .from("pagamentos_assinatura")
         .select("*")
         .eq("assinatura_id", assinaturaId)
-        .eq("status", "succeeded")
+        .in("status", ["succeeded", "processing"])
+        .gt("valor", 0) // Apenas pagamentos com valor > 0
         .order("created_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!ultimoPagamento) {
         return new Response(JSON.stringify({ 
           success: false,
           error: "Nenhum pagamento encontrado para reembolso", 
-          message: "Não há pagamentos registrados para esta assinatura. Reembolsos só estão disponíveis após o primeiro pagamento."
+          message: "Não há pagamentos com cobrança registrados para esta assinatura. Reembolsos só estão disponíveis após o primeiro pagamento efetivo.",
+          noPaidPayments: true
         }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
