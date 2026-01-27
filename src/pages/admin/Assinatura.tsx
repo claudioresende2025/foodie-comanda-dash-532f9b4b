@@ -41,7 +41,8 @@ import {
   Receipt,
   Download,
   X,
-  Check
+  Check,
+  Settings2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -92,6 +93,7 @@ export default function Assinatura() {
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [refundMotivo, setRefundMotivo] = useState('');
   const [isRequestingRefund, setIsRequestingRefund] = useState(false);
+  const [isRedirectingPortal, setIsRedirectingPortal] = useState(false);
 
   // Handler para processar sucesso do checkout (upgrade/novo plano)
   useEffect(() => {
@@ -157,7 +159,7 @@ export default function Assinatura() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Buscar assinatura com plano (usar maybeSingle para não lançar erro se não existir)
+      // Buscar assinatura com plano
       const { data: assinaturaData, error: assinaturaError } = await (supabase as any)
         .from('assinaturas')
         .select('*, plano:planos(*)')
@@ -204,6 +206,28 @@ export default function Assinatura() {
       console.error('Erro ao carregar dados:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // NOVA FUNÇÃO: GERENCIAR PLANO (STRIPE PORTAL)
+  const handleManageSubscription = async () => {
+    setIsRedirectingPortal(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-portal-session', {
+        body: { empresaId: profile?.empresa_id },
+      });
+
+      if (error) throw error;
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('Não foi possível carregar o link do portal do Stripe.');
+      }
+    } catch (err: any) {
+      console.error('Erro ao abrir portal:', err);
+      toast.error(err.message || 'Erro ao abrir gerenciamento de faturas');
+    } finally {
+      setIsRedirectingPortal(false);
     }
   };
 
@@ -255,7 +279,6 @@ export default function Assinatura() {
       );
       setCancelDialogOpen(false);
       
-      // Se foi cancelamento imediato (trial), forçar reload para que SubscriptionGuard bloqueie
       if (isTrial) {
         setTimeout(() => {
           window.location.href = '/admin';
@@ -301,12 +324,9 @@ export default function Assinatura() {
 
       if (error) throw error;
       
-      // Tratar diferentes respostas da edge function
       if (data?.isTrialing) {
-        // Usuário está em trial - não há cobranças para reembolsar
         toast.info(data?.message || 'Durante o período de teste não há cobranças para reembolsar. Use "Cancelar Assinatura".');
       } else if (data?.noPaidPayments) {
-        // Não há pagamentos com valor > 0
         toast.info(data?.message || 'Não há pagamentos registrados para reembolso.');
       } else if (data?.success === false) {
         toast.error(data?.error || data?.message || 'Não foi possível processar o reembolso');
@@ -359,11 +379,9 @@ export default function Assinatura() {
     return isNaN(d.getTime()) ? null : d;
   };
   
-  // Usar os nomes corretos das colunas: data_inicio, data_fim, trial_fim
   const trialStartDateRaw = resolveDate(assinatura?.data_inicio) || resolveDate(assinatura?.updated_at);
   const trialEndDateRaw = resolveDate(assinatura?.trial_fim);
   
-  // Determinar dias de trial baseado no plano (Ouro = 7 dias, outros = 3 dias)
   const planSlug = assinatura?.plano?.slug?.toLowerCase();
   const defaultTrialDays = planSlug === 'ouro' ? 7 : 3;
   
@@ -373,17 +391,14 @@ export default function Assinatura() {
     return null;
   })();
   
-  // Calcular dias restantes - incluindo o dia atual
   const trialDaysRemaining = computedTrialEnd
     ? Math.max(0, Math.ceil((computedTrialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : defaultTrialDays;
   
-  // Calcular total de dias do trial
   const trialDaysTotal = computedTrialEnd && trialStartDateRaw
     ? Math.max(1, Math.ceil((computedTrialEnd.getTime() - trialStartDateRaw.getTime()) / (1000 * 60 * 60 * 24)))
     : defaultTrialDays;
   
-  // Calcular progresso de forma segura
   const trialProgress = trialDaysTotal > 0 
     ? Math.min(100, Math.max(0, ((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100))
     : 0;
@@ -399,14 +414,7 @@ export default function Assinatura() {
     return format(new Date(value), 'dd/MM/yyyy', { locale: ptBR });
   };
   
-  // Verificar se a assinatura foi marcada para cancelar no fim do período
   const isCanceledAtPeriodEnd = assinatura?.cancel_at_period_end === true && assinatura?.status !== 'canceled';
-  
-  // Verificar se está em trial (para esconder botão de reembolso)
-  const isTrialing = assinatura?.status === 'trialing' || assinatura?.status === 'trial';
-  
-  // Verificar se tem pagamentos reais (succeeded com valor > 0)
-  const hasRealPayments = pagamentos.some(p => p.status === 'succeeded' && p.valor > 0);
   
   const getNextChargeDate = () => {
     if (assinatura?.status === 'trialing') {
@@ -426,7 +434,6 @@ export default function Assinatura() {
       const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
       return formatDateBR(fallback);
     }
-    // Fallback: usar último pagamento registrado
     const lastPayment = pagamentos && pagamentos.length > 0 ? pagamentos[0] : null;
     if (lastPayment?.created_at) {
       const base = new Date(lastPayment.created_at);
@@ -434,14 +441,12 @@ export default function Assinatura() {
       const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
       return formatDateBR(fallback);
     }
-    // Outro fallback: usar updated_at da assinatura
     if (isValidDate(assinatura?.updated_at)) {
       const base = new Date(assinatura!.updated_at as any);
       const days = assinatura?.periodo === 'anual' ? 365 : 30;
       const fallback = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
       return formatDateBR(fallback);
     }
-    // Fallback final: estimativa a partir de hoje, para não ficar vazio
     if (assinatura?.periodo) {
       const days = assinatura.periodo === 'anual' ? 365 : 30;
       const fallback = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -451,7 +456,7 @@ export default function Assinatura() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-10">
       {/* Header */}
       <header className="border-b bg-card sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -489,7 +494,7 @@ export default function Assinatura() {
             {/* Status Card */}
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-full ${statusConfig?.color} flex items-center justify-center`}>
                       <StatusIcon className="w-6 h-6 text-white" />
@@ -514,7 +519,7 @@ export default function Assinatura() {
                     </div>
                   </div>
                   {assinatura.plano && (
-                    <div className="text-right">
+                    <div className="md:text-right">
                       <p className="text-2xl font-bold">
                         {formatCurrency(
                           assinatura.periodo === 'anual' 
@@ -578,7 +583,7 @@ export default function Assinatura() {
               {/* Cancel Info */}
               {isCanceledAtPeriodEnd && (
                 <CardContent className="pt-0">
-                  <div className="bg-amber-50 rounded-lg p-4 flex items-start gap-3">
+                  <div className="bg-amber-50 rounded-lg p-4 flex items-start gap-3 border border-amber-100">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="font-medium text-amber-900">Cancelamento agendado</p>
@@ -591,20 +596,35 @@ export default function Assinatura() {
                 </CardContent>
               )}
 
-              <CardFooter className="flex flex-wrap gap-2">
+              <CardFooter className="flex flex-wrap gap-2 border-t pt-6 bg-muted/20">
+                {/* BOTÃO GERENCIAR PLANO (STRIPE PORTAL) */}
+                <Button 
+                  onClick={handleManageSubscription}
+                  disabled={isRedirectingPortal}
+                  className="bg-primary text-primary-foreground"
+                >
+                  {isRedirectingPortal ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Settings2 className="w-4 h-4 mr-2" />
+                  )}
+                  Gerenciar Plano e Faturas
+                </Button>
+
                 <Button variant="outline" onClick={() => navigate('/planos')}>
                   <RefreshCw className="w-4 h-4 mr-2" />
                   {assinatura.plano_id ? 'Trocar Plano' : 'Escolher Plano'}
                 </Button>
+                
                 {!isCanceledAtPeriodEnd && assinatura.status !== 'canceled' && (
-                  <Button variant="outline" onClick={() => setCancelDialogOpen(true)}>
+                  <Button variant="outline" className="text-destructive border-destructive/20 hover:bg-destructive/10" onClick={() => setCancelDialogOpen(true)}>
                     <XCircle className="w-4 h-4 mr-2" />
                     Cancelar Assinatura
                   </Button>
                 )}
-                {/* Mostrar reembolso para assinaturas ativas ou trial (edge function trata cada caso) */}
+                
                 {['active', 'trialing', 'trial'].includes(assinatura.status) && (
-                  <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
+                  <Button variant="ghost" onClick={() => setRefundDialogOpen(true)}>
                     <Receipt className="w-4 h-4 mr-2" />
                     Solicitar Reembolso
                   </Button>
@@ -656,11 +676,9 @@ export default function Assinatura() {
               const getPlanResources = (planName: string, planSlug?: string) => {
                 if (!planName && !planSlug) return [];
                 const slugLower = (planSlug || '').toLowerCase();
-                // Verificar por slug (mais preciso)
                 if (slugLower === 'bronze') return resourcesDisplay['Iniciante'];
                 if (slugLower === 'prata') return resourcesDisplay['Profissional'];
                 if (slugLower === 'ouro') return resourcesDisplay['Enterprise'];
-                // Fallback pelo nome
                 if (planName in resourcesDisplay) return resourcesDisplay[planName];
                 return [];
               };
@@ -686,7 +704,7 @@ export default function Assinatura() {
                     <CardTitle>Recursos do {getPlanDisplayTitle()}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid md:grid-cols-2 gap-3">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {resourcesToShow.map((recurso, index) => (
                         <div key={index} className="flex items-center gap-2">
                           {recurso.included ? (
@@ -728,7 +746,7 @@ export default function Assinatura() {
                     {pagamentos.map((pagamento) => (
                       <div 
                         key={pagamento.id} 
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-transparent hover:border-muted-foreground/10 transition-colors"
                       >
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -744,7 +762,7 @@ export default function Assinatura() {
                             )}
                           </div>
                           <div>
-                            <p className="font-medium">
+                            <p className="font-medium text-sm md:text-base">
                               {pagamento.status === 'trial' ? 'Período de Teste' : formatCurrency(pagamento.valor)}
                             </p>
                             <p className="text-xs text-muted-foreground">
@@ -752,7 +770,7 @@ export default function Assinatura() {
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="flex items-center gap-2">
                           <Badge variant={
                             pagamento.status === 'succeeded' ? 'default' : 
                             pagamento.status === 'trial' ? 'secondary' : 'destructive'
@@ -764,7 +782,7 @@ export default function Assinatura() {
                             <Button 
                               variant="ghost" 
                               size="sm" 
-                              className="ml-2"
+                              className="h-8 w-8 p-0"
                               onClick={() => window.open(pagamento.metadata.hosted_invoice_url, '_blank')}
                             >
                               <Download className="w-4 h-4" />
@@ -781,36 +799,32 @@ export default function Assinatura() {
         )}
       </main>
 
-      {/* Dialog Cancelar */}
-      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar assinatura?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sua assinatura continuará ativa até o fim do período atual. 
-              Após isso, você perderá acesso às funcionalidades premium.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="Por que está cancelando? (opcional)"
+      {/* Dialog Cancelamento */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar Assinatura</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja cancelar sua assinatura? Você poderá continuar usando os recursos premium até o final do período pago.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <label className="text-sm font-medium">Conte-nos o motivo (opcional):</label>
+            <Textarea 
+              placeholder="Ex: O plano está caro, não uso o suficiente..." 
               value={cancelMotivo}
               onChange={(e) => setCancelMotivo(e.target.value)}
             />
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Voltar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleCancelSubscription}
-              disabled={isCanceling}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              {isCanceling && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>Manter Assinatura</Button>
+            <Button variant="destructive" onClick={handleCancelSubscription} disabled={isCanceling}>
+              {isCanceling ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Confirmar Cancelamento
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog Reembolso */}
       <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
@@ -818,27 +832,22 @@ export default function Assinatura() {
           <DialogHeader>
             <DialogTitle>Solicitar Reembolso</DialogTitle>
             <DialogDescription>
-              Você pode solicitar reembolso em até 7 dias após o pagamento.
-              O valor será estornado para o mesmo método de pagamento.
+              A solicitação de reembolso será analisada por nossa equipe. Por favor, detalhe o motivo abaixo.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="Descreva o motivo da solicitação"
+          <div className="space-y-4 py-4">
+            <label className="text-sm font-medium">Motivo do reembolso:</label>
+            <Textarea 
+              placeholder="Descreva detalhadamente o porquê da solicitação..." 
               value={refundMotivo}
               onChange={(e) => setRefundMotivo(e.target.value)}
-              rows={4}
+              className="min-h-[120px]"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRefundDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleRequestRefund}
-              disabled={isRequestingRefund || !refundMotivo.trim()}
-            >
-              {isRequestingRefund && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button variant="outline" onClick={() => setRefundDialogOpen(false)}>Voltar</Button>
+            <Button onClick={handleRequestRefund} disabled={isRequestingRefund || !refundMotivo.trim()}>
+              {isRequestingRefund ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Enviar Solicitação
             </Button>
           </DialogFooter>
