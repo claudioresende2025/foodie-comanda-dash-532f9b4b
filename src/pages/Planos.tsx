@@ -286,8 +286,11 @@ export default function Planos() {
       }
       
 <<<<<<< HEAD
-      // Se já tem empresaId (usuário logado), trata em /admin/assinatura; caso contrário, usa /subscription/success
-      const successUrl = `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+      // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
+      // Caso contrário, usa /subscription/success para criar conta
+      const successUrl = empresaId
+        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
+        : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
 =======
       // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
       // Caso contrário, usa /subscription/success para criar conta
