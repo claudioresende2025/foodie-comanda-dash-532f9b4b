@@ -46,6 +46,17 @@ export default function SubscriptionSuccess() {
   }, [params]);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+  useEffect(() => {
+    const tryLinkForExistingUser = async () => {
+      if (!sessionId) return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: profile } = await supabase
+=======
+>>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
   // Verificar se usuário já está logado e tem empresa
   useEffect(() => {
     const checkExistingUser = async () => {
@@ -77,6 +88,7 @@ export default function SubscriptionSuccess() {
 
         // Usuário logado, verificar se tem empresa
         const { data: profile, error: profileError } = await supabase
+<<<<<<< HEAD
 =======
   useEffect(() => {
     const tryLinkForExistingUser = async () => {
@@ -86,11 +98,42 @@ export default function SubscriptionSuccess() {
         if (!user) return;
         const { data: profile } = await supabase
 >>>>>>> bb0443b (autosync: update 2026-01-15T19:03:33.634Z)
+=======
+>>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
+>>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
           .from('profiles')
           .select('empresa_id')
           .eq('id', user.id)
           .single();
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+        if (!profile?.empresa_id) return;
+        setIsLoading(true);
+        const { error } = await supabase.functions.invoke('process-subscription', {
+          body: {
+            sessionId,
+            empresaId: profile.empresa_id,
+            planoId,
+            periodo,
+          },
+        });
+        if (error) {
+          toast.error(error.message || 'Falha ao atualizar assinatura.');
+          setIsLoading(false);
+          return;
+        }
+        toast.success('Assinatura atualizada com sucesso!');
+        navigate('/admin/assinatura');
+      } catch (e: any) {
+        // mantém formulário caso não esteja logado ou sem empresa
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    tryLinkForExistingUser();
+=======
+>>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
 
         if (profileError) {
           logStep('Error fetching profile', { error: profileError.message });
@@ -142,6 +185,7 @@ export default function SubscriptionSuccess() {
     if (sessionId) {
       checkExistingUser();
     }
+<<<<<<< HEAD
 =======
         if (!profile?.empresa_id) return;
         setIsLoading(true);
@@ -168,6 +212,9 @@ export default function SubscriptionSuccess() {
     };
     tryLinkForExistingUser();
 >>>>>>> bb0443b (autosync: update 2026-01-15T19:03:33.634Z)
+=======
+>>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
+>>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
   }, [sessionId, planoId, periodo, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -337,12 +384,26 @@ export default function SubscriptionSuccess() {
         logStep('Etapa 5 OK: Assinatura vinculada', { response: linkRes });
         toast.success('Assinatura vinculada com sucesso!');
       }
+<<<<<<< HEAD
 
       // Redireciona para a tela de assinatura para o usuário finalizar/visualizar o plano
       navigate('/admin/assinatura');
     } catch (err: any) {
       // Em caso de erro (ex.: edge function indisponível), registra e salva para retry
       logStep('Etapa 5 EXCEÇÃO: Erro ao processar assinatura', { error: err.message });
+=======
+<<<<<<< HEAD
+
+      navigate('/admin/assinatura');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao concluir cadastro.');
+    } finally {
+      setIsLoading(false);
+=======
+    } catch (fnError: any) {
+      logStep('Etapa 5 EXCEÇÃO: Edge function não disponível', { error: fnError.message });
+      // Salvar para tentar novamente depois
+>>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
       localStorage.setItem('pending_subscription', JSON.stringify({ 
         sessionId, 
         empresaId, 
@@ -351,8 +412,12 @@ export default function SubscriptionSuccess() {
         timestamp: Date.now() 
       }));
       toast.warning('Cadastro criado! A assinatura será ativada automaticamente.');
+<<<<<<< HEAD
     } finally {
       setIsLoading(false);
+=======
+>>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
+>>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
     }
 
     // Etapa 6: Enviar e-mail de boas-vindas (não bloqueia o fluxo)
