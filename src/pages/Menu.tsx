@@ -131,7 +131,9 @@ const playNotificationSound = () => {
         gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
         osc2.start(audioContext.currentTime);
         osc2.stop(audioContext.currentTime + 0.5);
-      } catch (e) {}
+        } catch (e) {
+          console.debug(e);
+        }
     }, 200);
   } catch (e) {
     console.log("Audio not supported");

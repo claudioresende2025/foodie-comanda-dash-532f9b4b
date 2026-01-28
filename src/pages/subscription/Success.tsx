@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -24,16 +24,8 @@ export default function SubscriptionSuccess() {
   const [planoId, setPlanoId] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<string | null>('mensal');
 
-  const [userForm, setUserForm] = useState({
-    nome: '',
-    email: '',
-    password: '',
-  });
-
-  const [empresaForm, setEmpresaForm] = useState({
-    nome_fantasia: '',
-    cnpj: '',
-  });
+  const [userForm, setUserForm] = useState({ nome: '', email: '', password: '' });
+  const [empresaForm, setEmpresaForm] = useState({ nome_fantasia: '', cnpj: '' });
 
   useEffect(() => {
     const sid = params.get('session_id');
@@ -45,182 +37,62 @@ export default function SubscriptionSuccess() {
     if (per) setPeriodo(per);
   }, [params]);
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
+  // Se já existe session_id e usuário logado com empresa, tenta vincular assinatura automaticamente
   useEffect(() => {
     const tryLinkForExistingUser = async () => {
       if (!sessionId) return;
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        const { data: profile } = await supabase
-=======
->>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
-  // Verificar se usuário já está logado e tem empresa
-  useEffect(() => {
-    const checkExistingUser = async () => {
-      logStep('checkExistingUser started');
-      
-      if (!sessionId) {
-        logStep('No sessionId, showing form');
-        setIsLoading(false);
-        setShowForm(true);
-        return;
-      }
 
       try {
-        logStep('Checking current user...');
+        logStep('tryLinkForExistingUser: getting current user');
         const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
-        if (userError) {
-          logStep('Error getting user', { error: userError.message });
-        }
-        
-        if (!user) {
-          logStep('No user logged in, showing form');
-          setIsLoading(false);
-          setShowForm(true);
-          return;
-        }
-
-        logStep('User found', { userId: user.id, email: user.email });
-
-        // Usuário logado, verificar se tem empresa
-        const { data: profile, error: profileError } = await supabase
-<<<<<<< HEAD
-=======
-  useEffect(() => {
-    const tryLinkForExistingUser = async () => {
-      if (!sessionId) return;
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
+        if (userError) logStep('Error getting user', { error: userError.message });
         if (!user) return;
-        const { data: profile } = await supabase
->>>>>>> bb0443b (autosync: update 2026-01-15T19:03:33.634Z)
-=======
->>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
->>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
+
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('empresa_id')
           .eq('id', user.id)
           .single();
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-        if (!profile?.empresa_id) return;
-        setIsLoading(true);
-        const { error } = await supabase.functions.invoke('process-subscription', {
-          body: {
-            sessionId,
-            empresaId: profile.empresa_id,
-            planoId,
-            periodo,
-          },
-        });
-        if (error) {
-          toast.error(error.message || 'Falha ao atualizar assinatura.');
-          setIsLoading(false);
-          return;
-        }
-        toast.success('Assinatura atualizada com sucesso!');
-        navigate('/admin/assinatura');
-      } catch (e: any) {
-        // mantém formulário caso não esteja logado ou sem empresa
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    tryLinkForExistingUser();
-=======
->>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
 
         if (profileError) {
           logStep('Error fetching profile', { error: profileError.message });
-        }
-
-        if (!profile?.empresa_id) {
-          logStep('User has no empresa_id, showing form');
-          setIsLoading(false);
-          setShowForm(true);
           return;
         }
 
-        logStep('User has empresa, processing subscription', { empresaId: profile.empresa_id });
-        
-        try {
-          const { data, error } = await supabase.functions.invoke('process-subscription', {
-            body: {
-              sessionId,
-              empresaId: profile.empresa_id,
-              planoId,
-              periodo,
-            },
-          });
-
-          if (error) {
-            logStep('process-subscription function error', { error: error.message });
-            toast.error('Erro ao processar assinatura. Tente novamente.');
-            setIsLoading(false);
-            setShowForm(true);
-            return;
-          }
-
-          logStep('process-subscription success', { data });
-          toast.success('Assinatura ativada com sucesso! Bem-vindo ao painel.');
-          navigate('/admin');
-        } catch (fnError: any) {
-          logStep('process-subscription exception', { error: fnError.message });
-          toast.error('Erro ao conectar com o servidor. Tente novamente.');
-          setIsLoading(false);
-          setShowForm(true);
-        }
-      } catch (e: any) {
-        logStep('checkExistingUser exception', { error: e.message });
-        setIsLoading(false);
-        setShowForm(true);
-      }
-    };
-
-    if (sessionId) {
-      checkExistingUser();
-    }
-<<<<<<< HEAD
-=======
         if (!profile?.empresa_id) return;
+
         setIsLoading(true);
-        const { error } = await supabase.functions.invoke('process-subscription', {
-          body: {
-            sessionId,
-            empresaId: profile.empresa_id,
-            planoId,
-            periodo,
-          },
+        logStep('tryLinkForExistingUser: invoking process-subscription', { sessionId, empresaId: profile.empresa_id, planoId, periodo });
+        const { data, error } = await supabase.functions.invoke('process-subscription', {
+          body: { sessionId, empresaId: profile.empresa_id, planoId, periodo }
         });
+
         if (error) {
-          toast.error(error.message || 'Falha ao atualizar assinatura.');
+          logStep('process-subscription error for existing user', { error: error.message });
+          // salvar para retry e notificar
+          localStorage.setItem('pending_subscription', JSON.stringify({ sessionId, empresaId: profile.empresa_id, planoId, periodo, timestamp: Date.now() }));
+          toast.warning('Cadastro criado! A assinatura será ativada em breve.');
           setIsLoading(false);
           return;
         }
-        toast.success('Assinatura atualizada com sucesso!');
-        navigate('/admin/assinatura');
+
+        logStep('process-subscription success for existing user', { data });
+        toast.success('Assinatura ativada com sucesso!');
+        navigate('/admin');
       } catch (e: any) {
-        // mantém formulário caso não esteja logado ou sem empresa
+        logStep('tryLinkForExistingUser exception', { error: e?.message });
       } finally {
         setIsLoading(false);
       }
     };
-    tryLinkForExistingUser();
->>>>>>> bb0443b (autosync: update 2026-01-15T19:03:33.634Z)
-=======
->>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
->>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
+
+    if (sessionId) tryLinkForExistingUser();
   }, [sessionId, planoId, periodo, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     logStep('handleSubmit started');
-    
+
     if (!sessionId) {
       logStep('No sessionId in handleSubmit');
       return toast.error('Sessão do Stripe não encontrada. Abra o link de sucesso novamente.');
@@ -244,19 +116,11 @@ export default function SubscriptionSuccess() {
         password: userForm.password,
         options: { data: { nome: userForm.nome } },
       });
-      
-      if (signUpError) {
-        logStep('Etapa 1 FALHOU: Erro no signup', { error: signUpError.message, code: signUpError.status });
-        throw new Error(`Falha no cadastro: ${signUpError.message}`);
-      }
 
+      if (signUpError) throw new Error(signUpError.message || 'Erro no cadastro');
       userId = signUpData.user?.id || null;
-      if (!userId) {
-        logStep('Etapa 1 FALHOU: userId não retornado');
-        throw new Error('Usuário não autenticado após cadastro.');
-      }
-      
-      logStep('Etapa 1 OK: Signup concluído', { userId });
+      if (!userId) throw new Error('Usuário não retornado após cadastro.');
+      logStep('Etapa 1 OK', { userId });
     } catch (err: any) {
       logStep('Etapa 1 EXCEÇÃO', { error: err.message });
       toast.error(err.message || 'Erro no cadastro de usuário.');
@@ -264,8 +128,7 @@ export default function SubscriptionSuccess() {
       return;
     }
 
-    // Aguardar trigger handle_new_user criar o profile
-    logStep('Aguardando trigger criar profile (1.5s)...');
+    // Aguarda trigger criar profile
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Etapa 2: Criar empresa
@@ -273,174 +136,65 @@ export default function SubscriptionSuccess() {
       logStep('Etapa 2: Criando empresa...', { nome_fantasia: empresaForm.nome_fantasia });
       const { data: empresa, error: empErr } = await supabase
         .from('empresas')
-        .insert({
-          nome_fantasia: empresaForm.nome_fantasia,
-          cnpj: empresaForm.cnpj || null,
-          usuario_proprietario_id: userId,
-        })
+        .insert({ nome_fantasia: empresaForm.nome_fantasia, cnpj: empresaForm.cnpj || null, usuario_proprietario_id: userId })
         .select()
         .single();
-      
-      if (empErr) {
-        logStep('Etapa 2 FALHOU: Erro ao criar empresa', { error: empErr.message, code: empErr.code, details: empErr.details });
-        throw new Error(`Falha ao criar empresa: ${empErr.message}`);
-      }
-      
-        useEffect(() => {
-          // Quando retornamos do checkout do Stripe (`session_id` presente), tentamos vincular
-          // automaticamente a assinatura se o usuário já estiver logado e possuir `empresa_id`.
-          const tryApplySubscriptionForLoggedUser = async () => {
-            if (!sessionId) {
-              setIsLoading(false);
-              setShowForm(true);
-              return;
-            }
 
-            try {
-              const { data: { user } } = await supabase.auth.getUser();
-              if (!user) {
-                setIsLoading(false);
-                setShowForm(true);
-                return;
-              }
-
-              const { data: profile, error: profileError } = await supabase
-                .from('profiles')
-                .select('empresa_id')
-                .eq('id', user.id)
-                .single();
-
-              if (profileError) {
-                console.warn('Erro ao buscar profile:', profileError);
-              }
-
-              if (!profile?.empresa_id) {
-                setIsLoading(false);
-                setShowForm(true);
-                return;
-              }
-
-              // Processa assinatura via Edge Function
-              setIsLoading(true);
-              const { error } = await supabase.functions.invoke('process-subscription', {
-                body: {
-                  sessionId,
-                  empresaId: profile.empresa_id,
-                  planoId,
-                  periodo,
-                },
-              });
-
-              if (error) {
-                toast.error(error.message || 'Falha ao atualizar assinatura.');
-                setIsLoading(false);
-                setShowForm(true);
-                return;
-              }
-
-              toast.success('Assinatura atualizada com sucesso!');
-              navigate('/admin/assinatura');
-            } catch (e) {
-              // mantém formulário em caso de erro (usuário não logado ou problema na função)
-              setIsLoading(false);
-              setShowForm(true);
-            }
-          };
-
-          tryApplySubscriptionForLoggedUser();
-        logStep('Etapa 4 AVISO: Erro ao criar role (não fatal)', { error: roleErr.message });
-        // Não falhar por isso, pois o usuário pode continuar
-      } else {
-        logStep('Etapa 4 OK: Role criada');
-      }
+      if (empErr) throw new Error(empErr.message || 'Erro ao criar empresa');
+      empresaId = (empresa as any)?.id || null;
+      logStep('Etapa 2 OK', { empresaId });
     } catch (err: any) {
-      logStep('Etapa 4 AVISO: Exceção ao criar role (não fatal)', { error: err.message });
+      logStep('Etapa 2 EXCEÇÃO', { error: err.message });
+      toast.error(err.message || 'Erro ao criar empresa.');
+      setIsLoading(false);
+      return;
     }
 
-    // Etapa 5: Processar assinatura (com fallback)
+    // Etapa 3: (Opcional) criar role  ignoramos erros não fatais
     try {
-      logStep('Etapa 5: Processando assinatura...', { sessionId, empresaId, planoId, periodo });
+      logStep('Etapa 3: Criando role (opcional)');
+      await supabase.from('user_roles').insert({ user_id: userId, role: 'owner', empresa_id: empresaId });
+      logStep('Etapa 3 OK');
+    } catch (err: any) {
+      logStep('Etapa 3 AVISO: falha ao criar role (não fatal)', { error: err.message });
+    }
+
+    // Etapa 4: Vincular assinatura via Edge Function (com fallback)
+    try {
+      logStep('Etapa 4: Processando assinatura...', { sessionId, empresaId, planoId, periodo });
       const { data: linkRes, error: linkErr } = await supabase.functions.invoke('process-subscription', {
-        body: {
-          sessionId,
-          empresaId,
-          planoId,
-          periodo,
-        },
+        body: { sessionId, empresaId, planoId, periodo }
       });
 
       if (linkErr) {
-        logStep('Etapa 5 AVISO: Erro ao vincular assinatura', { error: linkErr.message });
-        // Salvar para tentar novamente depois
-        localStorage.setItem('pending_subscription', JSON.stringify({ 
-          sessionId, 
-          empresaId, 
-          planoId, 
-          periodo,
-          timestamp: Date.now() 
-        }));
+        logStep('Etapa 4 AVISO: Erro ao vincular assinatura', { error: linkErr.message });
+        localStorage.setItem('pending_subscription', JSON.stringify({ sessionId, empresaId, planoId, periodo, timestamp: Date.now() }));
         toast.warning('Cadastro criado! A assinatura será ativada em breve.');
       } else {
-        logStep('Etapa 5 OK: Assinatura vinculada', { response: linkRes });
+        logStep('Etapa 4 OK: Assinatura vinculada', { response: linkRes });
         toast.success('Assinatura vinculada com sucesso!');
       }
-<<<<<<< HEAD
-
-      // Redireciona para a tela de assinatura para o usuário finalizar/visualizar o plano
-      navigate('/admin/assinatura');
     } catch (err: any) {
-      // Em caso de erro (ex.: edge function indisponível), registra e salva para retry
-      logStep('Etapa 5 EXCEÇÃO: Erro ao processar assinatura', { error: err.message });
-=======
-<<<<<<< HEAD
-
-      navigate('/admin/assinatura');
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao concluir cadastro.');
-    } finally {
-      setIsLoading(false);
-=======
-    } catch (fnError: any) {
-      logStep('Etapa 5 EXCEÇÃO: Edge function não disponível', { error: fnError.message });
-      // Salvar para tentar novamente depois
->>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
-      localStorage.setItem('pending_subscription', JSON.stringify({ 
-        sessionId, 
-        empresaId, 
-        planoId, 
-        periodo,
-        timestamp: Date.now() 
-      }));
+      logStep('Etapa 4 EXCEÇÃO: Erro ao processar assinatura', { error: err.message });
+      localStorage.setItem('pending_subscription', JSON.stringify({ sessionId, empresaId, planoId, periodo, timestamp: Date.now() }));
       toast.warning('Cadastro criado! A assinatura será ativada automaticamente.');
-<<<<<<< HEAD
     } finally {
       setIsLoading(false);
-=======
->>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
->>>>>>> e0e219a6955cf44df4deb59744a7bf9d1ee9a362
     }
 
-    // Etapa 6: Enviar e-mail de boas-vindas (não bloqueia o fluxo)
+    // Etapa 5: Enviar e-mail de boas-vindas (não bloqueia)
     try {
-      logStep('Etapa 6: Enviando e-mail de boas-vindas...');
+      logStep('Etapa 5: Enviando e-mail de boas-vindas...');
       await supabase.functions.invoke('send-email', {
-        body: {
-          type: 'welcome',
-          to: userForm.email,
-          data: {
-            nome: userForm.nome,
-            trialDays: 3,
-            loginUrl: `${window.location.origin}/admin`
-          }
-        }
+        body: { type: 'welcome', to: userForm.email, data: { nome: userForm.nome, trialDays: 3, loginUrl: `${window.location.origin}/admin` } }
       });
-      logStep('Etapa 6 OK: E-mail de boas-vindas enviado');
-    } catch (emailError: any) {
-      logStep('Etapa 6 AVISO: Falha ao enviar e-mail (não fatal)', { error: emailError.message });
+      logStep('Etapa 5 OK: E-mail enviado');
+    } catch (emailErr: any) {
+      logStep('Etapa 5 AVISO: falha ao enviar e-mail', { error: emailErr.message });
     }
 
-    // Sempre navegar para o painel principal (dashboard)
-    logStep('Navegando para /admin (dashboard)');
+    // Finalizar fluxo
+    logStep('Finalizando fluxo: navegando para /admin');
     navigate('/admin');
   };
 
@@ -463,9 +217,7 @@ export default function SubscriptionSuccess() {
             <CheckCircle2 className="w-8 h-8" />
           </div>
           <h1 className="text-3xl font-bold">Pagamento aprovado</h1>
-          <p className="text-muted-foreground mt-2">
-            Finalize seu cadastro para ativar a assinatura
-          </p>
+          <p className="text-muted-foreground mt-2">Finalize seu cadastro para ativar a assinatura</p>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -481,29 +233,15 @@ export default function SubscriptionSuccess() {
               <CardContent className="space-y-4">
                 <div>
                   <Label>Nome</Label>
-                  <Input
-                    value={userForm.nome}
-                    onChange={(e) => setUserForm({ ...userForm, nome: e.target.value })}
-                    placeholder="Seu nome"
-                  />
+                  <Input value={userForm.nome} onChange={(e) => setUserForm({ ...userForm, nome: e.target.value })} placeholder="Seu nome" />
                 </div>
                 <div>
                   <Label>E-mail</Label>
-                  <Input
-                    type="email"
-                    value={userForm.email}
-                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                    placeholder="voce@exemplo.com"
-                  />
+                  <Input type="email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} placeholder="voce@exemplo.com" />
                 </div>
                 <div>
                   <Label>Senha</Label>
-                  <Input
-                    type="password"
-                    value={userForm.password}
-                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                    placeholder="********"
-                  />
+                  <Input type="password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} placeholder="********" />
                 </div>
               </CardContent>
             </Card>
@@ -519,19 +257,11 @@ export default function SubscriptionSuccess() {
               <CardContent className="space-y-4">
                 <div>
                   <Label>Nome Fantasia</Label>
-                  <Input
-                    value={empresaForm.nome_fantasia}
-                    onChange={(e) => setEmpresaForm({ ...empresaForm, nome_fantasia: e.target.value })}
-                    placeholder="Ex: Restaurante Sabor & Arte"
-                  />
+                  <Input value={empresaForm.nome_fantasia} onChange={(e) => setEmpresaForm({ ...empresaForm, nome_fantasia: e.target.value })} placeholder="Ex: Restaurante Sabor & Arte" />
                 </div>
                 <div>
                   <Label>CNPJ (opcional)</Label>
-                  <Input
-                    value={empresaForm.cnpj}
-                    onChange={(e) => setEmpresaForm({ ...empresaForm, cnpj: e.target.value })}
-                    placeholder="00.000.000/0000-00"
-                  />
+                  <Input value={empresaForm.cnpj} onChange={(e) => setEmpresaForm({ ...empresaForm, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
                 </div>
               </CardContent>
             </Card>

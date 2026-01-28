@@ -141,8 +141,9 @@ export function AdminSidebar() {
     configuracoes: canAccessConfiguracoes,
   };
 
-  // Exibir todos os itens, mas desabilitar os que não tiver permissão
-  const visibleMenuItems = allMenuItems;
+  // Exibir apenas os itens para os quais o usuário tem permissão
+  const visibleMenuItems = allMenuItems.filter((item) => permissionMap[item.key]);
+  const hasAnyAccess = visibleMenuItems.length > 0;
 
   if (isRoleLoading) {
     return (
@@ -245,6 +246,12 @@ export function AdminSidebar() {
             <LogOut className="w-4 h-4" />
           </Button>
         </div>
+
+        {!hasAnyAccess && (
+          <div className="mt-2 text-center">
+            <span className="text-xs text-red-400">Perfil sem permissão</span>
+          </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
