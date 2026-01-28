@@ -285,19 +285,11 @@ export default function Planos() {
         // ignore localStorage errors
       }
       
-<<<<<<< HEAD
       // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
       // Caso contrário, usa /subscription/success para criar conta
       const successUrl = empresaId
         ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
         : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
-=======
-      // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
-      // Caso contrário, usa /subscription/success para criar conta
-      const successUrl = empresaId
-        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
-        : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
->>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
 
       const body: any = {
         planoId: plano.id,

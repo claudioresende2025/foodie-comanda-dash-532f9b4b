@@ -4,31 +4,45 @@
 
 [36mvite v5.4.19 [32mbuilding for production...[36m[39m
 transforming...
-[32mÔ£ô[39m 7 modules transformed.
-node.exe : [31mx[39m Build failed in 1.38s
+[32mÔ£ô[39m 17 modules transformed.
+node.exe : [31mx[39m Build failed in 1.46s
 No linha:1 caractere:1
 + & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
 + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: ([31mx[39m Build failed in 1.38s:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: ([31mx[39m Build failed in 1.46s:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 [31merror during build:
-[31m[vite-plugin-pwa:build] [plugin vite-plugin-pwa:build] src/pages/Planos.tsx (288:0): There was an error during the 
-build:
-  Transform failed with 1 error:
-C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/Planos.tsx:288:0: ERROR: Unexpected "<<"
+[31m[vite-plugin-pwa:build] [plugin vite-plugin-pwa:build] src/pages/subscription/Success.tsx (291:6): There was an error 
+during the build:
+  Transform failed with 2 errors:
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:291:6: ERROR: The 
+symbol "logStep" has already been declared
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:328:0: ERROR: 
+Unexpected "<<"
 Additionally, handling the error in the 'buildEnd' hook caused the following error:
-  Transform failed with 1 error:
-C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/Planos.tsx:288:0: ERROR: Unexpected "<<"[31m
-file: [36mC:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/Planos.tsx:288:0[31m
+  Transform failed with 2 errors:
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:291:6: ERROR: The 
+symbol "logStep" has already been declared
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:328:0: ERROR: 
+Unexpected "<<"[31m
+file: [36mC:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:291:6[31m
 [33m
+[33mThe symbol "logStep" has already been declared[33m
+289|  import { CheckCircle2, Loader2, Building2, UserPlus } from 'lucide-react';
+290|  
+291|  const logStep = (step: string, details?: any) => {
+   |        ^
+292|    const timestamp = new Date().toISOString();
+293|    const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+
 [33mUnexpected "<<"[33m
-286|        }
-287|        
-288|  <<<<<<< HEAD
+326|    }, [params]);
+327|  
+328|  <<<<<<< HEAD
    |  ^
-289|        // Se j├í tem empresaId (usu├írio logado), redireciona para /admin/assinatura ap├│s o checkout
-290|        // Caso contr├írio, usa /subscription/success para criar conta
+329|  <<<<<<< HEAD
+330|  =======
 [31m
     at getRollupError (file:///C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/node_modules/vite/node_modu
 les/rollup/dist/es/shared/parseAst.js:401:41)
