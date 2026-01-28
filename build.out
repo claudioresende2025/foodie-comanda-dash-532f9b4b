@@ -1,0 +1,59 @@
+﻿
+> vite_react_shadcn_ts@0.0.0 build
+> vite build
+
+[36mvite v5.4.19 [32mbuilding for production...[36m[39m
+transforming...
+[32mÔ£ô[39m 17 modules transformed.
+node.exe : [31mx[39m Build failed in 1.46s
+No linha:1 caractere:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([31mx[39m Build failed in 1.46s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[31merror during build:
+[31m[vite-plugin-pwa:build] [plugin vite-plugin-pwa:build] src/pages/subscription/Success.tsx (291:6): There was an error 
+during the build:
+  Transform failed with 2 errors:
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:291:6: ERROR: The 
+symbol "logStep" has already been declared
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:328:0: ERROR: 
+Unexpected "<<"
+Additionally, handling the error in the 'buildEnd' hook caused the following error:
+  Transform failed with 2 errors:
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:291:6: ERROR: The 
+symbol "logStep" has already been declared
+C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:328:0: ERROR: 
+Unexpected "<<"[31m
+file: [36mC:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/src/pages/subscription/Success.tsx:291:6[31m
+[33m
+[33mThe symbol "logStep" has already been declared[33m
+289|  import { CheckCircle2, Loader2, Building2, UserPlus } from 'lucide-react';
+290|  
+291|  const logStep = (step: string, details?: any) => {
+   |        ^
+292|    const timestamp = new Date().toISOString();
+293|    const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+
+[33mUnexpected "<<"[33m
+326|    }, [params]);
+327|  
+328|  <<<<<<< HEAD
+   |  ^
+329|  <<<<<<< HEAD
+330|  =======
+[31m
+    at getRollupError (file:///C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/node_modules/vite/node_modu
+les/rollup/dist/es/shared/parseAst.js:401:41)
+    at file:///C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/node_modules/vite/node_modules/rollup/dist/
+es/shared/node-entry.js:23418:39
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async catchUnfinishedHookActions (file:///C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/node_modu
+les/vite/node_modules/rollup/dist/es/shared/node-entry.js:22876:16)
+    at async rollupInternal (file:///C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/node_modules/vite/nod
+e_modules/rollup/dist/es/shared/node-entry.js:23401:5)
+    at async build (file:///C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/node_modules/vite/dist/node/ch
+unks/dep-C6uTJdX2.js:65693:14)
+    at async CAC.<anonymous> 
+(file:///C:/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/node_modules/vite/dist/node/cli.js:829:5)[39m
