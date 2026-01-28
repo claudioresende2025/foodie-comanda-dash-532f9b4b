@@ -400,12 +400,13 @@ export default function SuperAdmin() {
     switch (status) {
       case 'active':
         return <Badge className="bg-green-500">Ativa</Badge>;
-      case 'trialing':
+      case 'trialing': {
         const trialEnd = new Date(empresa.assinatura?.trial_end);
         const isExpired = trialEnd < new Date();
-        return isExpired 
+        return isExpired
           ? <Badge variant="destructive">Trial Expirado</Badge>
           : <Badge className="bg-blue-500">Trial</Badge>;
+      }
       case 'canceled':
         return <Badge variant="secondary">Cancelada</Badge>;
       case 'past_due':
