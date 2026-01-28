@@ -18,6 +18,7 @@ import { ProductCard } from "@/components/delivery/ProductCard";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
 import { useCart } from "@/hooks/useCart";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 export default function DeliveryRestaurant() {
   const { empresaId } = useParams();
@@ -35,6 +36,8 @@ export default function DeliveryRestaurant() {
   const [showPixModal, setShowPixModal] = useState(false);
   const [valorPix, setValorPix] = useState(0);
   const [pedidoId, setPedidoId] = useState<string | null>(null);
+  const [pixConfirmado, setPixConfirmado] = useState(false);
+  const [verificandoPix, setVerificandoPix] = useState(false);
 
   // Estados para endereços salvos
   const [enderecosSalvos, setEnderecosSalvos] = useState<any[]>([]);
@@ -70,6 +73,8 @@ export default function DeliveryRestaurant() {
     config?.taxa_entrega || 0,
   );
 
+  // Push notifications
+  const { requestPermission, notifyPixConfirmed, permission } = usePushNotifications({ type: 'delivery' });
   // Calcular valor do desconto de pontos de fidelidade
   const descontoPontos = usarPontosFidelidade && fidelidadeData
     ? (pontosAUtilizar * (fidelidadeData.reais_por_ponto || 0.01))
@@ -269,26 +274,82 @@ export default function DeliveryRestaurant() {
       try {
         const { data: combos } = await supabase
           .from('combos')
-          .select('*')
+          .select('*, combo_itens(produto_id, quantidade, produtos(nome))')
           .eq('empresa_id', empresaId)
           .eq('ativo', true)
           .order('created_at', { ascending: false });
 
         if (combos && combos.length > 0) {
-          const combosMapped = combos.map((c: any) => ({
-            id: `combo:${c.id}`,
-            nome: `${c.nome} (Combo)`,
-            descricao: c.descricao || null,
-            preco: c.preco_combo || 0,
-            imagem_url: c.imagem_url || null,
-            is_combo: true,
-            combo_id: c.id,
-          }));
+          const combosMapped = combos.map((c: any) => {
+            // Montar descrição com itens do combo
+            const itensDesc = c.combo_itens?.map((item: any) => 
+              item.produtos?.nome || 'Produto'
+            ).join(', ');
+            
+            return {
+              id: `combo:${c.id}`,
+              nome: `${c.nome} (Combo)`,
+              descricao: itensDesc || c.descricao || null,
+              preco: c.preco_combo || 0,
+              imagem_url: c.imagem_url || null,
+              is_combo: true,
+              combo_id: c.id,
+            };
+          });
 
           produtosList = [...produtosList, ...combosMapped];
         }
       } catch (err) {
         console.warn('[DeliveryRestaurant] Falha ao carregar combos', err);
+      }
+
+      // Buscar promoções ativas e aplicar preços promocionais
+      try {
+        const agora = new Date();
+        const { data: promocoes } = await supabase
+          .from('promocoes')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('ativo', true);
+
+        if (promocoes && promocoes.length > 0) {
+          // Filtrar promoções válidas por data/hora
+          const promocoesAtivas = promocoes.filter((p: any) => {
+            // Verificar data início
+            if (p.data_inicio) {
+              const dataInicio = new Date(p.data_inicio);
+              if (dataInicio > agora) return false;
+            }
+            // Verificar data fim
+            if (p.data_fim) {
+              const dataFim = new Date(p.data_fim);
+              if (dataFim < agora) return false;
+            }
+            // Verificar dias da semana (se definido)
+            if (p.dias_semana && Array.isArray(p.dias_semana) && p.dias_semana.length > 0) {
+              const diaAtual = agora.getDay();
+              if (!p.dias_semana.includes(diaAtual)) return false;
+            }
+            return true;
+          });
+
+          // Mapear promoções como produtos especiais
+          if (promocoesAtivas.length > 0) {
+            const promosMapped = promocoesAtivas.map((p: any) => ({
+              id: `promo:${p.id}`,
+              nome: `🔥 ${p.nome}`,
+              descricao: p.descricao || 'Promoção por tempo limitado!',
+              preco: p.preco_promocional || p.preco || 0,
+              imagem_url: p.imagem_url || null,
+              is_promocao: true,
+              promocao_id: p.id,
+            }));
+
+            produtosList = [...promosMapped, ...produtosList]; // Promoções primeiro
+          }
+        }
+      } catch (err) {
+        console.warn('[DeliveryRestaurant] Falha ao carregar promoções', err);
       }
 
       setProdutos(produtosList);
@@ -303,6 +364,50 @@ export default function DeliveryRestaurant() {
     fetchData();
     checkAuth();
   }, [fetchData, checkAuth]);
+
+  // Polling para verificar confirmação do pagamento PIX
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (showPixModal && pedidoId && !pixConfirmado) {
+      setVerificandoPix(true);
+      
+      // Solicitar permissão para notificações push
+      if (permission === 'default') {
+        requestPermission();
+      }
+      
+      interval = setInterval(async () => {
+        try {
+          const { data } = await supabase
+            .from("pedidos_delivery")
+            .select("status")
+            .eq("id", pedidoId)
+            .single();
+          
+          if (data && data.status !== "pendente") {
+            setPixConfirmado(true);
+            setVerificandoPix(false);
+            
+            // Disparar notificação push quando PIX for confirmado
+            notifyPixConfirmed();
+            
+            if (interval) clearInterval(interval);
+          }
+        } catch (err) {
+          console.error('[PIX Check] Error checking status:', err);
+        }
+      }, 5000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+      if (!showPixModal) {
+        setPixConfirmado(false);
+        setVerificandoPix(false);
+      }
+    };
+  }, [showPixModal, pedidoId, pixConfirmado, permission, requestPermission, notifyPixConfirmed]);
 
   const handleCEPChange = async (value: string) => {
     const maskedCEP = maskCEP(value);
@@ -430,7 +535,7 @@ export default function DeliveryRestaurant() {
           })),
         );
 
-        // Registrar uso do cupom
+        // Registrar uso do cupom e incrementar contador
         if (cupomAplicado) {
           await supabase.from("cupons_uso").insert({
             cupom_id: cupomAplicado.id,
@@ -438,6 +543,12 @@ export default function DeliveryRestaurant() {
             pedido_delivery_id: ped.id,
             valor_desconto: descontoCupom,
           });
+
+          // CORREÇÃO: Incrementar uso_atual do cupom
+          await supabase
+            .from("cupons")
+            .update({ uso_atual: (cupomAplicado.uso_atual || 0) + 1 })
+            .eq("id", cupomAplicado.id);
         }
 
         // Processar resgate de pontos de fidelidade
@@ -446,6 +557,7 @@ export default function DeliveryRestaurant() {
           const { error: pontoErr } = await supabase
             .from("fidelidade_pontos")
             .update({
+              pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
               saldo_pontos: fidelidadeData.pontos_atuais - pontosAUtilizar,
               updated_at: new Date().toISOString(),
             })
@@ -462,6 +574,76 @@ export default function DeliveryRestaurant() {
             descricao: "Resgate em pedido",
             pedido_delivery_id: ped.id,
           });
+        } else if (empresaId && user?.id) {
+          // NOVO: Acumular pontos de fidelidade após compra (quando não resgatou pontos)
+          try {
+            const { data: fidelidadeConfig } = await supabase
+              .from("fidelidade_config")
+              .select("*")
+              .eq("empresa_id", empresaId)
+              .eq("ativo", true)
+              .maybeSingle();
+
+            if (fidelidadeConfig && fidelidadeConfig.pontos_por_real > 0) {
+              const pontosGanhos = Math.floor(subtotal * fidelidadeConfig.pontos_por_real);
+              
+              if (pontosGanhos > 0) {
+                // Buscar registro existente
+                const { data: existingPontos } = await supabase
+                  .from("fidelidade_pontos")
+                  .select("id, pontos, saldo_pontos")
+                  .eq("user_id", user.id)
+                  .eq("empresa_id", empresaId)
+                  .maybeSingle();
+
+                if (existingPontos) {
+                  const novosPontos = (existingPontos.pontos || existingPontos.saldo_pontos || 0) + pontosGanhos;
+                  await supabase
+                    .from("fidelidade_pontos")
+                    .update({ 
+                      pontos: novosPontos, 
+                      saldo_pontos: novosPontos,
+                      updated_at: new Date().toISOString() 
+                    })
+                    .eq("id", existingPontos.id);
+
+                  await supabase.from("fidelidade_transacoes").insert({
+                    fidelidade_id: existingPontos.id,
+                    pedido_delivery_id: ped.id,
+                    pontos: pontosGanhos,
+                    descricao: `+${pontosGanhos} pontos pela compra`,
+                  });
+
+                  toast.success(`Você ganhou ${pontosGanhos} pontos de fidelidade!`);
+                } else {
+                  // Criar novo registro
+                  const { data: novaFidelidade } = await supabase
+                    .from("fidelidade_pontos")
+                    .insert({
+                      user_id: user.id,
+                      empresa_id: empresaId,
+                      pontos: pontosGanhos,
+                      saldo_pontos: pontosGanhos,
+                    })
+                    .select("id")
+                    .single();
+
+                  if (novaFidelidade) {
+                    await supabase.from("fidelidade_transacoes").insert({
+                      fidelidade_id: novaFidelidade.id,
+                      pedido_delivery_id: ped.id,
+                      pontos: pontosGanhos,
+                      descricao: `+${pontosGanhos} pontos pela primeira compra`,
+                    });
+
+                    toast.success(`Bem-vindo ao programa de fidelidade! Você ganhou ${pontosGanhos} pontos!`);
+                  }
+                }
+              }
+            }
+          } catch (loyaltyErr) {
+            console.warn("Erro ao acumular pontos:", loyaltyErr);
+          }
         }
 
         setPedidoId(ped.id);
@@ -470,29 +652,42 @@ export default function DeliveryRestaurant() {
         setIsCheckoutOpen(false);
         clearCart();
       } else {
-        // Para cartão: enviar dados para criar checkout do Stripe
+        // Para cartão: enviar dados para criar checkout do Stripe via Lovable Cloud
         // O pedido só será criado APÓS o pagamento ser confirmado
         console.log('[DeliveryRestaurant] Criando checkout session com orderData:', orderData);
         
-        const { data, error: sErr } = await supabase.functions.invoke("create-delivery-checkout", {
-          body: {
+        // IMPORTANTE: Chamar edge function via fetch direto para Lovable Cloud
+        // As edge functions estão deployadas lá e configuradas para gravar no banco externo
+        const LOVABLE_CLOUD_URL = "https://jejpufnzaineihemdrgd.supabase.co/functions/v1";
+        const LOVABLE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplanB1Zm56YWluZWloZW1kcmdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3ODgxMDAsImV4cCI6MjA4MDM2NDEwMH0.b0sXHLsReI8DOSN-IKz1PxSF9pQ3zjkkK1PKsCQkHMg";
+        
+        const response = await fetch(`${LOVABLE_CLOUD_URL}/create-delivery-checkout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': LOVABLE_ANON_KEY,
+            'Authorization': `Bearer ${LOVABLE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
             orderData: orderData,
             total: totalComDesconto,
-          },
+          }),
         });
 
-        if (sErr) {
-          console.error('[DeliveryRestaurant] Erro ao criar checkout:', sErr);
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          console.error('[DeliveryRestaurant] Erro ao criar checkout:', data);
           
           // Mensagens de erro mais específicas
           let errorMessage = "Erro ao processar pagamento com cartão.";
           
-          if (sErr.message?.includes("STRIPE_SECRET_KEY")) {
+          if (data.error?.includes("STRIPE_SECRET_KEY")) {
             errorMessage = "Sistema de pagamento não configurado. Entre em contato com o restaurante.";
-          } else if (sErr.message?.includes("valor")) {
+          } else if (data.error?.includes("valor")) {
             errorMessage = "Erro na validação do valor. Tente atualizar a página.";
-          } else if (sErr.message) {
-            errorMessage = sErr.message;
+          } else if (data.error) {
+            errorMessage = data.error;
           }
           
           throw new Error(errorMessage);
@@ -950,15 +1145,55 @@ export default function DeliveryRestaurant() {
                 valor={valorPix}
                 nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
                 cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
+                expiracaoMinutos={5}
+                onExpired={() => {
+                  console.log('[PIX] QR Code expirado');
+                }}
+                onRefresh={() => {
+                  console.log('[PIX] Novo código gerado');
+                }}
               />
             ) : (
-              <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-6 text-center">
-                <p className="text-red-700 font-semibold">⚠️ Chave PIX não configurada</p>
+              <div className="bg-destructive/10 p-4 rounded-lg border border-destructive/20 mb-6 text-center">
+                <p className="text-destructive font-semibold">⚠️ Chave PIX não configurada</p>
               </div>
             )}
 
+            {/* Instruções de pagamento */}
+            <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
+              <p>1. Abra o app do seu banco</p>
+              <p>2. Escaneie o QR Code ou copie o código</p>
+              <p>3. Confirme o pagamento</p>
+            </div>
+
+            {/* Status de verificação do pagamento */}
+            {!pixConfirmado && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  {verificandoPix && <Loader2 className="w-4 h-4 animate-spin text-amber-600" />}
+                  <p className="text-amber-700 text-sm font-medium">
+                    Aguardando confirmação do pagamento...
+                  </p>
+                </div>
+                <p className="text-amber-600 text-xs">
+                  O restaurante precisa confirmar o recebimento
+                </p>
+              </div>
+            )}
+
+            {pixConfirmado && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4 text-center">
+                <Check className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                <p className="text-green-700 text-sm font-medium">
+                  Pagamento confirmado!
+                </p>
+              </div>
+            )}
+
+            {/* Botão principal - desabilitado até confirmar */}
             <Button
-              className="w-full mt-6"
+              className="w-full mt-4"
+              disabled={!pixConfirmado}
               onClick={() => {
                 setShowPixModal(false);
                 if (pedidoId) {
@@ -968,7 +1203,19 @@ export default function DeliveryRestaurant() {
                 }
               }}
             >
-              Acompanhar Pedido
+              {pixConfirmado ? "Acompanhar Pedido" : "Aguardando Confirmação..."}
+            </Button>
+
+            {/* Botão secundário para voltar */}
+            <Button
+              variant="outline"
+              className="w-full mt-2"
+              onClick={() => {
+                setShowPixModal(false);
+                navigate("/delivery");
+              }}
+            >
+              Voltar aos Restaurantes
             </Button>
           </div>
         </SheetContent>

@@ -21,8 +21,20 @@ serve(async (req) => {
     logStep("Function started");
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    
+    // IMPORTANTE: Usar banco externo (zlwpxflqtyhdwanmupgy) via secrets
+    const externalSupabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+    const externalSupabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+    
+    // Fallback para variáveis padrão se externas não estiverem configuradas
+    const supabaseUrl = externalSupabaseUrl || Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = externalSupabaseServiceKey || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    logStep("Environment check", { 
+      hasStripeKey: !!stripeKey, 
+      usingExternalDb: !!externalSupabaseUrl,
+      supabaseUrl: supabaseUrl?.substring(0, 40) + "..."
+    });
 
     if (!stripeKey || !supabaseUrl || !supabaseServiceKey) {
       throw new Error("Configuração do servidor incompleta.");
@@ -39,6 +51,7 @@ serve(async (req) => {
       return resp.json();
     };
 
+    // Criar cliente Supabase - usando banco externo
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
@@ -90,9 +103,9 @@ serve(async (req) => {
       );
     }
 
-    logStep("Creating new order in database", orderData);
+    logStep("Creating new order in database (EXTERNAL DB)", orderData);
 
-    // Criar pedido no banco de dados
+    // Criar pedido no banco de dados EXTERNO
     const { data: pedido, error: pedidoError } = await supabase
       .from("pedidos_delivery")
       .insert({
@@ -124,7 +137,7 @@ serve(async (req) => {
       throw new Error(`Erro ao criar pedido no banco de dados: ${pedidoError.message}`);
     }
 
-    logStep("Order created successfully", { pedidoId: pedido.id });
+    logStep("Order created successfully in EXTERNAL DB", { pedidoId: pedido.id });
 
     // Inserir itens do pedido
     const items = JSON.parse(orderData.items);
@@ -155,7 +168,21 @@ serve(async (req) => {
         valor_desconto: parseFloat(orderData.descontoCupom || orderData.desconto || 0),
       });
 
-      logStep("Coupon usage registered", { cupomId: orderData.cupomId });
+      // CORREÇÃO: Incrementar uso_atual do cupom
+      const { data: cupomAtual } = await supabase
+        .from("cupons")
+        .select("uso_atual")
+        .eq("id", orderData.cupomId)
+        .single();
+      
+      if (cupomAtual) {
+        await supabase
+          .from("cupons")
+          .update({ uso_atual: (cupomAtual.uso_atual || 0) + 1 })
+          .eq("id", orderData.cupomId);
+      }
+
+      logStep("Coupon usage registered and counter incremented", { cupomId: orderData.cupomId });
     }
 
     // Registrar uso da fidelidade se aplicável
@@ -196,7 +223,91 @@ serve(async (req) => {
       }
     }
 
-    logStep("Order completed successfully", { pedidoId: pedido.id });
+    // NOVO: Acumular pontos de fidelidade após compra (quando não resgatou pontos)
+    if (orderData.empresaId && orderData.userId && !orderData.pontosUsados) {
+      try {
+        // Buscar config de fidelidade da empresa
+        const { data: fidelidadeConfig } = await supabase
+          .from("fidelidade_config")
+          .select("*")
+          .eq("empresa_id", orderData.empresaId)
+          .eq("ativo", true)
+          .maybeSingle();
+
+        if (fidelidadeConfig && fidelidadeConfig.pontos_por_real > 0) {
+          const pontosGanhos = Math.floor(parseFloat(orderData.subtotal) * fidelidadeConfig.pontos_por_real);
+          
+          if (pontosGanhos > 0) {
+            // Buscar ou criar registro de pontos do usuário
+            const { data: existingPontos } = await supabase
+              .from("fidelidade_pontos")
+              .select("id, pontos, saldo_pontos")
+              .eq("user_id", orderData.userId)
+              .eq("empresa_id", orderData.empresaId)
+              .maybeSingle();
+
+            if (existingPontos) {
+              // Atualizar pontos existentes
+              const novosPontos = (existingPontos.pontos || existingPontos.saldo_pontos || 0) + pontosGanhos;
+              await supabase
+                .from("fidelidade_pontos")
+                .update({ 
+                  pontos: novosPontos, 
+                  saldo_pontos: novosPontos,
+                  updated_at: new Date().toISOString() 
+                })
+                .eq("id", existingPontos.id);
+
+              // Registrar transação de acúmulo
+              await supabase.from("fidelidade_transacoes").insert({
+                fidelidade_id: existingPontos.id,
+                pedido_delivery_id: pedido.id,
+                pontos: pontosGanhos,
+                descricao: `+${pontosGanhos} pontos pela compra de R$ ${parseFloat(orderData.subtotal).toFixed(2)}`,
+              });
+
+              logStep("Loyalty points accumulated", { 
+                pontosGanhos, 
+                novoTotal: novosPontos,
+                fidelidadeId: existingPontos.id
+              });
+            } else {
+              // Criar novo registro de fidelidade
+              const { data: novaFidelidade, error: fidErr } = await supabase
+                .from("fidelidade_pontos")
+                .insert({
+                  user_id: orderData.userId,
+                  empresa_id: orderData.empresaId,
+                  pontos: pontosGanhos,
+                  saldo_pontos: pontosGanhos,
+                })
+                .select("id")
+                .single();
+
+              if (!fidErr && novaFidelidade) {
+                // Registrar transação inicial
+                await supabase.from("fidelidade_transacoes").insert({
+                  fidelidade_id: novaFidelidade.id,
+                  pedido_delivery_id: pedido.id,
+                  pontos: pontosGanhos,
+                  descricao: `+${pontosGanhos} pontos pela primeira compra`,
+                });
+
+                logStep("New loyalty account created with points", { 
+                  pontosGanhos,
+                  fidelidadeId: novaFidelidade.id
+                });
+              }
+            }
+          }
+        }
+      } catch (loyaltyErr) {
+        // Não falhar o pedido por erro de fidelidade - apenas logar
+        logStep("Warning: Failed to accumulate loyalty points", { error: String(loyaltyErr) });
+      }
+    }
+
+    logStep("Order completed successfully in EXTERNAL DB", { pedidoId: pedido.id });
 
     return new Response(
       JSON.stringify({ 

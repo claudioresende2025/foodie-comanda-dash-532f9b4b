@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
 // Tipos válidos do enum app_role no banco de dados
-export type AppRole = 'proprietario' | 'gerente' | 'garcom' | 'caixa';
+export type AppRole = 'proprietario' | 'gerente' | 'garcom' | 'caixa' | 'motoboy';
 
 export interface UserRoleData {
   role: AppRole | null;
@@ -34,6 +34,7 @@ export interface UserRoleData {
   staffLimit: number | null;
   mesasLimit: number | null;
   garcomLimit: number | null;
+  isMotoboy: boolean;
   // Plano atual
   planoSlug: string | null;
   planoNome: string | null;
@@ -285,6 +286,7 @@ export function useUserRole(): UserRoleData {
   const isGerente = role === 'gerente';
   const isGarcom = role === 'garcom';
   const isCaixa = role === 'caixa';
+  const isMotoboy = role === 'motoboy';
 
   // Permissões por role
   const isAdmin = isProprietario || isGerente || isSuperAdmin;
@@ -331,6 +333,7 @@ canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('caixa'
     staffLimit: planData.staffLimit,
     mesasLimit: planData.mesasLimit,
     garcomLimit: planData.garcomLimit,
+    isMotoboy,
     // Plano
     planoSlug: planData.planoSlug,
     planoNome: planData.planoNome,

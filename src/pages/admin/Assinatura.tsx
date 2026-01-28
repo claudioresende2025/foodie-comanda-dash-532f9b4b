@@ -51,17 +51,17 @@ interface Assinatura {
   id: string;
   status: string;
   periodo: string;
-  trial_start: string;
-  trial_end: string;
-  current_period_start: string;
-  current_period_end: string;
-  cancel_at_period_end: boolean;
+  data_inicio: string | null;
+  data_fim: string | null;
+  trial_fim: string | null;
   canceled_at: string | null;
   updated_at?: string;
+  stripe_subscription_id?: string | null;
   plano_id: string | null;
   plano: {
     id: string;
     nome: string;
+    slug?: string;
     preco_mensal: number;
     preco_anual: number;
     recursos: string[];
@@ -309,19 +309,35 @@ export default function Assinatura() {
     const d = new Date(value);
     return isNaN(d.getTime()) ? null : d;
   };
-  const trialStartDateRaw = resolveDate(assinatura?.trial_start) || resolveDate(assinatura?.current_period_start) || resolveDate(assinatura?.updated_at);
-  const trialEndDateRaw = resolveDate(assinatura?.trial_end);
+  
+  // Usar os nomes corretos das colunas: data_inicio, data_fim, trial_fim
+  const trialStartDateRaw = resolveDate(assinatura?.data_inicio) || resolveDate(assinatura?.updated_at);
+  const trialEndDateRaw = resolveDate(assinatura?.trial_fim);
+  
+  // Determinar dias de trial baseado no plano (Ouro = 7 dias, outros = 3 dias)
+  const planSlug = assinatura?.plano?.slug?.toLowerCase();
+  const defaultTrialDays = planSlug === 'ouro' ? 7 : 3;
+  
   const computedTrialEnd = (() => {
     if (trialEndDateRaw) return trialEndDateRaw;
-    if (trialStartDateRaw) return new Date(trialStartDateRaw.getTime() + 3 * 24 * 60 * 60 * 1000);
+    if (trialStartDateRaw) return new Date(trialStartDateRaw.getTime() + defaultTrialDays * 24 * 60 * 60 * 1000);
     return null;
   })();
+  
+  // Calcular dias restantes - incluindo o dia atual
   const trialDaysRemaining = computedTrialEnd
     ? Math.max(0, Math.ceil((computedTrialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-    : 3;
+    : defaultTrialDays;
+  
+  // Calcular total de dias do trial
   const trialDaysTotal = computedTrialEnd && trialStartDateRaw
     ? Math.max(1, Math.ceil((computedTrialEnd.getTime() - trialStartDateRaw.getTime()) / (1000 * 60 * 60 * 24)))
-    : 3;
+    : defaultTrialDays;
+  
+  // Calcular progresso de forma segura
+  const trialProgress = trialDaysTotal > 0 
+    ? Math.min(100, Math.max(0, ((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100))
+    : 0;
 
   const isValidDate = (value?: any) => {
     if (!value) return false;
@@ -334,18 +350,21 @@ export default function Assinatura() {
     return format(new Date(value), 'dd/MM/yyyy', { locale: ptBR });
   };
   
+  // Verificar se a assinatura foi marcada para cancelar
+  const isCanceledAtPeriodEnd = !!assinatura?.canceled_at && assinatura?.status !== 'canceled';
+  
   const getNextChargeDate = () => {
     if (assinatura?.status === 'trialing') {
-      if (isValidDate(assinatura?.trial_end)) {
-        return formatDateBR(assinatura!.trial_end);
+      if (isValidDate(assinatura?.trial_fim)) {
+        return formatDateBR(assinatura!.trial_fim);
       }
-      if (isValidDate(assinatura?.current_period_end)) {
-        return formatDateBR(assinatura!.current_period_end);
+      if (isValidDate(assinatura?.data_fim)) {
+        return formatDateBR(assinatura!.data_fim);
       }
     }
-    const end = assinatura?.current_period_end;
+    const end = assinatura?.data_fim;
     if (isValidDate(end)) return formatDateBR(end);
-    const start = assinatura?.current_period_start;
+    const start = assinatura?.data_inicio;
     if (isValidDate(start)) {
       const base = new Date(start);
       const days = assinatura?.periodo === 'anual' ? 365 : 30;
@@ -422,7 +441,13 @@ export default function Assinatura() {
                     </div>
                     <div>
                       <CardTitle className="flex items-center gap-2">
-                        {assinatura.plano?.nome ? `Plano ${assinatura.plano.nome}` : 'Período de Teste'}
+                        {(() => {
+                          const slug = assinatura.plano?.slug?.toLowerCase();
+                          if (slug === 'bronze') return 'Plano Iniciante';
+                          if (slug === 'prata') return 'Plano Profissional';
+                          if (slug === 'ouro') return 'Plano Ouro (Enterprise)';
+                          return assinatura.plano?.nome || 'Período de Teste';
+                        })()}
                         <Badge className={statusConfig?.color}>{statusConfig?.label}</Badge>
                       </CardTitle>
                       <CardDescription>
@@ -451,18 +476,30 @@ export default function Assinatura() {
               </CardHeader>
 
               {/* Trial Progress */}
-              {assinatura.status === 'trialing' && (
+              {(assinatura.status === 'trialing' || assinatura.status === 'trial') && (
                 <CardContent className="pt-0">
-                  <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-blue-900">Período de teste</span>
-                      <span className="text-sm text-blue-700">
-                        {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia' : 'dias'} restantes
+                      <span className="text-sm font-medium text-foreground">Período de teste</span>
+                      <span className={`text-sm font-semibold ${
+                        trialDaysRemaining <= 1 
+                          ? 'text-destructive' 
+                          : trialDaysRemaining <= 2 
+                            ? 'text-orange-600 dark:text-orange-400'
+                            : 'text-primary'
+                      }`}>
+                        {trialDaysRemaining} {trialDaysRemaining === 1 ? 'dia restante' : 'dias restantes'}
                       </span>
                     </div>
-                    <Progress value={((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100} className="h-2" />
-                    <p className="text-xs text-blue-600 mt-2">
-                      Seu cartão será cobrado em {getNextChargeDate()}
+                    <Progress 
+                      value={trialProgress}
+                      className={`h-3 ${trialDaysRemaining <= 1 ? '[&>div]:bg-destructive' : ''}`}
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {computedTrialEnd 
+                        ? `Seu período de teste termina em ${formatDateBR(computedTrialEnd)}`
+                        : `Seu cartão será cobrado em ${getNextChargeDate()}`
+                      }
                     </p>
                   </div>
                 </CardContent>
@@ -484,7 +521,7 @@ export default function Assinatura() {
               )}
 
               {/* Cancel Info */}
-              {assinatura.cancel_at_period_end && (
+              {isCanceledAtPeriodEnd && (
                 <CardContent className="pt-0">
                   <div className="bg-amber-50 rounded-lg p-4 flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -492,25 +529,27 @@ export default function Assinatura() {
                       <p className="font-medium text-amber-900">Cancelamento agendado</p>
                       <p className="text-sm text-amber-700">
                         Sua assinatura será cancelada em{' '}
-                        {formatDateBR(assinatura.current_period_end)}
+                        {formatDateBR(assinatura.data_fim)}
                       </p>
                     </div>
                   </div>
                 </CardContent>
               )}
 
-              <CardFooter className="flex gap-2">
+              <CardFooter className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => navigate('/planos')}>
                   <RefreshCw className="w-4 h-4 mr-2" />
                   {assinatura.plano_id ? 'Trocar Plano' : 'Escolher Plano'}
                 </Button>
-                {!assinatura.cancel_at_period_end && assinatura.status !== 'canceled' && assinatura.plano_id && (
+                {!isCanceledAtPeriodEnd && assinatura.status !== 'canceled' && (
                   <Button variant="outline" onClick={() => setCancelDialogOpen(true)}>
+                    <XCircle className="w-4 h-4 mr-2" />
                     Cancelar Assinatura
                   </Button>
                 )}
-                {assinatura.status === 'active' && pagamentos.length > 0 && (
+                {(assinatura.status === 'active' || assinatura.status === 'trialing') && (
                   <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
+                    <Receipt className="w-4 h-4 mr-2" />
                     Solicitar Reembolso
                   </Button>
                 )}
@@ -520,7 +559,7 @@ export default function Assinatura() {
             {/* Recursos do Plano */}
             {(() => {
               const resourcesDisplay: Record<string, { label: string; included: boolean }[]> = {
-                'Básico': [
+                'Iniciante': [
                   { label: 'Dashboard: Básico (Vendas do dia)', included: true },
                   { label: 'Mesas: Limitado (até 10 mesas)', included: true },
                   { label: 'Delivery: Básico (WhatsApp)', included: true },
@@ -558,26 +597,37 @@ export default function Assinatura() {
                 ],
               };
 
-              const getPlanResources = (planName: string) => {
-                if (!planName) return [];
-                const nameLower = planName.toLowerCase();
-                if (nameLower.includes('básico') || nameLower.includes('bronze') || nameLower.includes('basico')) return resourcesDisplay['Básico'];
-                if (nameLower.includes('profissional') || nameLower.includes('prata')) return resourcesDisplay['Profissional'];
-                if (nameLower.includes('enterprise') || nameLower.includes('ouro')) return resourcesDisplay['Enterprise'];
+              const getPlanResources = (planName: string, planSlug?: string) => {
+                if (!planName && !planSlug) return [];
+                const slugLower = (planSlug || '').toLowerCase();
+                // Verificar por slug (mais preciso)
+                if (slugLower === 'bronze') return resourcesDisplay['Iniciante'];
+                if (slugLower === 'prata') return resourcesDisplay['Profissional'];
+                if (slugLower === 'ouro') return resourcesDisplay['Enterprise'];
+                // Fallback pelo nome
+                if (planName in resourcesDisplay) return resourcesDisplay[planName];
                 return [];
               };
 
-              const visualResources = getPlanResources(assinatura.plano?.nome || '');
+              const visualResources = getPlanResources(assinatura.plano?.nome || '', assinatura.plano?.slug);
               const resourcesToShow = visualResources.length > 0 
                 ? visualResources 
                 : (assinatura.plano?.recursos || []).map(r => ({ label: r, included: true }));
 
               if (resourcesToShow.length === 0) return null;
 
+              const getPlanDisplayTitle = () => {
+                const slug = assinatura.plano?.slug?.toLowerCase();
+                if (slug === 'bronze') return 'Plano Iniciante';
+                if (slug === 'prata') return 'Plano Profissional';
+                if (slug === 'ouro') return 'Plano Ouro (Enterprise)';
+                return assinatura.plano?.nome || 'trial';
+              };
+
               return (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Recursos {assinatura.plano_id ? 'do seu plano' : 'inclusos no trial'}</CardTitle>
+                    <CardTitle>Recursos do {getPlanDisplayTitle()}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid md:grid-cols-2 gap-3">
@@ -626,24 +676,33 @@ export default function Assinatura() {
                       >
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            pagamento.status === 'succeeded' ? 'bg-green-100' : 'bg-red-100'
+                            pagamento.status === 'succeeded' ? 'bg-green-100' : 
+                            pagamento.status === 'trial' ? 'bg-blue-100' : 'bg-red-100'
                           }`}>
                             {pagamento.status === 'succeeded' ? (
                               <CheckCircle2 className="w-4 h-4 text-green-600" />
+                            ) : pagamento.status === 'trial' ? (
+                              <Clock className="w-4 h-4 text-blue-600" />
                             ) : (
                               <XCircle className="w-4 h-4 text-red-600" />
                             )}
                           </div>
                           <div>
-                            <p className="font-medium">{formatCurrency(pagamento.valor)}</p>
+                            <p className="font-medium">
+                              {pagamento.status === 'trial' ? 'Período de Teste' : formatCurrency(pagamento.valor)}
+                            </p>
                             <p className="text-xs text-muted-foreground">
                               {format(new Date(pagamento.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <Badge variant={pagamento.status === 'succeeded' ? 'default' : 'destructive'}>
-                            {pagamento.status === 'succeeded' ? 'Pago' : 'Falhou'}
+                          <Badge variant={
+                            pagamento.status === 'succeeded' ? 'default' : 
+                            pagamento.status === 'trial' ? 'secondary' : 'destructive'
+                          }>
+                            {pagamento.status === 'succeeded' ? 'Pago' : 
+                             pagamento.status === 'trial' ? 'Trial' : 'Falhou'}
                           </Badge>
                           {pagamento.metadata?.hosted_invoice_url && (
                             <Button 

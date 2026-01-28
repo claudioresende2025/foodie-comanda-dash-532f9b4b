@@ -19,10 +19,10 @@ import DeliveryProfile from "@/pages/DeliveryProfile";
 import Install from "@/pages/Install";
 import Index from "@/pages/Index";
 import Planos from "@/pages/Planos";
-import SubscriptionSuccess from "@/pages/SubscriptionSuccess";
 import SuperAdmin from "@/pages/SuperAdmin";
 import SubscriptionSuccess from "@/pages/subscription/Success";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { SubscriptionGuard } from "@/components/subscription/SubscriptionGuard";
 import Dashboard from "@/pages/admin/Dashboard";
 import Onboarding from "@/pages/admin/Onboarding";
 import Mesas from "@/pages/admin/Mesas";
@@ -83,7 +83,11 @@ const App = () => (
             <Route path="/delivery/:empresaId" element={<DeliveryRestaurant />} />
             <Route path="/delivery/success" element={<DeliverySuccess />} />
             <Route path="/delivery/tracking/:pedidoId" element={<DeliveryTracking />} />
-            <Route path="/admin" element={<AdminLayout />}>
+            <Route path="/admin" element={
+              <SubscriptionGuard>
+                <AdminLayout />
+              </SubscriptionGuard>
+            }>
               <Route index element={<Dashboard />} />
               <Route path="onboarding" element={<Onboarding />} />
               <Route path="mesas" element={<Mesas />} />
@@ -97,12 +101,9 @@ const App = () => (
               <Route path="equipe" element={<Equipe />} />
               <Route path="empresa" element={<Empresa />} />
               <Route path="configuracoes" element={<Configuracoes />} />
-              
-              {/* 🛑 A ROTA FALTANDO ESTÁ AQUI: */}
               <Route path="garcom" element={<Garcom />} /> 
               <Route path="assinatura" element={<Assinatura />} /> 
               <Route path="diagnostico-stripe" element={<DiagnosticoStripe />} /> 
-              
             </Route>
             <Route path="*" element={<NotFound />} />
             </Routes>

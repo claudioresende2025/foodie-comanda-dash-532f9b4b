@@ -10,6 +10,12 @@ type PrintOrder = {
   mesaNumero: number;
   itens: PrintItem[];
   timestamp: Date;
+  empresaNome?: string;
+  empresaEndereco?: string;
+  incluirTaxaServico?: boolean;
+  taxaServicoPercentual?: number;
+  couverTotal?: number;
+  total?: number;
 };
 
 export const formatKitchenOrder = (order: PrintOrder): string => {
@@ -28,6 +34,11 @@ export const formatKitchenOrder = (order: PrintOrder): string => {
   receipt += '\n';
   
   // Table info
+  if (order.empresaNome) {
+    receipt += centerText(order.empresaNome.toUpperCase(), 40) + '\n';
+    if (order.empresaEndereco) receipt += centerText(order.empresaEndereco, 40) + '\n';
+    receipt += '\n';
+  }
   receipt += centerText(`MESA ${mesaNumero}`, 40) + '\n';
   receipt += '\n';
   
@@ -54,6 +65,19 @@ export const formatKitchenOrder = (order: PrintOrder): string => {
   receipt += divider + '\n';
   receipt += centerText(`Total de itens: ${itens.reduce((sum, i) => sum + i.quantidade, 0)}`, 40) + '\n';
   receipt += divider + '\n';
+  receipt += '\n';
+  // Totals: taxa de serviço e couver quando aplicáveis
+  if (order.incluirTaxaServico && order.taxaServicoPercentual) {
+    receipt += `Taxa de Servico: ${order.taxaServicoPercentual}%\n`;
+  }
+  if (order.couverTotal && order.couverTotal > 0) {
+    receipt += `Couver: R$ ${order.couverTotal.toFixed(2)}\n`;
+  }
+  if (typeof order.total === 'number') {
+    receipt += thinDivider + '\n';
+    receipt += centerText(`TOTAL: R$ ${order.total.toFixed(2)}`, 40) + '\n';
+    receipt += thinDivider + '\n';
+  }
   receipt += '\n\n\n';
   
   return receipt;

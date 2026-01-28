@@ -44,7 +44,7 @@ serve(async (req) => {
     const session = await stripeRequest(`checkout/sessions/${sessionId}`);
     const subscriptionId = session.subscription as string;
     
-    logStep("Sessão recuperada", { subscriptionId, customer: session.customer });
+    logStep("Sessão recuperada", { subscriptionId, customer: session.customer, metadata: session.metadata });
 
     if (!subscriptionId) throw new Error("subscription id não encontrado na session");
 
@@ -66,58 +66,95 @@ serve(async (req) => {
 
     const status = statusMap[subscription.status] || "active";
 
-    // Inferir plano_id e período
-    let planoId = (planoIdInput as string | undefined) || (subscription.metadata?.plano_id as string | undefined);
-    const periodo = (periodoInput as string | undefined) || (subscription.metadata?.periodo as string | undefined) || 'mensal';
+    // IMPORTANTE: Priorizar planoId recebido como parâmetro, depois da session metadata, depois da subscription metadata
+    let planoId = planoIdInput || session.metadata?.plano_id || subscription.metadata?.plano_id;
+    const periodo = periodoInput || session.metadata?.periodo || subscription.metadata?.periodo || 'mensal';
 
+    logStep("Plano inicial", { planoId, periodo, fromInput: !!planoIdInput, fromSession: !!session.metadata?.plano_id });
+
+    // Se ainda não tem planoId, tentar encontrar pelo price_id
     if (!planoId && subscription.items?.data?.length > 0) {
       const priceId = subscription.items.data[0].price?.id;
+      logStep("Buscando plano por price_id", { priceId });
+      
       if (priceId) {
         // Tentar encontrar plano pelo price_id
         const { data: planoMensal } = await supabase
           .from("planos")
-          .select("id")
+          .select("id, nome")
           .eq("stripe_price_id_mensal", priceId)
           .maybeSingle();
-        if (planoMensal?.id) planoId = planoMensal.id;
+        
+        if (planoMensal?.id) {
+          planoId = planoMensal.id;
+          logStep("Plano encontrado por price_id mensal", { planoId, nome: planoMensal.nome });
+        }
 
         if (!planoId) {
           const { data: planoAnual } = await supabase
             .from("planos")
-            .select("id")
+            .select("id, nome")
             .eq("stripe_price_id_anual", priceId)
             .maybeSingle();
-          if (planoAnual?.id) planoId = planoAnual.id;
+          
+          if (planoAnual?.id) {
+            planoId = planoAnual.id;
+            logStep("Plano encontrado por price_id anual", { planoId, nome: planoAnual.nome });
+          }
         }
       }
     }
 
+    // Último fallback: primeiro plano ativo (só se não encontrou de nenhuma forma)
     if (!planoId) {
+      logStep("AVISO: Usando fallback para primeiro plano - isso não deveria acontecer!");
       const { data: anyPlan } = await supabase
         .from("planos")
-        .select("id")
+        .select("id, nome")
         .eq("ativo", true)
         .order("ordem", { ascending: true })
         .limit(1)
         .maybeSingle();
-      if (anyPlan?.id) planoId = anyPlan.id;
+      if (anyPlan?.id) {
+        planoId = anyPlan.id;
+        logStep("Usando fallback", { planoId, nome: anyPlan.nome });
+      }
     }
 
     if (!planoId) {
       throw new Error("Não foi possível determinar o plano da assinatura");
     }
 
-    logStep("Plano identificado", { planoId, periodo, status });
+    // Verificar se o plano existe
+    const { data: planoCheck, error: planoCheckError } = await supabase
+      .from("planos")
+      .select("id, nome")
+      .eq("id", planoId)
+      .single();
+    
+    if (planoCheckError || !planoCheck) {
+      logStep("ERRO: Plano não encontrado no banco", { planoId, error: planoCheckError });
+      throw new Error(`Plano ${planoId} não encontrado`);
+    }
 
-    // Calcular datas
-    const currentStartISO = subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null;
-    const currentEndISO = subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null;
-    const trialStartISO = subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null;
-    const trialEndISO = subscription.trial_end 
+    logStep("Plano confirmado", { planoId, nome: planoCheck.nome, periodo, status });
+
+    // Calcular datas - usando os nomes corretos das colunas da tabela
+    const dataInicio = subscription.current_period_start 
+      ? new Date(subscription.current_period_start * 1000).toISOString() 
+      : new Date().toISOString();
+    
+    const dataFim = subscription.current_period_end 
+      ? new Date(subscription.current_period_end * 1000).toISOString() 
+      : null;
+    
+    const trialFim = subscription.trial_end 
       ? new Date(subscription.trial_end * 1000).toISOString() 
-      : currentEndISO;
+      : null;
 
-    // Upsert assinatura
+    logStep("Datas calculadas", { dataInicio, dataFim, trialFim });
+
+    // Upsert assinatura - usando os nomes corretos das colunas
     const { error: upsertError } = await supabase
       .from('assinaturas')
       .upsert({
@@ -127,10 +164,9 @@ serve(async (req) => {
         periodo: periodo,
         stripe_customer_id: session.customer as string,
         stripe_subscription_id: subscription.id,
-        trial_start: trialStartISO,
-        trial_end: trialEndISO,
-        current_period_start: currentStartISO,
-        current_period_end: currentEndISO,
+        data_inicio: dataInicio,
+        data_fim: dataFim,
+        trial_fim: trialFim,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'empresa_id' });
 
@@ -139,15 +175,83 @@ serve(async (req) => {
       throw new Error(`Erro ao salvar assinatura: ${upsertError.message}`);
     }
 
-    logStep("Assinatura salva com sucesso", { empresaId, planoId, status });
+    logStep("Assinatura salva com sucesso", { empresaId, planoId, planoNome: planoCheck.nome, status });
+
+    // Buscar assinatura para obter o ID
+    const { data: assinaturaData } = await supabase
+      .from('assinaturas')
+      .select('id')
+      .eq('empresa_id', empresaId)
+      .single();
+
+    // Buscar preço do plano
+    const { data: planoPreco } = await supabase
+      .from('planos')
+      .select('preco_mensal, preco_anual')
+      .eq('id', planoId)
+      .single();
+
+    const valorPagamento = periodo === 'anual' 
+      ? (planoPreco?.preco_anual || 0) 
+      : (planoPreco?.preco_mensal || 0);
+
+    // Registrar pagamento inicial (se houver payment_intent na session ou se foi trial)
+    if (assinaturaData?.id) {
+      const paymentIntentId = session.payment_intent || `trial_${sessionId}`;
+      
+      // Verificar se já existe pagamento com esse identificador
+      const { data: existingPayment } = await supabase
+        .from('pagamentos_assinatura')
+        .select('id')
+        .eq('stripe_payment_intent_id', paymentIntentId)
+        .maybeSingle();
+
+      if (!existingPayment) {
+        // Se é trial, registrar como pagamento pendente ou trial com valor 0
+        const isTrial = status === 'trialing' || subscription.status === 'trialing';
+        const pagamentoStatus = isTrial ? 'trial' : 'succeeded';
+        const pagamentoValor = isTrial ? 0 : valorPagamento;
+        const descricao = isTrial 
+          ? `Trial - ${planoCheck.nome} (${periodo})` 
+          : `Assinatura ${planoCheck.nome} - ${periodo}`;
+
+        const { error: pagamentoError } = await supabase
+          .from('pagamentos_assinatura')
+          .insert({
+            empresa_id: empresaId,
+            assinatura_id: assinaturaData.id,
+            valor: pagamentoValor,
+            status: pagamentoStatus,
+            metodo_pagamento: isTrial ? 'trial' : 'stripe',
+            descricao: descricao,
+            stripe_payment_intent_id: paymentIntentId,
+            metadata: {
+              stripe_session_id: sessionId,
+              stripe_subscription_id: subscription.id,
+              stripe_customer_id: session.customer,
+              plano_nome: planoCheck.nome,
+              is_trial: isTrial
+            }
+          });
+
+        if (pagamentoError) {
+          logStep("Erro ao registrar pagamento", { error: pagamentoError.message });
+        } else {
+          logStep("Pagamento registrado com sucesso", { tipo: isTrial ? 'trial' : 'pagamento', valor: pagamentoValor });
+        }
+      } else {
+        logStep("Pagamento já registrado anteriormente");
+      }
+    }
 
     return new Response(JSON.stringify({ 
       success: true,
       empresaId,
       planoId,
+      planoNome: planoCheck.nome,
       status,
       subscriptionId: subscription.id
-    }), { 
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
 

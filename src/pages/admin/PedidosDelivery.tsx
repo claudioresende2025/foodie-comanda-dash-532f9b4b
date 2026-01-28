@@ -25,7 +25,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-type DeliveryStatus = 'pendente' | 'confirmado' | 'em_preparo' | 'saiu_entrega' | 'entregue' | 'cancelado';
+type DeliveryStatus = 'pendente' | 'pago' | 'confirmado' | 'em_preparo' | 'saiu_entrega' | 'entregue' | 'cancelado';
 
 interface PedidoDelivery {
   id: string;
@@ -58,7 +58,8 @@ interface PedidoDelivery {
 }
 
 const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
-  pendente: { label: 'Pendente', color: 'bg-yellow-500', icon: Clock },
+  pendente: { label: 'Pgto. Pendente', color: 'bg-yellow-500', icon: Clock },
+  pago: { label: 'Pago', color: 'bg-emerald-500', icon: CreditCard },
   confirmado: { label: 'Confirmado', color: 'bg-blue-500', icon: CheckCircle2 },
   em_preparo: { label: 'Em Preparo', color: 'bg-orange-500', icon: ChefHat },
   saiu_entrega: { label: 'Saiu p/ Entrega', color: 'bg-purple-500', icon: Navigation },
@@ -66,7 +67,7 @@ const statusConfig: Record<DeliveryStatus, { label: string; color: string; icon:
   cancelado: { label: 'Cancelado', color: 'bg-red-500', icon: XCircle },
 };
 
-const statusOrder: DeliveryStatus[] = ['pendente', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
+const statusOrder: DeliveryStatus[] = ['pendente', 'pago', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
 
 export default function PedidosDelivery() {
   const { profile } = useAuth();
@@ -106,7 +107,7 @@ export default function PedidosDelivery() {
             complemento,
             referencia
           ),
-          itens_delivery!itens_delivery_pedido_delivery_id_fkey (
+          itens_delivery (
             id,
             nome_produto,
             quantidade,

@@ -31,6 +31,7 @@ import {
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { printKitchenOrder } from '@/utils/kitchenPrinter';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
 type CaixaTab = 'mesas' | 'delivery';
@@ -415,7 +416,32 @@ export default function Caixa() {
   };
 
   const handlePrint = () => {
-    window.print();
+    if (!selectedComanda) {
+      toast.error('Nenhuma comanda selecionada para impressão');
+      return;
+    }
+
+    const items = selectedComanda.pedidos?.map((p: any) => ({
+      nome: p.produto?.nome || 'Item',
+      quantidade: p.quantidade || 1,
+      notas: p.notas || null,
+    })) || [];
+
+    const total = calcularTotal(selectedComanda);
+    const couverTotal = includeCouver && couverAtivo ? calcularCouverTotal() : 0;
+
+    printKitchenOrder({
+      mesaNumero: selectedComanda.mesa?.numero_mesa || 0,
+      itens: items,
+      timestamp: new Date(),
+      empresaNome: empresa?.nome_fantasia || empresa?.razao_social || 'Restaurante',
+      empresaEndereco: empresa?.endereco_completo || '',
+      incluirTaxaServico: includeService,
+      taxaServicoPercentual: includeService ? serviceCharge : undefined,
+      couverTotal,
+      total,
+    });
+
     toast.success('Comprovante enviado para impressão');
   };
 
@@ -563,7 +589,7 @@ export default function Caixa() {
                         <Receipt className="w-5 h-5" />
                         Mesa {selectedComanda.mesa?.numero_mesa || '-'}
                       </CardTitle>
-                      <Button variant="outline" size="sm" onClick={() => window.print()}>
+                      <Button variant="outline" size="sm" onClick={handlePrint}>
                         <Printer className="w-4 h-4 mr-2" />
                         Imprimir
                       </Button>

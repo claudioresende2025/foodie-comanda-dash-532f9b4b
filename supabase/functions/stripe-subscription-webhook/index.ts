@@ -1,836 +1,682 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-declare const Deno: { env: { get(name: string): string | undefined } };
-
-const getErrorMessage = (e: unknown): string => {
-  if (typeof e === 'string') return e;
-  if (e && typeof e === 'object' && 'message' in e) {
-    const m = (e as { message?: string }).message;
-    return m ? String(m) : String(e);
-  }
-  try { return JSON.stringify(e as any); } catch { return String(e); }
-};
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
 };
 
-serve(async (req: Request) => {
+// Helper para logs detalhados
+const logStep = (step: string, details?: any) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
+};
+
+// Helper para enviar e-mail via Resend
+async function sendEmailNotification(
+  type: string, 
+  to: string, 
+  data: Record<string, any>
+) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    
+    if (!supabaseUrl || !anonKey) {
+      logStep("E-mail: variáveis não configuradas");
+      return;
+    }
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({ type, to, data }),
+    });
+    
+    if (response.ok) {
+      logStep("E-mail enviado com sucesso", { type, to });
+    } else {
+      const error = await response.text();
+      logStep("Falha ao enviar e-mail", { type, to, error });
+    }
+  } catch (e: any) {
+    logStep("Erro ao enviar e-mail (não fatal)", { error: e.message });
+  }
+}
+
+// Função para verificar assinatura do webhook
+async function verifyStripeSignature(payload: string, sigHeader: string, secret: string): Promise<boolean> {
+  try {
+    const encoder = new TextEncoder();
+    const parts = sigHeader.split(",").reduce((acc, part) => {
+      const [key, value] = part.split("=");
+      acc[key] = value;
+      return acc;
+    }, {} as Record<string, string>);
+
+    const { t, v1 } = parts;
+    if (!t || !v1) {
+      logStep("Assinatura: t ou v1 ausente", { t: !!t, v1: !!v1 });
+      return false;
+    }
+
+    const signedPayload = `${t}.${payload}`;
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const signatureBuffer = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(signedPayload)
+    );
+
+    const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+    const signatureHex = signatureArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    const isValid = signatureHex === v1;
+    logStep("Verificação de assinatura", { isValid, computed: signatureHex.substring(0, 20) + "...", expected: v1.substring(0, 20) + "..." });
+    return isValid;
+  } catch (error: any) {
+    logStep("Erro na verificação de assinatura", { error: error.message });
+    return false;
+  }
+}
+
+// Helper para fazer requisições à API do Stripe
+async function stripeRequest(endpoint: string, stripeKey: string, method = "GET", body?: any) {
+  const options: RequestInit = {
+    method,
+    headers: {
+      "Authorization": `Bearer ${stripeKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  };
+  
+  if (body && method !== "GET") {
+    options.body = new URLSearchParams(body).toString();
+  }
+  
+  const response = await fetch(`https://api.stripe.com/v1${endpoint}`, options);
+  return response.json();
+}
+
+serve(async (req) => {
+  logStep("=== WEBHOOK INICIADO ===");
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Obter variáveis de ambiente
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+  const stripeWebhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
+
+  logStep("Variáveis de ambiente", { 
+    hasSupabaseUrl: !!supabaseUrl,
+    hasServiceKey: !!supabaseServiceKey,
+    hasStripeKey: !!stripeSecretKey,
+    hasWebhookSecret: !!stripeWebhookSecret,
+    supabaseUrlPrefix: supabaseUrl?.substring(0, 30)
+  });
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    logStep("ERRO: Variáveis Supabase não configuradas");
+    return new Response(JSON.stringify({ error: "Supabase not configured" }), { status: 500 });
+  }
+
+  if (!stripeSecretKey) {
+    logStep("ERRO: STRIPE_SECRET_KEY não configurada");
+    return new Response(JSON.stringify({ error: "Stripe not configured" }), { status: 500 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
-    const stripeWebhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
-
-    if (!stripeSecretKey) {
-      throw new Error("STRIPE_SECRET_KEY não configurado");
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const stripeSecret = stripeSecretKey;
-
-    // Helper para chamadas REST simples ao Stripe
-    const stripeRequest = async (path: string, method = 'GET') => {
-      const url = `https://api.stripe.com/v1/${path}`;
-      const resp = await fetch(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${stripeSecret}`,
-          Accept: 'application/json'
-        }
-      });
-      if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(txt);
-      }
-      return resp.json();
-    };
-
-    // Diagnóstico opcional: permite verificar configuração sem depender da assinatura do Stripe
-    const urlObj = new URL(req.url);
-    const isDiagnose = urlObj.searchParams.get('diagnose') === '1' || req.headers.get('x-diagnostic') === '1';
-    if (isDiagnose) {
-      const check: any = {
-        env: {
-          STRIPE_SECRET_KEY: !!stripeSecretKey,
-          STRIPE_WEBHOOK_SECRET: !!stripeWebhookSecret,
-          SUPABASE_URL: !!supabaseUrl,
-          SUPABASE_SERVICE_ROLE_KEY: !!supabaseServiceKey,
-        },
-        webhook_endpoint_match: null,
-        recent_events: [],
-        recent_webhook_logs: [],
-        assinatura: null,
-      };
-      try {
-        const endpoints = await stripeRequest('webhook_endpoints', 'GET');
-        const expectedUrl = `https://${(Deno.env.get("SUPABASE_PROJECT_REF") || supabaseUrl?.match(/https:\/\/([^.]*)/)?.[1])}.supabase.co/functions/v1/stripe-subscription-webhook`;
-        const match = (endpoints?.data || []).find((e: any) => e.url === expectedUrl);
-        check.webhook_endpoint_match = {
-          expected_url: expectedUrl,
-          matched: !!match,
-          endpoint_id: match?.id || null,
-          enabled_events: match?.enabled_events || [],
-        };
-      } catch (e) {
-        check.webhook_endpoint_match = { error: getErrorMessage(e) };
-      }
-      try {
-        const events = await stripeRequest('events?limit=5', 'GET');
-        check.recent_events = (events?.data || []).map((ev: any) => ({ id: ev.id, type: ev.type, created: ev.created }));
-      } catch (e) {
-        check.recent_events = [{ error: getErrorMessage(e) }];
-      }
-      try {
-        const { data: logs } = await createClient(supabaseUrl, supabaseServiceKey)
-          .from('webhook_logs')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(10);
-        check.recent_webhook_logs = (logs || []).map((l: any) => ({ event: l.event, referencia: l.referencia, created_at: l.created_at }));
-      } catch (e) {
-        check.recent_webhook_logs = [{ error: getErrorMessage(e) }];
-      }
-      const empresaId = urlObj.searchParams.get('empresaId');
-      if (empresaId) {
-        try {
-          const { data: assinaturaRow } = await createClient(supabaseUrl, supabaseServiceKey)
-            .from('assinaturas')
-            .select('empresa_id, plano_id, status, current_period_end, current_period_start, trial_start, trial_end, stripe_subscription_id')
-            .eq('empresa_id', empresaId)
-            .maybeSingle();
-          check.assinatura = assinaturaRow || null;
-        } catch (e) {
-          check.assinatura = { error: getErrorMessage(e) };
-        }
-      }
-      return new Response(JSON.stringify({ success: true, diagnose: check }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Função para verificar assinatura do webhook Stripe (HMAC SHA256)
-    const verifyStripeSignature = async (payload: string, sigHeader: string | null, secret: string, toleranceSeconds = 300) => {
-      if (!sigHeader) return false;
-      // Header example: t=timestamp,v1=signature,v0=...
-      const parts = sigHeader.split(',');
-      let timestamp: string | null = null;
-      const signatures: string[] = [];
-      for (const p of parts) {
-        const [k,v] = p.split('=');
-        if (k === 't') timestamp = v;
-        if (k === 'v1') signatures.push(v);
-      }
-      if (!timestamp) return false;
-      const ts = Number(timestamp);
-      if (!Number.isFinite(ts)) return false;
-      const nowSec = Math.floor(Date.now() / 1000);
-      if (Math.abs(nowSec - ts) > toleranceSeconds) return false;
-      const signed = `${timestamp}.${payload}`;
-      const enc = new TextEncoder();
-      const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(signed));
-      const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
-      for (const s of signatures) {
-        if (hex === s) return true;
-      }
-      return false;
-    };
-
     const body = await req.text();
-    const signature = req.headers.get('stripe-signature');
+    const signature = req.headers.get("stripe-signature");
 
-    let event: any;
-    // Verificar assinatura do webhook (se configurado)
+    logStep("Request recebido", { 
+      bodyLength: body.length, 
+      hasSignature: !!signature,
+      signaturePrefix: signature?.substring(0, 50)
+    });
+
+    let event;
+
+    // Verificar assinatura se configurada
     if (stripeWebhookSecret && signature) {
-      const ok = await verifyStripeSignature(body, signature, stripeWebhookSecret);
-      if (!ok) {
-        console.error('Assinatura do webhook inválida');
-        // Fallback SEGURO: recuperar o evento diretamente da API do Stripe usando o ID do evento
+      const isValid = await verifyStripeSignature(body, signature, stripeWebhookSecret);
+      if (!isValid) {
+        logStep("ERRO: Assinatura inválida");
+        
+        // Tentar salvar log mesmo com assinatura inválida
         try {
-          const provisional = JSON.parse(body);
-          const eventId: string | undefined = provisional?.id;
-          if (eventId && typeof eventId === 'string' && eventId.startsWith('evt_')) {
-            try {
-              const fetched = await stripeRequest(`events/${eventId}`, 'GET');
-              event = fetched;
-              try {
-                await supabase.from('webhook_logs').insert({
-                  event: 'invalid_signature_fallback_used',
-                  referencia: eventId,
-                  empresa_id: null,
-                  payload: { type: fetched?.type, livemode: fetched?.livemode },
-                });
-              } catch (e) {
-                console.warn('Não foi possível inserir webhook_logs para fallback:', e);
-              }
-              console.warn('Processando evento recuperado da API do Stripe devido à assinatura inválida:', {
-                id: eventId,
-                type: fetched?.type,
-              });
-            } catch (fetchErr) {
-              console.error('Falha ao recuperar evento na API do Stripe durante fallback:', getErrorMessage(fetchErr));
-              event = null;
-            }
-          } else {
-            // Fallback alternativo: buscar recurso principal do evento (subscription/invoice/session/charge)
-            const obj = provisional?.data?.object;
-            const objId: string | undefined = obj?.id;
-            const objType: string | undefined = obj?.object;
-            let path: string | null = null;
-            if (objId && typeof objId === 'string') {
-              switch (objType) {
-                case 'subscription':
-                  path = `subscriptions/${objId}`;
-                  break;
-                case 'invoice':
-                  path = `invoices/${objId}`;
-                  break;
-                case 'checkout.session':
-                  path = `checkout/sessions/${objId}`;
-                  break;
-                case 'charge':
-                  path = `charges/${objId}`;
-                  break;
-                default:
-                  if (provisional?.type && provisional.type.startsWith('customer.subscription')) {
-                    path = `subscriptions/${objId}`;
-                  }
-                  break;
-              }
-            }
-            if (path) {
-              try {
-                const fetchedObject = await stripeRequest(path, 'GET');
-                event = { type: provisional?.type, data: { object: fetchedObject } };
-                try {
-                  await supabase.from('webhook_logs').insert({
-                    event: 'invalid_signature_object_fallback_used',
-                    referencia: objId || null,
-                    empresa_id: null,
-                    payload: { type: provisional?.type, object: objType },
-                  });
-                } catch (e) {
-                  console.warn('Não foi possível inserir webhook_logs para object_fallback:', e);
-                }
-                console.warn('Processando evento reconstruído via objeto Stripe devido à assinatura inválida:', {
-                  type: provisional?.type,
-                  object: objType,
-                  id: objId,
-                });
-              } catch (fetchObjErr) {
-                console.error('Falha ao recuperar objeto principal na API do Stripe durante fallback:', getErrorMessage(fetchObjErr));
-                event = null;
-              }
-            } else {
-              event = null;
-            }
-
-            if (!event) {
-              try {
-                await supabase.from('webhook_logs').insert({
-                  event: 'invalid_signature_no_event_id_and_no_object_fallback',
-                  referencia: null,
-                  empresa_id: null,
-                  payload: provisional,
-                });
-              } catch (e) {
-                console.warn('Não foi possível inserir webhook_logs para no_event_id_and_no_object:', e);
-              }
-              return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
-            }
-          }
-        } catch (parseErr) {
-          console.error('Falha ao parsear body JSON durante fallback:', getErrorMessage(parseErr));
-          try {
-            await supabase.from('webhook_logs').insert({
-              event: 'invalid_signature_unparsable_body',
-              referencia: null,
-              empresa_id: null,
-              payload: { raw: body },
-            });
-          } catch (e) {
-            console.warn('Não foi possível inserir webhook_logs para unparsable_body:', e);
-          }
-          return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 });
+          await supabase.from('webhook_logs').insert({ 
+            event: 'invalid_signature', 
+            payload: { raw: body.substring(0, 500), signature: signature?.substring(0, 100) },
+            status: 'error',
+            error_message: 'Invalid webhook signature'
+          });
+          logStep("Log de erro salvo");
+        } catch (logError: any) {
+          logStep("Erro ao salvar log", { error: logError.message });
         }
-      } else {
-        event = JSON.parse(body);
+        
+        return new Response(JSON.stringify({ error: "Invalid signature" }), { 
+          status: 400,
+          headers: corsHeaders 
+        });
       }
+      logStep("Assinatura válida");
     } else {
-      // Sem verificação (desenvolvimento)
-      event = JSON.parse(body);
+      logStep("AVISO: Webhook secret não configurado ou signature ausente - processando sem verificação");
     }
 
-    console.log("Evento recebido:", event.type);
+    event = JSON.parse(body);
+    logStep("Evento parseado", { type: event.type, id: event.id });
 
+    // Log inicial do evento
+    const { error: logError } = await supabase.from('webhook_logs').insert({
+      event: event.type,
+      referencia: event.id,
+      payload: event.data?.object || {},
+      status: 'received'
+    });
+
+    if (logError) {
+      logStep("ERRO ao salvar log inicial", { error: logError.message, code: logError.code });
+    } else {
+      logStep("Log inicial salvo com sucesso");
+    }
+
+    // Processar cada tipo de evento
+    let processResult = { success: true, message: '' };
+    
     switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as any;
-        await handleCheckoutCompleted(supabase, stripeRequest, session);
+      case 'checkout.session.completed': {
+        processResult = await handleCheckoutCompleted(event.data.object, supabase, stripeSecretKey);
         break;
       }
 
-      case "customer.subscription.created":
-      case "customer.subscription.updated": {
-        const subscription = event.data.object as any;
-        await handleSubscriptionUpdated(supabase, stripeRequest, subscription);
+      case 'invoice.payment_succeeded': {
+        processResult = await handlePaymentSucceeded(event.data.object, supabase, stripeSecretKey);
         break;
       }
 
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object as any;
-        await handleSubscriptionCanceled(supabase, subscription);
+      case 'invoice.payment_failed': {
+        processResult = await handlePaymentFailed(event.data.object, supabase);
         break;
       }
 
-      case "invoice.paid": {
-        const invoice = event.data.object as any;
-        await handleInvoicePaid(supabase, invoice);
+      case 'customer.subscription.updated': {
+        processResult = await handleSubscriptionUpdated(event.data.object, supabase, stripeSecretKey);
         break;
       }
 
-      case "invoice.payment_failed": {
-        const invoice = event.data.object as any;
-        await handleInvoicePaymentFailed(supabase, invoice);
-        break;
-      }
-
-      case "charge.refunded": {
-        const charge = event.data.object as any;
-        await handleChargeRefunded(supabase, charge);
+      case 'customer.subscription.deleted': {
+        processResult = await handleSubscriptionDeleted(event.data.object, supabase);
         break;
       }
 
       default:
-        console.log(`Evento não tratado: ${event.type}`);
+        logStep("Evento não tratado", { type: event.type });
+        processResult = { success: true, message: `Evento ${event.type} não requer processamento` };
     }
 
-    return new Response(JSON.stringify({ received: true }), {
+    // Atualizar log com resultado
+    await supabase.from('webhook_logs').update({
+      status: processResult.success ? 'processed' : 'error',
+      error_message: processResult.success ? null : processResult.message
+    }).eq('referencia', event.id);
+
+    logStep("=== WEBHOOK FINALIZADO ===", processResult);
+
+    return new Response(JSON.stringify({ received: true, ...processResult }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error: any) {
-    console.error("Erro no webhook:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    logStep("ERRO CRÍTICO", { message: error.message, stack: error.stack?.substring(0, 200) });
+    
+    try {
+      await supabase.from('webhook_logs').insert({
+        event: 'critical_error',
+        payload: { error: error.message },
+        status: 'error',
+        error_message: error.message
+      });
+    } catch (logErr) {
+      logStep("Não foi possível salvar log de erro crítico");
+    }
+
+    return new Response(JSON.stringify({ error: error.message }), { 
+      status: 500,
+      headers: corsHeaders 
+    });
   }
 });
 
-// Handler: Checkout concluído
-async function handleCheckoutCompleted(supabase: any, stripeRequest: any, session: any) {
-  const empresaId = session.metadata?.empresa_id;
-  const planoId = session.metadata?.plano_id;
-  const periodo = session.metadata?.periodo || 'mensal';
+// Handler: checkout.session.completed
+async function handleCheckoutCompleted(session: any, supabase: any, stripeKey: string): Promise<{ success: boolean; message: string }> {
+  logStep(">>> handleCheckoutCompleted", { sessionId: session.id });
 
-  console.log("[handleCheckoutCompleted] Metadata recebido:", { empresaId, planoId, periodo });
-  console.log("[handleCheckoutCompleted] Session metadata completo:", session.metadata);
-  console.log("[handleCheckoutCompleted] Subscription data metadata:", (session as any).subscription_data?.metadata);
+  const metadata = session.metadata || {};
+  const empresaId = metadata.empresa_id;
+  const planoId = metadata.plano_id;
+  const periodo = metadata.periodo || 'mensal';
+  const subscriptionId = session.subscription;
+  const customerId = session.customer;
 
-  console.log('[DEBUG][handleCheckoutCompleted] session object:', JSON.stringify(session, null, 2));
-  if (!empresaId) {
-    console.error("empresa_id não encontrado no metadata - checkout de novo usuário?");
-    // Para novos usuários, o plano será aplicado no Onboarding via localStorage
-    return;
-  }
-
-  // Buscar subscription ID
-  const subscriptionId = session.subscription as string;
-
-  if (!subscriptionId) {
-    console.error('subscription id não encontrado na sessão do checkout');
-    return;
-  }
-
-  // Recuperar subscription do Stripe via REST
-  const subscription = await (async () => {
-    try {
-      return await stripeRequest(`subscriptions/${subscriptionId}`);
-    } catch (e) {
-      console.error('Erro ao recuperar subscription via Stripe API:', getErrorMessage(e));
-      throw e;
-    }
-  })();
-  // Logs adicionais para depuração
-  try {
-    console.log('[DEBUG][handleCheckoutCompleted] subscription.id:', subscription.id);
-    console.log('[DEBUG][handleCheckoutCompleted] subscription.metadata:', JSON.stringify(subscription.metadata));
-    console.log('[DEBUG][handleCheckoutCompleted] subscription.items:', JSON.stringify(subscription.items?.data || subscription.items));
-  } catch (e) {
-    console.warn('Erro ao logar subscription debug info:', e);
-  }
-
-  // Tentar gravar um log leve no banco para ajudar na depuração (não falha o fluxo)
-  try {
-    await supabase.from('webhook_logs').insert({
-      event: 'checkout.session.completed',
-      referencia: subscription.id,
-      empresa_id: empresaId || null,
-      payload: JSON.stringify({ session: session, subscription: subscription }),
-      created_at: new Date().toISOString(),
-    });
-  } catch (e) {
-    console.warn('Não foi possível inserir webhook_logs (pode não existir a tabela):', getErrorMessage(e));
-  }
-
-  try {
-    await updateSubscriptionInDB(supabase, stripeRequest, empresaId, subscription, planoId);
-  } catch (err: any) {
-    console.error('Erro ao atualizar assinatura via updateSubscriptionInDB:', err);
-  }
-
-  console.log("Checkout concluído para empresa:", empresaId);
-  // Enviar e-mail para o cliente (se disponível) com link para login/cadastro
-  try {
-    let email = session.customer_details?.email || (session.customer_email as string | undefined);
-
-    if (!email && session.customer) {
-      try {
-        const customer = await stripeRequest(`customers/${session.customer}`);
-        email = customer?.email;
-      } catch (e) {
-        console.warn('Erro ao recuperar customer via Stripe API:', getErrorMessage(e));
-      }
-    }
-
-    const sendgridKey = Deno.env.get("SENDGRID_API_KEY");
-    const frontendUrl = Deno.env.get("FRONTEND_URL") || "https://" + (Deno.env.get("SUPABASE_PROJECT_REF") || "your-frontend.example");
-
-    if (email) {
-      const loginLink = `${frontendUrl.replace(/\/$/, '')}/auth?from=subscription&empresa=${encodeURIComponent(empresaId)}&plano=${encodeURIComponent(planoId ?? '')}`;
-
-      // Registrar envio no banco
-      try {
-        await supabase.from('email_logs').insert({
-          to: email,
-          subject: 'Seu acesso à Foodie Comanda',
-          template: 'subscription_welcome',
-          metadata: { empresa_id: empresaId, plano_id: planoId },
-          created_at: new Date().toISOString(),
-        });
-      } catch (e) {
-        console.warn('Não foi possível registrar email_logs:', e);
-      }
-
-      if (sendgridKey) {
-        const body = {
-          personalizations: [
-            {
-              to: [{ email }],
-              subject: 'Ative seu acesso - Foodie Comanda',
-            },
-          ],
-          from: { email: 'no-reply@foodiecomanda.com.br', name: 'Foodie Comanda' },
-          content: [
-            {
-              type: 'text/html',
-              value: `
-                <p>Olá,</p>
-                <p>Obrigado por assinar o plano. Para finalizar seu acesso, crie sua conta ou faça login:</p>
-                <p><a href="${loginLink}">Acessar / Cadastrar</a></p>
-                <p>Se precisar de ajuda, responda este e-mail.</p>
-              `,
-            },
-          ],
-        };
-
-        try {
-          await fetch('https://api.sendgrid.com/v3/mail/send', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${sendgridKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-          });
-          console.log('E-mail de boas-vindas enviado para', email);
-        } catch (err) {
-          console.error('Erro ao enviar e-mail via SendGrid:', err);
-        }
-      } else {
-        console.log('SENDGRID_API_KEY não configurada — e-mail não enviado automaticamente. Destinatário:', email, 'Link:', loginLink);
-      }
-    } else {
-      console.log('Nenhum e-mail encontrado na sessão do checkout para empresa', empresaId);
-    }
-  } catch (err) {
-    console.error('Erro no envio de e-mail após checkout:', err);
-  }
-}
-
-// Handler: Assinatura atualizada
-async function handleSubscriptionUpdated(supabase: any, stripeRequest: any, subscription: any) {
-  const empresaId = subscription.metadata?.empresa_id;
+  logStep("Metadata extraído", { empresaId, planoId, periodo, subscriptionId, customerId });
 
   if (!empresaId) {
-    // Tentar buscar por stripe_subscription_id
-    const { data: assinatura } = await supabase
-      .from("assinaturas")
-      .select("empresa_id")
-      .eq("stripe_subscription_id", subscription.id)
-      .single();
-
-    if (!assinatura) {
-      console.log("Assinatura não encontrada no banco");
-      return;
-    }
-
-    await updateSubscriptionInDB(supabase, stripeRequest, assinatura.empresa_id, subscription);
-  } else {
-    await updateSubscriptionInDB(supabase, stripeRequest, empresaId, subscription);
-  }
-}
-
-async function updateSubscriptionInDB(supabase: any, stripeRequest: any, empresaId: string, subscription: any, forcePlanoId?: string) {
-  const status = mapStripeStatus(subscription.status);
-
-  // Logs extras para depuração
-  try {
-    console.log('[DEBUG][updateSubscriptionInDB] subscription.id:', subscription.id);
-    console.log('[DEBUG][updateSubscriptionInDB] forcePlanoId:', forcePlanoId);
-    console.log('[DEBUG][updateSubscriptionInDB] subscription.metadata:', JSON.stringify(subscription.metadata));
-    console.log('[DEBUG][updateSubscriptionInDB] subscription.items:', JSON.stringify(subscription.items?.data || subscription.items));
-  } catch (e) {
-    console.warn('Erro ao logar debug info em updateSubscriptionInDB:', e);
+    logStep("AVISO: empresa_id não encontrado no metadata - checkout pode ser de novo usuário");
+    return { success: true, message: "empresa_id ausente - aguardando registro" };
   }
 
-  // 1. Tentar usar o plano forçado (vindo do checkout session)
-  let planoId = forcePlanoId;
+  // Buscar detalhes da subscription do Stripe
+  let subscription = null;
+  if (subscriptionId) {
+    subscription = await stripeRequest(`/subscriptions/${subscriptionId}`, stripeKey);
+    logStep("Subscription do Stripe", { id: subscription.id, status: subscription.status });
+  }
 
-  // 2. Se não tem forçado, tentar buscar pelo price_id (fonte da verdade do faturamento)
-  if (!planoId && subscription.items?.data?.length > 0) {
-    const priceId = subscription.items.data[0].price?.id;
+  // Determinar plano_id
+  let finalPlanoId = planoId;
+  if (!finalPlanoId && subscription) {
+    const priceId = subscription.items?.data?.[0]?.price?.id;
     if (priceId) {
-      console.log("Buscando plano pelo price_id:", priceId);
+      const { data: plano, error } = await supabase
+        .from('planos')
+        .select('id')
+        .or(`stripe_price_id_mensal.eq.${priceId},stripe_price_id_anual.eq.${priceId}`)
+        .single();
       
-      // Buscar plano pelo stripe_price_id (mensal ou anual)
-      const { data: planoMensal } = await supabase
-        .from("planos")
-        .select("id")
-        .eq("stripe_price_id_mensal", priceId)
-        .maybeSingle();
-      
-      if (planoMensal?.id) {
-        planoId = planoMensal.id;
-        console.log("Plano encontrado via price_id mensal:", planoId);
-      } else {
-        // Tentar buscar por price_id anual
-        const { data: planoAnual } = await supabase
-          .from("planos")
-          .select("id")
-          .eq("stripe_price_id_anual", priceId)
-          .maybeSingle();
-        
-        if (planoAnual?.id) {
-          planoId = planoAnual.id;
-          console.log("Plano encontrado via price_id anual:", planoId);
-        }
-      }
-      
-      // Se ainda não encontrou, tentar buscar pelo product metadata
-      if (!planoId) {
-        const productId = subscription.items.data[0].price?.product;
-        if (productId && typeof productId === 'string') {
-          // O product metadata pode ter o plano_id
-          const { data: planoByProduct } = await supabase
-            .from("planos")
-            .select("id")
-            .eq("stripe_product_id", productId)
-            .maybeSingle();
-          
-          if (planoByProduct?.id) {
-            planoId = planoByProduct.id;
-            console.log("Plano encontrado via product_id:", planoId);
-          }
-        }
-      }
-
-      // NOVO: Se ainda não encontrou e temos priceId, buscar no Stripe e atualizar DB
-      if (!planoId && priceId) {
-        console.log("Plano não encontrado no DB. Buscando no Stripe para price_id:", priceId);
-        try {
-          const price = await stripeRequest(`prices/${priceId}`);
-          if (price && price.product) {
-            const productId = typeof price.product === 'string' ? price.product : price.product.id;
-            const priceType = price.recurring?.interval === 'year' ? 'anual' : 'mensal';
-            
-            console.log(`Preço encontrado no Stripe: Product=${productId}, Type=${priceType}`);
-            
-            // 1. Tentar encontrar plano pelo product_id
-            const { data: planoByProduct } = await supabase
-              .from("planos")
-              .select("id")
-              .eq("stripe_product_id", productId)
-              .maybeSingle();
-
-            if (planoByProduct?.id) {
-              console.log("Plano encontrado pelo stripe_product_id! Atualizando price_id faltante...");
-              // Atualizar o price_id no plano
-              const updateField = priceType === 'anual' 
-                ? { stripe_price_id_anual: priceId }
-                : { stripe_price_id_mensal: priceId };
-              
-              await supabase.from("planos").update(updateField).eq("id", planoByProduct.id);
-              planoId = planoByProduct.id;
-            } else {
-              // 2. Tentar encontrar pelo metadata do produto/preço
-              const metadataPlanoId = price.metadata?.plano_id || (await stripeRequest(`products/${productId}`)).metadata?.plano_id;
-              if (metadataPlanoId) {
-                 console.log("Plano encontrado via metadata do Stripe:", metadataPlanoId);
-                 // Atualizar dados do plano
-                 const updateField: any = { stripe_product_id: productId };
-                 if (priceType === 'anual') updateField.stripe_price_id_anual = priceId;
-                 else updateField.stripe_price_id_mensal = priceId;
-
-                 await supabase.from("planos").update(updateField).eq("id", metadataPlanoId);
-                 planoId = metadataPlanoId;
-              }
-            }
-          }
-        } catch (e) {
-          console.error("Erro ao tentar recuperar/atualizar plano via Stripe:", e);
-        }
+      if (plano) {
+        finalPlanoId = plano.id;
+        logStep("Plano encontrado pelo price_id", { planoId: finalPlanoId });
+      } else if (error) {
+        logStep("Erro ao buscar plano por price_id", { error: error.message });
       }
     }
   }
 
-  // 3. Se ainda não tem plano, tentar metadata da subscription (pode estar desatualizado em upgrades)
-  if (!planoId) {
-    planoId = subscription.metadata?.plano_id;
-    if (planoId) console.log("Plano obtido via subscription.metadata:", planoId);
+  // Fallback para primeiro plano ativo
+  if (!finalPlanoId) {
+    const { data: defaultPlano, error } = await supabase
+      .from('planos')
+      .select('id')
+      .eq('ativo', true)
+      .order('ordem', { ascending: true })
+      .limit(1)
+      .single();
+    
+    if (defaultPlano) {
+      finalPlanoId = defaultPlano.id;
+      logStep("Usando plano padrão", { planoId: finalPlanoId });
+    } else if (error) {
+      logStep("Erro ao buscar plano padrão", { error: error.message });
+      return { success: false, message: "Nenhum plano encontrado" };
+    }
   }
 
-  const toISO = (timestamp: any) => {
-    if (!timestamp || isNaN(Number(timestamp))) return null;
-    return new Date(Number(timestamp) * 1000).toISOString();
-  };
+  if (!finalPlanoId) {
+    return { success: false, message: "Nenhum plano disponível" };
+  }
 
-  const updateData: Record<string, any> = {
+  // Calcular datas
+  const dataInicio = new Date().toISOString();
+  let dataFim = new Date();
+  if (periodo === 'anual') {
+    dataFim.setFullYear(dataFim.getFullYear() + 1);
+  } else {
+    dataFim.setMonth(dataFim.getMonth() + 1);
+  }
+
+  // Upsert assinatura
+  const assinaturaData = {
     empresa_id: empresaId,
-    stripe_subscription_id: subscription.id,
-    stripe_customer_id: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id,
-    status,
-    current_period_start: toISO(subscription.current_period_start),
-    current_period_end: toISO(subscription.current_period_end),
-    trial_start: toISO(subscription.trial_start),
-    trial_end: toISO(subscription.trial_end),
-    cancel_at_period_end: subscription.cancel_at_period_end,
-    canceled_at: toISO(subscription.canceled_at),
-    updated_at: new Date().toISOString(),
+    plano_id: finalPlanoId,
+    status: 'active',
+    periodo: periodo,
+    stripe_subscription_id: subscriptionId,
+    stripe_customer_id: customerId,
+    data_inicio: dataInicio,
+    data_fim: dataFim.toISOString(),
+    updated_at: new Date().toISOString()
   };
 
-  // Atualizar plano_id se encontrado (upgrade/downgrade)
-  if (planoId) {
-    updateData.plano_id = planoId;
-    console.log("Atualizando plano_id para:", planoId);
+  logStep("Salvando assinatura", assinaturaData);
+
+  const { data: assinatura, error: assinaturaError } = await supabase
+    .from('assinaturas')
+    .upsert(assinaturaData, { onConflict: 'empresa_id' })
+    .select()
+    .single();
+
+  if (assinaturaError) {
+    logStep("ERRO ao salvar assinatura", { error: assinaturaError.message, code: assinaturaError.code });
+    return { success: false, message: `Erro assinatura: ${assinaturaError.message}` };
   }
 
-  // Usar upsert para garantir que crie a assinatura se não existir
-  const { error: upsertError } = await supabase
-    .from("assinaturas")
-    .upsert(updateData, { onConflict: 'empresa_id' });
+  logStep("Assinatura salva", { id: assinatura.id, planoId: finalPlanoId });
 
-  if (upsertError) {
-    console.error("Erro ao fazer upsert da assinatura:", upsertError);
-    throw upsertError;
+  // Buscar valor do plano
+  const { data: planoInfo } = await supabase
+    .from('planos')
+    .select('nome, preco_mensal, preco_anual')
+    .eq('id', finalPlanoId)
+    .single();
+
+  const valorPagamento = periodo === 'anual' 
+    ? (planoInfo?.preco_anual || 0) 
+    : (planoInfo?.preco_mensal || 0);
+
+  // Registrar pagamento
+  const pagamentoData = {
+    empresa_id: empresaId,
+    assinatura_id: assinatura.id,
+    valor: valorPagamento,
+    status: 'succeeded',
+    metodo_pagamento: 'stripe',
+    descricao: `Assinatura ${planoInfo?.nome || 'Plano'} - ${periodo}`,
+    stripe_payment_intent_id: session.payment_intent,
+    metadata: {
+      stripe_session_id: session.id,
+      stripe_subscription_id: subscriptionId,
+      stripe_customer_id: customerId,
+      plano_nome: planoInfo?.nome
+    }
+  };
+
+  logStep("Registrando pagamento", pagamentoData);
+
+  const { error: pagamentoError } = await supabase
+    .from('pagamentos_assinatura')
+    .insert(pagamentoData);
+
+  if (pagamentoError) {
+    logStep("ERRO ao registrar pagamento", { error: pagamentoError.message, code: pagamentoError.code });
+    return { success: false, message: `Erro pagamento: ${pagamentoError.message}` };
   }
+  
+  logStep("Pagamento registrado com sucesso");
 
-  // Tentar gravar um log leve no banco para depuração (não obrigatório)
-  try {
-    await supabase.from('webhook_logs').insert({
-      event: 'subscription.updated',
-      referencia: subscription.id,
-      empresa_id: empresaId || null,
-      payload: JSON.stringify({ subscription }),
-      created_at: new Date().toISOString(),
+  // Enviar e-mail de confirmação de assinatura
+  const customerEmail = session.customer_details?.email || session.customer_email;
+  const customerName = session.customer_details?.name || 'Cliente';
+  
+  if (customerEmail) {
+    await sendEmailNotification('subscription_confirmed', customerEmail, {
+      nome: customerName,
+      plano: planoInfo?.nome || 'Plano',
+      valor: `R$ ${valorPagamento.toFixed(2)}`,
+      proximaCobranca: dataFim.toLocaleDateString('pt-BR'),
+      dashboardUrl: 'https://foodie-comanda-dash.lovable.app/admin'
     });
-  } catch (e) {
-    console.warn('Não foi possível inserir webhook_logs em updateSubscriptionInDB:', getErrorMessage(e));
   }
 
-  // Atualizar empresa
-  await supabase
-    .from("empresas")
-    .update({
-      subscription_status: status,
-      blocked_at: ["canceled", "unpaid", "past_due"].includes(status) 
-        ? new Date().toISOString() 
-        : null,
-      block_reason: status === "canceled" 
-        ? "Assinatura cancelada" 
-        : status === "past_due" 
-          ? "Pagamento atrasado" 
-          : null,
-    })
-    .eq("id", empresaId);
-
-  console.log("Assinatura atualizada:", empresaId, status);
+  return { success: true, message: "Checkout processado com sucesso" };
 }
 
-// Handler: Assinatura cancelada
-async function handleSubscriptionCanceled(supabase: any, subscription: any) {
+// Handler: invoice.payment_succeeded
+async function handlePaymentSucceeded(invoice: any, supabase: any, stripeKey: string): Promise<{ success: boolean; message: string }> {
+  logStep(">>> handlePaymentSucceeded", { invoiceId: invoice.id });
+
+  const subscriptionId = invoice.subscription;
+  if (!subscriptionId) {
+    logStep("Sem subscription_id no invoice");
+    return { success: true, message: "Invoice sem subscription" };
+  }
+
+  // Buscar assinatura pelo stripe_subscription_id
+  const { data: assinatura, error } = await supabase
+    .from('assinaturas')
+    .select('*, planos(nome)')
+    .eq('stripe_subscription_id', subscriptionId)
+    .single();
+
+  if (error || !assinatura) {
+    logStep("Assinatura não encontrada", { subscriptionId, error: error?.message });
+    return { success: true, message: "Assinatura não encontrada - pode ser novo checkout" };
+  }
+
+  // Atualizar data_fim baseado no período atual
+  const subscription = await stripeRequest(`/subscriptions/${subscriptionId}`, stripeKey);
+  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+  const { error: updateError } = await supabase
+    .from('assinaturas')
+    .update({
+      status: 'active',
+      data_fim: periodEnd,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', assinatura.id);
+
+  if (updateError) {
+    logStep("Erro ao atualizar assinatura", { error: updateError.message });
+  } else {
+    logStep("Assinatura atualizada", { dataFim: periodEnd });
+  }
+
+  // Registrar pagamento (evitar duplicatas verificando payment_intent)
+  const paymentIntent = invoice.payment_intent;
+  
+  const { data: existingPayment } = await supabase
+    .from('pagamentos_assinatura')
+    .select('id')
+    .eq('stripe_payment_intent_id', paymentIntent)
+    .maybeSingle();
+
+  if (!existingPayment && paymentIntent) {
+    const { error: insertError } = await supabase
+      .from('pagamentos_assinatura')
+      .insert({
+        empresa_id: assinatura.empresa_id,
+        assinatura_id: assinatura.id,
+        valor: invoice.amount_paid / 100,
+        status: 'succeeded',
+        metodo_pagamento: 'stripe',
+        descricao: `Renovação - ${assinatura.planos?.nome || 'Plano'}`,
+        stripe_payment_intent_id: paymentIntent,
+        metadata: {
+          stripe_invoice_id: invoice.id,
+          stripe_subscription_id: subscriptionId
+        }
+      });
+
+    if (insertError) {
+      logStep("Erro ao registrar pagamento", { error: insertError.message });
+      return { success: false, message: insertError.message };
+    }
+    logStep("Pagamento de renovação registrado");
+
+    // Enviar recibo por e-mail
+    const customerEmail = invoice.customer_email;
+    if (customerEmail) {
+      await sendEmailNotification('payment_receipt', customerEmail, {
+        nome: invoice.customer_name || 'Cliente',
+        descricao: `Renovação - ${assinatura.planos?.nome || 'Plano'}`,
+        valor: `R$ ${(invoice.amount_paid / 100).toFixed(2)}`,
+        data: new Date().toLocaleDateString('pt-BR'),
+        metodo: 'Cartão de Crédito'
+      });
+    }
+  } else {
+    logStep("Pagamento já registrado ou sem payment_intent");
+  }
+
+  return { success: true, message: "Pagamento processado" };
+}
+
+// Handler: invoice.payment_failed
+async function handlePaymentFailed(invoice: any, supabase: any): Promise<{ success: boolean; message: string }> {
+  logStep(">>> handlePaymentFailed", { invoiceId: invoice.id });
+
+  const subscriptionId = invoice.subscription;
+  if (!subscriptionId) {
+    return { success: true, message: "Invoice sem subscription" };
+  }
+
   const { data: assinatura } = await supabase
-    .from("assinaturas")
-    .select("empresa_id")
-    .eq("stripe_subscription_id", subscription.id)
+    .from('assinaturas')
+    .select('id, empresa_id, planos(nome)')
+    .eq('stripe_subscription_id', subscriptionId)
     .single();
 
   if (!assinatura) {
-    console.log("Assinatura não encontrada para cancelamento");
-    return;
+    logStep("Assinatura não encontrada para falha de pagamento");
+    return { success: true, message: "Assinatura não encontrada" };
   }
 
   await supabase
-    .from("assinaturas")
+    .from('assinaturas')
     .update({
-      status: "canceled",
-      canceled_at: new Date().toISOString(),
-      ended_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      status: 'past_due',
+      updated_at: new Date().toISOString()
     })
-    .eq("empresa_id", assinatura.empresa_id);
+    .eq('id', assinatura.id);
+
+  logStep("Status atualizado para past_due");
 
   await supabase
-    .from("empresas")
-    .update({
-      subscription_status: "canceled",
-      blocked_at: new Date().toISOString(),
-      block_reason: "Assinatura cancelada",
-    })
-    .eq("id", assinatura.empresa_id);
-
-  console.log("Assinatura cancelada:", assinatura.empresa_id);
-}
-
-// Handler: Invoice pago
-async function handleInvoicePaid(supabase: any, invoice: any) {
-  const subscriptionId = invoice.subscription as string;
-
-  if (!subscriptionId) return;
-
-  const { data: assinatura } = await supabase
-    .from("assinaturas")
-    .select("id, empresa_id")
-    .eq("stripe_subscription_id", subscriptionId)
-    .single();
-
-  if (!assinatura) return;
-
-  const { error: insertError } = await supabase
-    .from("pagamentos_assinatura")
+    .from('pagamentos_assinatura')
     .insert({
-      assinatura_id: assinatura.id,
       empresa_id: assinatura.empresa_id,
-      stripe_payment_intent_id: invoice.payment_intent as string,
-      valor: (invoice.amount_paid || 0) / 100,
-      status: "succeeded",
-      metodo_pagamento: "card",
+      assinatura_id: assinatura.id,
+      valor: invoice.amount_due / 100,
+      status: 'failed',
+      metodo_pagamento: 'stripe',
+      descricao: `Falha no pagamento - ${assinatura.planos?.nome || 'Plano'}`,
+      stripe_payment_intent_id: invoice.payment_intent,
+      metadata: {
+        stripe_invoice_id: invoice.id,
+        failure_message: invoice.last_finalization_error?.message
+      }
     });
-  if (insertError) {
-    console.error("Erro ao inserir pagamentos_assinatura:", insertError);
+
+  // Enviar e-mail de aviso sobre falha no pagamento
+  const customerEmail = invoice.customer_email;
+  if (customerEmail) {
+    await sendEmailNotification('trial_reminder', customerEmail, {
+      nome: invoice.customer_name || 'Cliente',
+      plano: assinatura.planos?.nome || 'Plano',
+      diasRestantes: 0,
+      checkoutUrl: 'https://foodie-comanda-dash.lovable.app/planos'
+    });
   }
 
-  console.log("Pagamento registrado:", assinatura.empresa_id);
+  logStep("Falha de pagamento registrada");
+  return { success: true, message: "Falha registrada" };
 }
 
-// Handler: Falha no pagamento
-async function handleInvoicePaymentFailed(supabase: any, invoice: any) {
-  const subscriptionId = invoice.subscription as string;
-
-  if (!subscriptionId) return;
+// Handler: customer.subscription.updated
+async function handleSubscriptionUpdated(subscription: any, supabase: any, stripeKey: string): Promise<{ success: boolean; message: string }> {
+  logStep(">>> handleSubscriptionUpdated", { subscriptionId: subscription.id });
 
   const { data: assinatura } = await supabase
-    .from("assinaturas")
-    .select("id, empresa_id")
-    .eq("stripe_subscription_id", subscriptionId)
+    .from('assinaturas')
+    .select('id, empresa_id, plano_id')
+    .eq('stripe_subscription_id', subscription.id)
     .single();
 
-  if (!assinatura) return;
-
-  // Atualizar status
-  await supabase
-    .from("assinaturas")
-    .update({
-      status: "past_due",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("empresa_id", assinatura.empresa_id);
-
-  await supabase
-    .from("empresas")
-    .update({
-      subscription_status: "past_due",
-    })
-    .eq("id", assinatura.empresa_id);
-
-  // Registrar tentativa de pagamento
-  await supabase.from("pagamentos_assinatura").insert({
-    assinatura_id: assinatura.id,
-    empresa_id: assinatura.empresa_id,
-    stripe_invoice_id: invoice.id,
-    valor: (invoice.amount_due || 0) / 100,
-    status: "failed",
-    metodo_pagamento: "card",
-    descricao: "Falha no pagamento",
-  });
-
-  console.log("Falha no pagamento:", assinatura.empresa_id);
-}
-
-// Handler: Reembolso
-async function handleChargeRefunded(supabase: any, charge: any) {
-  // Se for reembolso de assinatura
-  if (charge.metadata?.assinatura_id) {
-    await supabase
-      .from("reembolsos")
-      .update({
-        status: "succeeded",
-        stripe_refund_id: charge.refunds?.data[0]?.id,
-        processado_em: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("assinatura_id", charge.metadata.assinatura_id)
-      .eq("status", "processing");
+  if (!assinatura) {
+    logStep("Assinatura não encontrada para atualização");
+    return { success: true, message: "Assinatura não encontrada" };
   }
 
-  // Se for reembolso de pedido
-  if (charge.metadata?.pedido_delivery_id) {
-    await supabase
-      .from("reembolsos")
-      .update({
-        status: "succeeded",
-        stripe_refund_id: charge.refunds?.data[0]?.id,
-        processado_em: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("pedido_delivery_id", charge.metadata.pedido_delivery_id)
-      .eq("status", "processing");
+  const priceId = subscription.items?.data?.[0]?.price?.id;
+  let novoPlanoId = assinatura.plano_id;
+  let planoMudou = false;
+
+  if (priceId) {
+    const { data: plano } = await supabase
+      .from('planos')
+      .select('id, nome')
+      .or(`stripe_price_id_mensal.eq.${priceId},stripe_price_id_anual.eq.${priceId}`)
+      .single();
+
+    if (plano && plano.id !== assinatura.plano_id) {
+      novoPlanoId = plano.id;
+      planoMudou = true;
+      logStep("Mudança de plano detectada", { de: assinatura.plano_id, para: novoPlanoId });
+
+      // Enviar e-mail de confirmação de mudança de plano
+      const customer = await stripeRequest(`/customers/${subscription.customer}`, stripeKey);
+      if (customer?.email) {
+        await sendEmailNotification('subscription_confirmed', customer.email, {
+          nome: customer.name || 'Cliente',
+          plano: plano.nome,
+          valor: 'Conforme plano escolhido',
+          proximaCobranca: new Date(subscription.current_period_end * 1000).toLocaleDateString('pt-BR'),
+          dashboardUrl: 'https://foodie-comanda-dash.lovable.app/admin'
+        });
+      }
+    }
   }
 
-  console.log("Reembolso processado:", charge.id);
-}
-
-// Mapear status do Stripe para nosso enum
-function mapStripeStatus(stripeStatus: string): string {
   const statusMap: Record<string, string> = {
-    trialing: "trialing",
-    active: "active",
-    past_due: "past_due",
-    canceled: "canceled",
-    unpaid: "unpaid",
-    incomplete: "unpaid",
-    incomplete_expired: "canceled",
-    paused: "paused",
+    'active': 'active',
+    'past_due': 'past_due',
+    'canceled': 'canceled',
+    'unpaid': 'past_due',
+    'trialing': 'trialing',
+    'incomplete': 'incomplete',
+    'incomplete_expired': 'canceled'
   };
 
-  return statusMap[stripeStatus] || "active";
+  const novoStatus = statusMap[subscription.status] || 'active';
+  const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+  await supabase
+    .from('assinaturas')
+    .update({
+      plano_id: novoPlanoId,
+      status: novoStatus,
+      data_fim: periodEnd,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', assinatura.id);
+
+  logStep("Assinatura atualizada", { status: novoStatus, planoId: novoPlanoId, planoMudou });
+  return { success: true, message: "Subscription atualizada" };
+}
+
+// Handler: customer.subscription.deleted
+async function handleSubscriptionDeleted(subscription: any, supabase: any): Promise<{ success: boolean; message: string }> {
+  logStep(">>> handleSubscriptionDeleted", { subscriptionId: subscription.id });
+
+  const { data: assinatura } = await supabase
+    .from('assinaturas')
+    .select('id')
+    .eq('stripe_subscription_id', subscription.id)
+    .single();
+
+  if (!assinatura) {
+    logStep("Assinatura não encontrada para cancelamento");
+    return { success: true, message: "Assinatura não encontrada" };
+  }
+
+  await supabase
+    .from('assinaturas')
+    .update({
+      status: 'canceled',
+      canceled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', assinatura.id);
+
+  logStep("Assinatura cancelada com sucesso");
+  return { success: true, message: "Subscription cancelada" };
 }

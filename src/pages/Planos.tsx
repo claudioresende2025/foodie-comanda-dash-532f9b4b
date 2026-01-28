@@ -139,11 +139,12 @@ export default function Planos() {
       const displayOrder = ['Básico', 'Profissional', 'Enterprise'];
 
       // Overrides visuais conforme imagem fornecida
+      // Desconto de ~7% no plano anual (paga 11.16 meses pelo preço de 12)
       const displayOverrides: Record<string, any> = {
         'Básico': {
           nome: 'Plano Iniciante (Bronze)',
           preco_mensal: 149.90,
-          preco_anual: 149.90 * 12,
+          preco_anual: Math.round(149.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 3,
           descricao: 'Plano Iniciante - Ideal para lanchonetes e MEI',
           destaque: false,
@@ -162,7 +163,7 @@ export default function Planos() {
         'Profissional': {
           nome: 'Plano Profissional (Prata)',
           preco_mensal: 299.90,
-          preco_anual: 299.90 * 12,
+          preco_anual: Math.round(299.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 3,
           descricao: 'Plano Crescimento - Ideal para restaurantes com mesas',
           destaque: true,
@@ -179,9 +180,9 @@ export default function Planos() {
           ],
         },
         'Enterprise': {
-          nome: 'Plano Enteerprise (Ouro)',
+          nome: 'Plano Enterprise (Ouro)',
           preco_mensal: 549.90,
-          preco_anual: 549.90 * 12,
+          preco_anual: Math.round(549.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 7,
           descricao: 'Plano Profissional - Operações de Alto Volume',
           destaque: false,
@@ -227,10 +228,15 @@ export default function Planos() {
     }
   };
 
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
   const fetchCurrentUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      
+      // Guardar email do usuário para o checkout
+      setUserEmail(user.email || null);
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -279,8 +285,16 @@ export default function Planos() {
         // ignore localStorage errors
       }
       
+<<<<<<< HEAD
       // Se já tem empresaId (usuário logado), trata em /admin/assinatura; caso contrário, usa /subscription/success
       const successUrl = `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+=======
+      // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
+      // Caso contrário, usa /subscription/success para criar conta
+      const successUrl = empresaId
+        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
+        : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+>>>>>>> 7c0b7271ff527a40f4697bd41e3f762382b4e76b
 
       const body: any = {
         planoId: plano.id,
@@ -292,6 +306,9 @@ export default function Planos() {
 
       // Enviar empresaId apenas se disponível (fluxo sem login permitido)
       if (empresaId) body.empresaId = empresaId;
+      
+      // Enviar email do usuário para pré-preencher no Stripe
+      if (userEmail) body.customerEmail = userEmail;
 
       console.log('[Planos] Chamando create-subscription-checkout:', body);
 
@@ -411,7 +428,7 @@ export default function Planos() {
           </Label>
           {isAnual && (
             <Badge variant="secondary" className="bg-green-100 text-green-800">
-              Economize até 17%
+              Economize até 7%
             </Badge>
           )}
         </div>
