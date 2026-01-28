@@ -56,6 +56,37 @@ export default function Empresa() {
   });
   const [specificDates, setSpecificDates] = useState<string>('');
 
+  // Sincronizar formData quando empresa é carregada
+  useEffect(() => {
+    if (empresa) {
+      setFormData({
+        nome_fantasia: empresa.nome_fantasia || '',
+        cnpj: empresa.cnpj ? maskCNPJ(empresa.cnpj) : '',
+        inscricao_estadual: empresa.inscricao_estadual || '',
+        endereco_completo: empresa.endereco_completo || '',
+        chave_pix: empresa.chave_pix || '',
+      });
+
+      // Carregar configurações de couver do localStorage
+      const key = `fcd-live-music-${empresa.id || 'local'}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setCouverAtivoLocal(parsed.ativo || false);
+          setCouverValorLocal(parsed.valor || '0.00');
+          setWeekdays(parsed.weekdays || {
+            monday: false, tuesday: false, wednesday: false,
+            thursday: false, friday: false, saturday: false, sunday: false
+          });
+          setSpecificDates((parsed.specificDates || []).join(', '));
+        } catch (e) {
+          console.warn('Erro ao carregar configurações de couver:', e);
+        }
+      }
+    }
+  }, [empresa]);
+
   const handleSaveCouver = () => {
     try {
       const payload = {
@@ -279,7 +310,7 @@ export default function Empresa() {
                 <Label htmlFor="nome_fantasia">Nome Fantasia</Label>
                 <Input
                   id="nome_fantasia"
-                  value={formData.nome_fantasia || empresa?.nome_fantasia || ''}
+                  value={formData.nome_fantasia}
                   onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
                   placeholder="Nome do estabelecimento"
                 />
@@ -298,7 +329,7 @@ export default function Empresa() {
                 <Label htmlFor="inscricao_estadual">Inscrição Estadual</Label>
                 <Input
                   id="inscricao_estadual"
-                  value={formData.inscricao_estadual || empresa?.inscricao_estadual || ''}
+                  value={formData.inscricao_estadual}
                   onChange={(e) => setFormData({ ...formData, inscricao_estadual: e.target.value })}
                   placeholder="Inscrição estadual"
                 />
@@ -307,7 +338,7 @@ export default function Empresa() {
                 <Label htmlFor="endereco_completo">Endereço Completo</Label>
                 <Input
                   id="endereco_completo"
-                  value={formData.endereco_completo || empresa?.endereco_completo || ''}
+                  value={formData.endereco_completo}
                   onChange={(e) => setFormData({ ...formData, endereco_completo: e.target.value })}
                   placeholder="Rua, número, bairro, cidade - UF"
                 />
