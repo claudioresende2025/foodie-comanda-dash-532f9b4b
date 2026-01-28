@@ -183,8 +183,8 @@ export default function Equipe() {
         .eq("empresa_id", profile.empresa_id);
       if (roleError) throw roleError;
 
-      // Remover vínculo do perfil com a empresa
-      const { error: profileError } = await supabase.from("profiles").update({ empresa_id: null }).eq("id", userId);
+      // Remover vínculo do perfil com a empresa e limpar dados pessoais mínimos
+      const { error: profileError } = await supabase.from("profiles").update({ empresa_id: null, email: null, nome: null }).eq("id", userId);
       if (profileError) throw profileError;
 
       // Remover usuário do Auth via Edge Function (usa service role internamente)

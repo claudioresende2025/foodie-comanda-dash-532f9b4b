@@ -5,8 +5,9 @@
 
 set -u
 
-REPO_DIR="/workspaces/foodie-comanda-dash-532f9b4b"
-cd "$REPO_DIR" || exit 1
+REPO_DIR="${AUTOSYNC_REPO_DIR:-$(pwd)}"
+# If script executed from elsewhere, allow overriding via AUTOSYNC_REPO_DIR
+cd "$REPO_DIR" || { echo "Diretório $REPO_DIR não encontrado"; exit 1; }
 
 echo "🔄 Iniciando auto-sync (pasta: $REPO_DIR)"
 

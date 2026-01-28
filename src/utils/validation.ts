@@ -84,7 +84,7 @@ export const membroEquipeSchema = z.object({
   nome: nomeSchema,
   email: emailSchema,
   senha: passwordSchema,
-  role: z.enum(['proprietario', 'gerente', 'garcom', 'caixa']),
+  role: z.enum(['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy']),
 });
 
 export const empresaFormSchema = z.object({
