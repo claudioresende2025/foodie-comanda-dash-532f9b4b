@@ -1,268 +1,187 @@
 
-# Plano de Correção Definitiva: Cancelamento, Reembolso e Troca de Plano
+# Plano de Correção: Página admin/Empresa
 
-## Diagnóstico Confirmado
+## Diagnóstico Detalhado
 
-### ✅ Estrutura Atual da Tabela `assinaturas`
-```
-| Coluna                 | Tipo      | Existe? |
-|------------------------|-----------|---------|
-| cancel_at_period_end   | BOOLEAN   | ❌ NÃO  |
-| canceled_at            | TIMESTAMP | ✅ SIM  |
-| stripe_subscription_id | TEXT      | ✅ SIM  |
-```
-
-### Problema 1: Cancelamento Falha Silenciosamente
-**Causa**: O código em `Assinatura.tsx` (linha 216) tenta atualizar `cancel_at_period_end`, mas esse campo **não existe** na tabela.
+### Problema 1: Chave PIX Não Salva
+**Causa**: O estado `formData` é inicializado com campos vazios e **não existe um `useEffect`** que popule esses dados quando a query da empresa retorna os dados do banco.
 
 ```typescript
-// Linha 216 - CAMPO NÃO EXISTE!
-.update({ cancel_at_period_end: true, ... })
+// Linha 37-43 - Estado sempre vazio inicialmente
+const [formData, setFormData] = useState<any>({
+  nome_fantasia: '',
+  cnpj: '',
+  inscricao_estadual: '',
+  endereco_completo: '',
+  chave_pix: '',  // ❌ SEMPRE vazio!
+});
 ```
 
-**Resultado**: O update não afeta nenhuma linha e a assinatura não é cancelada.
+Quando a empresa é carregada pela query, os dados não são transferidos para o `formData`, então o campo `chave_pix` fica vazio no formulário.
 
-### Problema 2: Reembolso Mostra "Nenhum pagamento encontrado"
-**Causa**: A função `request-refund` (linha 224) busca APENAS pagamentos com status `succeeded`:
+### Problema 2: Nome Fantasia e CNPJ Não São Preenchidos
+**Causa**: Mesmo problema - falta o `useEffect` para sincronizar.
 
 ```typescript
-.eq("status", "succeeded")
+// Linha 282 - tem fallback, mas não ideal
+value={formData.nome_fantasia || empresa?.nome_fantasia || ''}
+
+// Linha 291 - SEM fallback! Nunca mostra o CNPJ existente
+value={formData.cnpj}  // ❌ Não tem || empresa?.cnpj
 ```
 
-Durante o período de trial, os pagamentos registrados têm status `trial` com valor `0`, portanto não há nada para reembolsar.
-
-### Problema 3: Troca de Plano
-**Causa Potencial**: O fluxo está implementado, mas a verificação visual indica que pode haver falha na atualização do `plano_id` após o checkout.
+O CNPJ no banco está armazenado sem máscara (ex: `83888388000188`), mas o campo precisa aplicar a máscara para exibição.
 
 ---
 
 ## Solução Completa
 
-### Fase 1: Migração SQL (Executar no Supabase Externo)
+### Fase 1: Adicionar `useEffect` para Popular o Formulário
 
-**⚠️ AÇÃO MANUAL NECESSÁRIA**: Execute este SQL no SQL Editor do projeto externo (`zlwpxflqtyhdwanmupgy`):
+Adicionar um `useEffect` que observa quando os dados da `empresa` são carregados e preenche o `formData` automaticamente:
 
-```sql
--- Adicionar coluna cancel_at_period_end
-ALTER TABLE assinaturas 
-ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT FALSE;
-
--- Criar índice para consultas futuras
-CREATE INDEX IF NOT EXISTS idx_assinaturas_cancel_period 
-ON assinaturas (cancel_at_period_end) 
-WHERE cancel_at_period_end = TRUE;
-```
-
----
-
-### Fase 2: Criar Edge Function `cancel-subscription`
-
-Nova edge function para cancelar assinaturas via API do Stripe:
-
-**Arquivo**: `supabase/functions/cancel-subscription/index.ts`
-
-**Funcionalidades**:
-- Recebe `subscriptionId` e `cancelAtPeriodEnd` (boolean)
-- Chama a API do Stripe para agendar/cancelar imediatamente
-- Atualiza o banco de dados local
-- Suporte para cancelamento imediato durante trial (sem cobrança)
-
-**Código**:
 ```typescript
-serve(async (req) => {
-  const { subscriptionId, cancelAtPeriodEnd, cancelImmediately } = await req.json();
-  
-  // Chamar Stripe API
-  if (cancelImmediately) {
-    await stripeRequest(`subscriptions/${subscriptionId}`, 'DELETE');
-  } else {
-    await stripeRequest(`subscriptions/${subscriptionId}`, 'POST', {
-      cancel_at_period_end: true
+// NOVO useEffect - após linha 57
+useEffect(() => {
+  if (empresa) {
+    setFormData({
+      nome_fantasia: empresa.nome_fantasia || '',
+      cnpj: empresa.cnpj ? maskCNPJ(empresa.cnpj) : '',  // Aplica máscara ao exibir
+      inscricao_estadual: empresa.inscricao_estadual || '',
+      endereco_completo: empresa.endereco_completo || '',
+      chave_pix: empresa.chave_pix || '',
     });
   }
-  
-  return new Response(JSON.stringify({ success: true }));
+}, [empresa]);
+```
+
+### Fase 2: Corrigir os Campos do Formulário
+
+Remover fallbacks inconsistentes nos inputs para usar apenas `formData`:
+
+```typescript
+// Nome Fantasia - usar apenas formData (já preenchido pelo useEffect)
+value={formData.nome_fantasia}
+
+// CNPJ - usar apenas formData (já preenchido com máscara pelo useEffect)
+value={formData.cnpj}
+
+// Inscrição Estadual - usar apenas formData
+value={formData.inscricao_estadual}
+
+// Endereço - usar apenas formData
+value={formData.endereco_completo}
+
+// Chave PIX - usar apenas formData
+value={formData.chave_pix}
+```
+
+### Fase 3: Adicionar Log de Debug no Mutation
+
+Para garantir que a chave PIX está sendo salva corretamente:
+
+```typescript
+// Na mutationFn, adicionar log antes do update
+console.log('Salvando dados da empresa:', {
+  nome_fantasia: formData.nome_fantasia,
+  cnpj: cnpjClean,
+  chave_pix: formData.chave_pix,
+  // ... outros campos
 });
-```
-
----
-
-### Fase 3: Corrigir `request-refund` para Trial
-
-**Arquivo**: `supabase/functions/request-refund/index.ts`
-
-**Alterações**:
-1. Detectar status de trial e retornar mensagem apropriada
-2. Melhorar feedback para o usuário
-3. Não bloquear com erro quando não há pagamentos
-
-**Trecho modificado** (linha ~202):
-```typescript
-// NOVO: Verificar se está em trial
-if (assinatura.status === 'trialing' || assinatura.status === 'trial') {
-  return new Response(JSON.stringify({ 
-    success: false,
-    error: "Período de teste gratuito", 
-    message: "Durante o período de teste não há cobranças. Para cancelar, use 'Cancelar Assinatura'.",
-    isTrialing: true
-  }), { status: 200, headers: corsHeaders });
-}
-```
-
----
-
-### Fase 4: Atualizar Frontend `Assinatura.tsx`
-
-**Arquivo**: `src/pages/admin/Assinatura.tsx`
-
-**Alterações**:
-
-#### 4.1. Adicionar `cancel_at_period_end` na interface
-```typescript
-interface Assinatura {
-  // ... campos existentes
-  cancel_at_period_end?: boolean; // NOVO
-}
-```
-
-#### 4.2. Corrigir `handleCancelSubscription`
-```typescript
-const handleCancelSubscription = async () => {
-  setIsCanceling(true);
-  try {
-    // Durante trial: cancelar imediatamente (sem cobrança)
-    const isTrialing = assinatura?.status === 'trialing' || assinatura?.status === 'trial';
-    
-    // Se tem stripe_subscription_id, cancelar via Stripe
-    if (assinatura?.stripe_subscription_id) {
-      const { data, error } = await supabase.functions.invoke('cancel-subscription', {
-        body: {
-          subscriptionId: assinatura.stripe_subscription_id,
-          cancelAtPeriodEnd: !isTrialing, // Trial = cancelar imediato
-          cancelImmediately: isTrialing,
-        },
-      });
-      if (error) throw error;
-    }
-    
-    // Atualizar no banco local
-    const updatePayload = isTrialing
-      ? { status: 'canceled', canceled_at: new Date().toISOString() }
-      : { cancel_at_period_end: true };
-    
-    await supabase
-      .from('assinaturas')
-      .update({ ...updatePayload, updated_at: new Date().toISOString() })
-      .eq('empresa_id', profile?.empresa_id);
-
-    toast.success(isTrialing 
-      ? 'Assinatura cancelada com sucesso' 
-      : 'Assinatura será cancelada ao fim do período atual'
-    );
-    setCancelDialogOpen(false);
-    await fetchData();
-  } catch (err) {
-    console.error('Erro ao cancelar:', err);
-    toast.error('Erro ao cancelar assinatura');
-  } finally {
-    setIsCanceling(false);
-  }
-};
-```
-
-#### 4.3. Corrigir lógica de detecção de cancelamento agendado
-```typescript
-// Linha 354 - ANTES (errado):
-const isCanceledAtPeriodEnd = !!assinatura?.canceled_at && assinatura?.status !== 'canceled';
-
-// DEPOIS (correto):
-const isCanceledAtPeriodEnd = assinatura?.cancel_at_period_end === true 
-  && assinatura?.status !== 'canceled';
-```
-
-#### 4.4. Esconder botão "Solicitar Reembolso" durante trial
-```typescript
-// Linha 550-555 - Condição atualizada
-{assinatura.status === 'active' && pagamentos.some(p => p.status === 'succeeded' && p.valor > 0) && (
-  <Button variant="outline" onClick={() => setRefundDialogOpen(true)}>
-    <Receipt className="w-4 h-4 mr-2" />
-    Solicitar Reembolso
-  </Button>
-)}
-```
-
----
-
-### Fase 5: Atualizar `supabase/config.toml`
-
-Adicionar nova edge function:
-```toml
-[functions.cancel-subscription]
-verify_jwt = false
 ```
 
 ---
 
 ## Resumo de Alterações
 
-| # | Arquivo/Ação | Tipo | Descrição |
-|---|--------------|------|-----------|
-| 1 | **SQL Migration** | Manual | Adicionar coluna `cancel_at_period_end` |
-| 2 | `cancel-subscription/index.ts` | Criar | Nova edge function para cancelar no Stripe |
-| 3 | `request-refund/index.ts` | Modificar | Detectar trial e retornar mensagem clara |
-| 4 | `Assinatura.tsx` | Modificar | Corrigir lógica de cancelamento e esconder reembolso no trial |
-| 5 | `config.toml` | Modificar | Registrar nova edge function |
-
----
-
-## Deploy no Projeto Externo
-
-**⚠️ AÇÃO MANUAL NECESSÁRIA após as alterações**: Execute no terminal:
-
-```bash
-# Deploy das edge functions corrigidas
-supabase functions deploy cancel-subscription request-refund --no-verify-jwt --project-ref zlwpxflqtyhdwanmupgy
-```
+| # | Alteração | Descrição |
+|---|-----------|-----------|
+| 1 | Adicionar `useEffect` | Popular `formData` quando `empresa` é carregada |
+| 2 | Corrigir inputs | Usar apenas `formData` nos campos (remover fallbacks duplicados) |
+| 3 | Aplicar máscara CNPJ | Ao carregar dados, aplicar `maskCNPJ()` no CNPJ existente |
+| 4 | Adicionar logs (opcional) | Facilitar debug em caso de problemas futuros |
 
 ---
 
 ## Fluxo Corrigido
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                    CANCELAR ASSINATURA                          │
+│                    PÁGINA admin/Empresa                         │
 └─────────────────────────────────────────────────────────────────┘
            │
-           ├── Se status = 'trialing'
-           │       └── Cancelar IMEDIATAMENTE (via Stripe API DELETE)
-           │              └── Atualizar status = 'canceled'
-           │              └── Mensagem: "Assinatura cancelada com sucesso"
-           │
-           └── Se status = 'active'
-                   └── Agendar cancelamento no fim do período
-                          ├── Chamar Stripe API (cancel_at_period_end: true)
-                          └── Atualizar cancel_at_period_end = true
-                          └── Mensagem: "Será cancelada ao fim do período"
-
-┌─────────────────────────────────────────────────────────────────┐
-│                    SOLICITAR REEMBOLSO                          │
-└─────────────────────────────────────────────────────────────────┘
-           │
-           ├── Se status = 'trialing'
-           │       └── BOTÃO NÃO APARECE NA UI
-           │       └── Se chamado: Retorna "Sem cobranças durante trial"
-           │
-           └── Se status = 'active' E tem pagamentos succeeded > R$ 0
-                   └── Exibir botão "Solicitar Reembolso"
-                   └── Processar via Stripe Refund API
+           └── Query busca dados da empresa no Supabase
+                   │
+                   └── useEffect detecta que `empresa` foi carregada
+                           │
+                           └── setFormData com todos os campos preenchidos
+                                   │
+                                   ├── nome_fantasia: empresa.nome_fantasia
+                                   ├── cnpj: maskCNPJ(empresa.cnpj)
+                                   ├── inscricao_estadual: empresa.inscricao_estadual
+                                   ├── endereco_completo: empresa.endereco_completo
+                                   └── chave_pix: empresa.chave_pix  ✅
+           
+           └── Usuário edita os campos
+                   │
+                   └── Clica em "Salvar Alterações"
+                           │
+                           └── updateMutation envia todos os dados
+                                   │
+                                   └── chave_pix: formData.chave_pix  ✅ Agora salva corretamente!
 ```
 
 ---
 
-## Instruções de Execução
+## Código Final do `useEffect`
 
-1. **Primeiro**: Execute o SQL no projeto externo (adicionar coluna)
-2. **Segundo**: Aprovar este plano para eu implementar as alterações nos arquivos
-3. **Terceiro**: Após a implementação, faça o deploy das edge functions via CLI
+```typescript
+// Adicionar APÓS a declaração dos estados (linha 57)
+useEffect(() => {
+  if (empresa) {
+    setFormData({
+      nome_fantasia: empresa.nome_fantasia || '',
+      cnpj: empresa.cnpj ? maskCNPJ(empresa.cnpj) : '',
+      inscricao_estadual: empresa.inscricao_estadual || '',
+      endereco_completo: empresa.endereco_completo || '',
+      chave_pix: empresa.chave_pix || '',
+    });
+    
+    // Carregar configurações de couver do localStorage
+    const key = `fcd-live-music-${empresa.id || 'local'}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setCouverAtivoLocal(parsed.ativo || false);
+        setCouverValorLocal(parsed.valor || '0.00');
+        setWeekdays(parsed.weekdays || {
+          monday: false, tuesday: false, wednesday: false,
+          thursday: false, friday: false, saturday: false, sunday: false
+        });
+        setSpecificDates((parsed.specificDates || []).join(', '));
+      } catch (e) {
+        console.warn('Erro ao carregar configurações de couver:', e);
+      }
+    }
+  }
+}, [empresa]);
+```
 
-Posso prosseguir com a implementação após sua aprovação?
+---
+
+## Seção Técnica
+
+### Por que o problema ocorre?
+
+O React Query carrega os dados de forma assíncrona. Quando o componente renderiza pela primeira vez:
+1. `empresa` é `undefined` (query ainda não completou)
+2. `formData` é inicializado com strings vazias
+3. Quando a query completa, `empresa` recebe os dados, mas `formData` **permanece vazio**
+
+A solução é usar `useEffect` com `empresa` como dependência para sincronizar os dados assim que estiverem disponíveis.
+
+### Campos que precisam de tratamento especial
+
+- **CNPJ**: Armazenado sem máscara no banco (`83888388000188`), precisa de `maskCNPJ()` para exibição
+- **Chave PIX**: Suporta múltiplos formatos (CPF, CNPJ, email, telefone, chave aleatória) - não precisa de máscara
