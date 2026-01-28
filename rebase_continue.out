@@ -1,0 +1,28 @@
+﻿git : Vim: Aviso: Sa├¡da n├úo ├® um terminal
+No linha:1 caractere:240
++ ...  status_before.out -Encoding utf8; git rebase --continue 2>&1 | Out-F ...
++                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Vim: Aviso: Sa├¡da n├úo ├® um terminal:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[?1049h[22;0;0t[>4;2m[?1h=[?2004h[?1004h[1;11r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[11;1H[97m[41mE325: ATEN├ç├âO[m
+
+Foi encontrado um arquivo de troca de nome "~/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/.git/.COMMIT_EDITMSG.swp"
+
+[8Cpertence a: NOTE-TI   com data: ter jan 27 23:15:49 2026
+
+   nome do arquivo: ~NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/.git/COMMIT_EDITMSG
+
+[8Cmodificado: SIM
+
+   nome de usu├í[11;16Hrio: NOTE-TI   nome do host: LL-NOTE-TI
+
+    ID do processo: 950
+
+Ao abrir o arquivo "/c/Users/NOTE-TI/Documents/GitHub/foodie-comanda-dash-532f9b4bpro/.git/COMMIT_EDITMSG"
+
+[7Ccom data de: ter jan 27 23:27:40 2026
+
+      MAIS NOVO que o arquivo de troca!
+
+[32m-- Mais --[?25h[m[11;1H[K[11;1H
