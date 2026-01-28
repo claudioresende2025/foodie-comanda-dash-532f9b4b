@@ -46,13 +46,6 @@ export default function Caixa() {
   const { canAccessCaixa, isLoading: isRoleLoading, isGarcom } = useUserRole();
   const queryClient = useQueryClient();
 
-  // Proteção de rota: GARÇOM não pode acessar Caixa
-  if (!isRoleLoading && !canAccessCaixa) {
-    toast.error('Acesso negado. Você não tem permissão para acessar o Caixa.');
-    navigate('/admin');
-    return null;
-  }
-
   // Carrega configurações do localStorage
   const getSettings = () => {
     const saved = localStorage.getItem('fcd-settings');
@@ -303,6 +296,14 @@ export default function Caixa() {
     },
   });
 
+  // Proteção de rota: GARÇOM não pode acessar Caixa
+  // Movido para APÓS todos os hooks para seguir as regras do React
+  if (!isRoleLoading && !canAccessCaixa) {
+    toast.error('Acesso negado. Você não tem permissão para acessar o Caixa.');
+    navigate('/admin');
+    return null;
+  }
+
   /** --------- HELPERS --------- */
 
   const calcularSubtotal = (comanda: any) =>
@@ -469,12 +470,19 @@ export default function Caixa() {
             </DialogDescription>
           </DialogHeader>
 
-          <PixQRCode
-            chavePix={empresa?.chave_pix || ''}
-            valor={pixValue}
-            nomeRecebedor={empresa?.nome_fantasia || 'Restaurante'}
-            cidade={empresa?.endereco_completo?.split(',').pop()?.trim() || 'SAO PAULO'}
-          />
+          {empresa?.chave_pix ? (
+            <PixQRCode
+              chavePix={empresa.chave_pix}
+              valor={pixValue}
+              nomeRecebedor={empresa?.nome_fantasia || 'Restaurante'}
+              cidade={empresa?.endereco_completo?.split(',').pop()?.trim() || 'SAO PAULO'}
+            />
+          ) : (
+            <div className="text-center p-4 border rounded-lg bg-amber-50 text-amber-700">
+              <p className="font-medium">Chave PIX não configurada</p>
+              <p className="text-sm mt-1">Configure a chave PIX nas configurações da empresa.</p>
+            </div>
+          )}
 
           <Button onClick={handleClosePixModal} className="w-full">
             Entendido / Fechar
