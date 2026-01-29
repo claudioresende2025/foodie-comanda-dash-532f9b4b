@@ -12,7 +12,9 @@ export interface UserRoleData {
   isGerente: boolean;
   isGarcom: boolean;
   isCaixa: boolean;
+  isMotoboy: boolean;
   isSuperAdmin: boolean;
+  isStaffOnly: boolean; // true se é staff (não é proprietário/gerente)
   canManageTeam: boolean;
   canManageCompany: boolean;
   canManageMenu: boolean;
@@ -29,12 +31,13 @@ export interface UserRoleData {
   canAccessConfiguracoes: boolean;
   canAccessMarketing: boolean;
   canEditPixKey: boolean;
+  // Seções sensíveis de Configurações
+  canAccessConfigSensitive: boolean;
   // Limites do plano
   kdsScreensLimit: number | null;
   staffLimit: number | null;
   mesasLimit: number | null;
   garcomLimit: number | null;
-  isMotoboy: boolean;
   // Plano atual
   planoSlug: string | null;
   planoNome: string | null;
@@ -288,6 +291,9 @@ export function useUserRole(): UserRoleData {
   const isCaixa = role === 'caixa';
   const isMotoboy = role === 'motoboy';
 
+  // Staff = não é proprietário nem gerente
+  const isStaffOnly = Boolean(role && !['proprietario', 'gerente'].includes(role));
+
   // Permissões por role
   const isAdmin = isProprietario || isGerente || isSuperAdmin;
 
@@ -309,7 +315,9 @@ export function useUserRole(): UserRoleData {
     isGerente,
     isGarcom,
     isCaixa,
+    isMotoboy,
     isSuperAdmin,
+    isStaffOnly,
     // Permissões gerais
     canManageTeam: isProprietario && resolveFeature('equipe'),
     canManageCompany: isAdmin,
@@ -319,21 +327,22 @@ export function useUserRole(): UserRoleData {
     // Acesso às páginas - respeita o plano (exceto super admin)
     canAccessDashboard: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('dashboard')),
     canAccessMesas: hasFullAccess || ((isAdmin || isGarcom || isCaixa) && resolveFeature('mesas')),
-    canAccessPedidos: hasFullAccess || ((isAdmin || isGarcom) && (resolveFeature('kds') || resolveFeature('pedidos'))),
-    canAccessDelivery: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('delivery')),
+    canAccessPedidos: hasFullAccess || ((isAdmin || isGarcom || isMotoboy) && (resolveFeature('kds') || resolveFeature('pedidos'))),
+    canAccessDelivery: hasFullAccess || ((isAdmin || isCaixa || isMotoboy) && resolveFeature('delivery')),
     canAccessDeliveryStats: hasFullAccess || (isAdmin && resolveFeature('estatisticas')),
     canAccessGarcom: hasFullAccess || ((isAdmin || isGarcom || isCaixa) && resolveFeature('garcom')),
-canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('caixa')), // GARÇOM não tem acesso
-    canAccessEquipe: hasFullAccess || (isAdmin && resolveFeature('equipe')), // Apenas admin
+    canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa || isMotoboy) && resolveFeature('caixa')),
+    canAccessEquipe: hasFullAccess || (isAdmin && resolveFeature('equipe')),
     canAccessEmpresa: hasFullAccess || (isAdmin && resolveFeature('empresa')),
-    canAccessConfiguracoes: hasFullAccess || (isAdmin && resolveFeature('configuracoes')),
+    // Configurações: todos têm acesso (mas seções sensíveis apenas admin)
+    canAccessConfiguracoes: true,
+    canAccessConfigSensitive: isAdmin,
     canAccessMarketing: hasFullAccess || (isAdmin && resolveFeature('marketing')),
     // Limites
     kdsScreensLimit: planData.kdsScreensLimit,
     staffLimit: planData.staffLimit,
     mesasLimit: planData.mesasLimit,
     garcomLimit: planData.garcomLimit,
-    isMotoboy,
     // Plano
     planoSlug: planData.planoSlug,
     planoNome: planData.planoNome,

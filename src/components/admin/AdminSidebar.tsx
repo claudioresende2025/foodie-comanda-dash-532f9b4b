@@ -31,10 +31,11 @@ import {
   Loader2,
   Megaphone,
   CreditCard,
+  Shield,
 } from 'lucide-react';
 import UpgradeModal from '@/components/UpgradeModal';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { NotificationToggle } from '@/components/notifications/NotificationToggle';
 
@@ -76,13 +77,27 @@ const allMenuItems: MenuItem[] = [
   { key: 'configuracoes', title: 'Configurações', url: '/admin/configuracoes', icon: Settings },
 ];
 
+// Labels para exibição do perfil em português
+const roleLabels: Record<string, string> = {
+  proprietario: 'Proprietário',
+  gerente: 'Gerente',
+  garcom: 'Garçom',
+  caixa: 'Caixa',
+  motoboy: 'Motoboy',
+};
+
 export function AdminSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { setOpenMobile, isMobile } = useSidebar();
   const {
+    role,
     isLoading: isRoleLoading,
+    isStaffOnly,
+    isProprietario,
+    isGerente,
+    isSuperAdmin,
     canAccessDashboard,
     canAccessMesas,
     canManageMenu,
@@ -96,7 +111,6 @@ export function AdminSidebar() {
     canAccessConfiguracoes,
     canAccessMarketing,
     isGarcom,
-    planoSlug,
   } = useUserRole();
 
   const handleLogout = async () => {
@@ -137,12 +151,30 @@ export function AdminSidebar() {
     caixa: canAccessCaixa,
     equipe: canAccessEquipe,
     empresa: canAccessEmpresa,
-    assinatura: true,
+    assinatura: isProprietario || isGerente || isSuperAdmin, // Só admin vê assinatura
     configuracoes: canAccessConfiguracoes,
   };
 
-  // Exibir todos os itens, mas desabilitar os que não tiver permissão
-  const visibleMenuItems = allMenuItems;
+  // Para staff: filtrar menu para mostrar apenas itens permitidos
+  // Para admin (proprietário/gerente): mostrar todos os itens
+  const visibleMenuItems = useMemo(() => {
+    if (isProprietario || isGerente || isSuperAdmin) {
+      // Admin vê tudo
+      return allMenuItems;
+    }
+    // Staff vê apenas itens permitidos
+    return allMenuItems.filter(item => permissionMap[item.key]);
+  }, [isProprietario, isGerente, isSuperAdmin, permissionMap]);
+
+  // Handler para quando staff clica em item não permitido (não deveria acontecer pois filtramos)
+  const handleBlockedClick = (itemTitle: string) => {
+    if (isStaffOnly) {
+      toast.error('Seu perfil não tem permissão para acessar esta página');
+    } else {
+      setUpgradeFeature(itemTitle);
+      setUpgradeOpen(true);
+    }
+  };
 
   if (isRoleLoading) {
     return (
@@ -203,7 +235,7 @@ export function AdminSidebar() {
                         </NavLink>
                       ) : (
                         <button
-                          onClick={() => { setUpgradeFeature(item.title); setUpgradeOpen(true); }}
+                          onClick={() => handleBlockedClick(item.title)}
                           className="flex items-center gap-3 text-sidebar-foreground"
                           title="Recurso bloqueado"
                         >
@@ -224,26 +256,36 @@ export function AdminSidebar() {
       <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} feature={upgradeFeature} />
 
       <SidebarFooter className="p-4">
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-sidebar-accent/50">
-          <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center">
-            <span className="text-sm font-medium text-sidebar-accent-foreground">
-              {user?.email?.charAt(0).toUpperCase()}
-            </span>
+        <div className="flex flex-col gap-2 p-3 rounded-lg bg-sidebar-accent/50">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center">
+              <span className="text-sm font-medium text-sidebar-accent-foreground">
+                {user?.email?.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-sidebar-foreground truncate">
+                {user?.email}
+              </p>
+              {role && (
+                <p className="text-xs text-sidebar-foreground/70 flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  Perfil: {roleLabels[role] || role}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
-              {user?.email}
-            </p>
+          <div className="flex items-center justify-end gap-1">
+            <NotificationToggle type="admin" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="text-sidebar-foreground hover:bg-sidebar-accent"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
-          <NotificationToggle type="admin" />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            className="text-sidebar-foreground hover:bg-sidebar-accent"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>
