@@ -676,8 +676,7 @@ export default function Caixa() {
                             'Cancelar Comanda'
                           )}
                         </Button>
-                      </div>
-                  </CardHeader>
+                      </div> </CardHeader>
                   <CardContent className="space-y-6">
                     {/* Itens do Pedido */}
                     <div className="space-y-2">
