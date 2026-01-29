@@ -261,24 +261,14 @@ export default function Empresa() {
               <div className="space-y-2">
                 <Label>Dias da semana</Label>
                 <div className="flex gap-2 flex-wrap">
-                  {[
-                    { key: 'monday', label: 'Seg' },
-                    { key: 'tuesday', label: 'Ter' },
-                    { key: 'wednesday', label: 'Qua' },
-                    { key: 'thursday', label: 'Qui' },
-                    { key: 'friday', label: 'Sex' },
-                    { key: 'saturday', label: 'Sáb' },
-                    { key: 'sunday', label: 'Dom' },
-                  ].map(({ key, label }) => (
+                  {Object.entries(weekdays).map(([k, v]) => (
                     <button
-                      key={key}
-                      className={`px-3 py-2 rounded border text-sm font-medium transition-colors ${
-                        weekdays[key] ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
-                      }`}
-                      onClick={() => setWeekdays({ ...weekdays, [key]: !weekdays[key] })}
+                      key={k}
+                      className={`px-2 py-1 rounded border ${v ? 'bg-primary text-white' : 'bg-muted'}`}
+                      onClick={() => setWeekdays({ ...weekdays, [k]: !weekdays[k] })}
                       type="button"
                     >
-                      {label}
+                      {k.slice(0,3).toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -286,16 +276,12 @@ export default function Empresa() {
             </div>
 
             <div className="space-y-2">
-              <Label>Datas específicas (DD/MM/AAAA, separadas por vírgula)</Label>
+              <Label>Datas específicas (YYYY-MM-DD, separadas por vírgula)</Label>
               <Textarea
-                placeholder="10/01/2025, 14/02/2025, 25/12/2025"
+                placeholder="2025-01-10,2025-02-14"
                 value={specificDates}
                 onChange={(e) => setSpecificDates(e.target.value)}
-                rows={2}
               />
-              <p className="text-xs text-muted-foreground">
-                Adicione datas específicas quando há música ao vivo além dos dias da semana selecionados
-              </p>
             </div>
 
             <div className="flex gap-2">

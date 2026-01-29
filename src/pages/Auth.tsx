@@ -21,8 +21,6 @@ export default function Auth() {
   const [nome, setNome] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
@@ -113,95 +111,6 @@ export default function Auth() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!forgotEmail.trim()) {
-      toast.error('Digite seu e-mail');
-      return;
-    }
-    
-    try {
-      emailSchema.parse(forgotEmail);
-    } catch {
-      toast.error('E-mail inválido');
-      return;
-    }
-    
-    setIsLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/auth?mode=reset`,
-    });
-    setIsLoading(false);
-    
-    if (error) {
-      toast.error('Erro ao enviar e-mail de recuperação');
-    } else {
-      toast.success('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
-      setShowForgotPassword(false);
-      setForgotEmail('');
-    }
-  };
-
-  // Modal de esqueci minha senha
-  if (showForgotPassword) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
-        <div className="w-full max-w-md animate-fade-in">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-fcd mb-4">
-              <Utensils className="w-8 h-8 text-primary-foreground" />
-            </div>
-            <h1 className="text-3xl font-bold text-foreground">
-              Food<span className="text-accent">Comanda</span>
-            </h1>
-          </div>
-
-          <Card className="shadow-fcd border-0">
-            <CardHeader className="text-center pb-2">
-              <CardTitle className="text-2xl">Recuperar Senha</CardTitle>
-              <CardDescription>
-                Digite seu e-mail para receber o link de recuperação
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="forgot-email">E-mail</Label>
-                <Input
-                  id="forgot-email"
-                  type="email"
-                  placeholder="seu@email.com"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <Button 
-                onClick={handleForgotPassword}
-                className="w-full bg-primary hover:bg-primary/90"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  'Enviar Link de Recuperação'
-                )}
-              </Button>
-              <Button 
-                variant="ghost"
-                onClick={() => setShowForgotPassword(false)}
-                className="w-full"
-              >
-                Voltar ao Login
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
       <div className="w-full max-w-md animate-fade-in">
@@ -244,19 +153,7 @@ export default function Auth() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="login-password">Senha</Label>
-                      <button
-                        type="button"
-                        className="text-xs text-primary hover:underline"
-                        onClick={() => {
-                          setForgotEmail(email);
-                          setShowForgotPassword(true);
-                        }}
-                      >
-                        Esqueci minha senha
-                      </button>
-                    </div>
+                    <Label htmlFor="login-password">Senha</Label>
                     <Input
                       id="login-password"
                       type="password"

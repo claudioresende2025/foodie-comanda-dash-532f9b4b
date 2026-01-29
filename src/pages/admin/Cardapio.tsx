@@ -316,12 +316,12 @@ export default function Cardapio() {
                   Novo Produto
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-xl">
+              <DialogContent className="max-w-lg">
                 <DialogHeader>
                   <DialogTitle>{editingProd ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
                   <DialogDescription>Preencha os dados do produto</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                   {/* Image Upload */}
                   <div className="space-y-2">
                     <Label>Imagem do Produto</Label>

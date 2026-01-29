@@ -31,7 +31,7 @@ import {
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { printCaixaReceipt } from '@/utils/kitchenPrinter';
+import { printKitchenOrder } from '@/utils/kitchenPrinter';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
 type CaixaTab = 'mesas' | 'delivery';
@@ -297,56 +297,6 @@ export default function Caixa() {
     },
   });
 
-  // Mutation: cancelar comanda e liberar mesa
-  const cancelComandaMutation = useMutation({
-    mutationFn: async ({ comandaId, mesaId }: { comandaId: string; mesaId?: string }) => {
-      // 1. Cancelar a comanda
-      const { error } = await supabase
-        .from('comandas')
-        .update({ status: 'cancelada', data_fechamento: new Date().toISOString() })
-        .eq('id', comandaId);
-      if (error) throw error;
-      
-      // 2. Liberar mesa (e mesas juntas, se houver)
-      if (mesaId) {
-        const { data: mesaData } = await supabase
-          .from('mesas')
-          .select('id, mesa_juncao_id')
-          .eq('id', mesaId)
-          .single();
-
-        if (mesaData?.mesa_juncao_id) {
-          await supabase
-            .from('mesas')
-            .update({ status: 'disponivel', mesa_juncao_id: null })
-            .eq('id', mesaId);
-        } else {
-          const { data: mesasJuncao } = await supabase
-            .from('mesas')
-            .select('id')
-            .or(`id.eq.${mesaId},mesa_juncao_id.eq.${mesaId}`);
-
-          if (mesasJuncao && mesasJuncao.length > 0) {
-            await supabase
-              .from('mesas')
-              .update({ status: 'disponivel', mesa_juncao_id: null })
-              .in('id', mesasJuncao.map(m => m.id));
-          }
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
-      queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] });
-      setSelectedComanda(null);
-      toast.success('Comanda cancelada e mesa liberada!');
-    },
-    onError: (error: any) => {
-      console.error('Erro ao cancelar comanda:', error);
-      toast.error(`Erro ao cancelar comanda: ${error.message}`);
-    },
-  });
-
   // Proteção de rota: GARÇOM não pode acessar Caixa
   // Movido para APÓS todos os hooks para seguir as regras do React
   if (!isRoleLoading && !canAccessCaixa) {
@@ -472,37 +422,28 @@ export default function Caixa() {
       return;
     }
 
-    const subtotal = calcularSubtotal(selectedComanda);
-    const descontoValor = subtotal * (discountPercent / 100);
-    const subtotalComDesconto = subtotal - descontoValor;
-    const taxaServicoValor = includeService ? subtotalComDesconto * (serviceCharge / 100) : 0;
-    const couverTotal = includeCouver && couverAtivo ? calcularCouverTotal() : 0;
-    const total = calcularTotal(selectedComanda);
-
-    const itens = selectedComanda.pedidos?.map((p: any) => ({
+    const items = selectedComanda.pedidos?.map((p: any) => ({
       nome: p.produto?.nome || 'Item',
       quantidade: p.quantidade || 1,
-      precoUnitario: p.preco_unitario || 0,
-      subtotal: p.subtotal || 0,
+      notas: p.notas || null,
     })) || [];
 
-    printCaixaReceipt({
-      empresaNome: empresa?.nome_fantasia || 'Restaurante',
-      empresaEndereco: empresa?.endereco_completo || undefined,
-      empresaCnpj: empresa?.cnpj || undefined,
+    const total = calcularTotal(selectedComanda);
+    const couverTotal = includeCouver && couverAtivo ? calcularCouverTotal() : 0;
+
+    printKitchenOrder({
       mesaNumero: selectedComanda.mesa?.numero_mesa || 0,
-      itens,
-      subtotal,
-      desconto: discountPercent > 0 ? { percentual: discountPercent, valor: descontoValor } : undefined,
-      taxaServico: includeService ? { percentual: serviceCharge, valor: taxaServicoValor } : undefined,
-      couver: includeCouver && couverAtivo ? { quantidade: couverQuantidade, valorUnitario: couverValorConfig, total: couverTotal } : undefined,
-      total,
-      formaPagamento: pagamentoMultiplo ? 'multiplo' : (formaPagamento || undefined),
-      troco: trocoPara ? Math.max(0, parseFloat(trocoPara) - total) : undefined,
+      itens: items,
       timestamp: new Date(),
+      empresaNome: empresa?.nome_fantasia || empresa?.razao_social || 'Restaurante',
+      empresaEndereco: empresa?.endereco_completo || '',
+      incluirTaxaServico: includeService,
+      taxaServicoPercentual: includeService ? serviceCharge : undefined,
+      couverTotal,
+      total,
     });
 
-    toast.success('Cupom enviado para impressão');
+    toast.success('Comprovante enviado para impressão');
   };
 
   const handleClosePixModal = () => {
@@ -656,27 +597,11 @@ export default function Caixa() {
                         <Receipt className="w-5 h-5" />
                         Mesa {selectedComanda.mesa?.numero_mesa || '-'}
                       </CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handlePrint}>
-                          <Printer className="w-4 h-4 mr-2" />
-                          Imprimir
-                        </Button>
-                        <Button 
-                          variant="destructive" 
-                          size="sm" 
-                          onClick={() => cancelComandaMutation.mutate({
-                            comandaId: selectedComanda.id,
-                            mesaId: selectedComanda.mesa_id
-                          })}
-                          disabled={cancelComandaMutation.isPending}
-                        >
-                          {cancelComandaMutation.isPending ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            'Cancelar Comanda'
-                          )}
-                        </Button>
-                      </div>
+                      <Button variant="outline" size="sm" onClick={handlePrint}>
+                        <Printer className="w-4 h-4 mr-2" />
+                        Imprimir
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {/* Itens do Pedido */}
