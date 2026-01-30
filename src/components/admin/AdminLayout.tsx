@@ -58,11 +58,8 @@ export function AdminLayout() {
     if (match && !match.test) {
       if (path === '/admin') {
         navigate('/admin/assinatura');
-      } else {
-        // Apenas notifica o usuário; não forza navegação ao atualizar a página.
-        // Navegação forçada causa comportamento indesejado ao dar refresh em páginas válidas.
-        toast.error('Recurso indisponível no seu plano');
       }
+      // Removido toast de erro para evitar exibição em page reload
     }
   }, [
     loading,

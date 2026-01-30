@@ -21,6 +21,8 @@ export default function Auth() {
   const [nome, setNome] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
@@ -111,6 +113,34 @@ export default function Auth() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!forgotEmail) {
+      toast.error('Digite seu e-mail');
+      return;
+    }
+    
+    try {
+      emailSchema.parse(forgotEmail);
+    } catch {
+      toast.error('E-mail inválido');
+      return;
+    }
+    
+    setIsLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${window.location.origin}/auth`,
+    });
+    setIsLoading(false);
+    
+    if (error) {
+      toast.error('Erro ao enviar e-mail de recuperação');
+    } else {
+      toast.success('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+      setShowForgotPassword(false);
+      setForgotEmail('');
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
       <div className="w-full max-w-md animate-fade-in">
@@ -177,7 +207,63 @@ export default function Auth() {
                       'Entrar'
                     )}
                   </Button>
+                  <button
+                    type="button"
+                    className="w-full text-sm text-primary hover:underline mt-2"
+                    onClick={() => {
+                      setForgotEmail(email);
+                      setShowForgotPassword(true);
+                    }}
+                  >
+                    Esqueci minha senha
+                  </button>
                 </form>
+                
+                {/* Modal Esqueci minha senha */}
+                {showForgotPassword && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <Card className="w-full max-w-md animate-fade-in">
+                      <CardHeader>
+                        <CardTitle>Recuperar Senha</CardTitle>
+                        <CardDescription>
+                          Digite seu e-mail para receber o link de recuperação
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="forgot-email">E-mail</Label>
+                          <Input
+                            id="forgot-email"
+                            type="email"
+                            placeholder="seu@email.com"
+                            value={forgotEmail}
+                            onChange={(e) => setForgotEmail(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            className="flex-1"
+                            onClick={() => setShowForgotPassword(false)}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button 
+                            className="flex-1 bg-primary hover:bg-primary/90"
+                            onClick={handleForgotPassword}
+                            disabled={isLoading}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'Enviar'
+                            )}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
               </TabsContent>
               
               <TabsContent value="signup">

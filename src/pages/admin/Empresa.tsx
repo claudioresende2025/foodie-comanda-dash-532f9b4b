@@ -55,6 +55,17 @@ export default function Empresa() {
     sunday: false,
   });
   const [specificDates, setSpecificDates] = useState<string>('');
+  
+  // Mapeamento de dias da semana para português
+  const diasSemana = [
+    { key: 'monday', label: 'Seg' },
+    { key: 'tuesday', label: 'Ter' },
+    { key: 'wednesday', label: 'Qua' },
+    { key: 'thursday', label: 'Qui' },
+    { key: 'friday', label: 'Sex' },
+    { key: 'saturday', label: 'Sáb' },
+    { key: 'sunday', label: 'Dom' },
+  ];
 
   // Sincronizar formData quando empresa é carregada
   useEffect(() => {
@@ -246,7 +257,7 @@ export default function Empresa() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Valor por pessoa (R$)</Label>
                 <Input
@@ -255,20 +266,21 @@ export default function Empresa() {
                   step="0.01"
                   value={couverValorLocal}
                   onChange={(e) => setCouverValorLocal(e.target.value)}
+                  placeholder="Ex: 25,00"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Dias da semana</Label>
+                <Label>Dias da semana com Couver</Label>
                 <div className="flex gap-2 flex-wrap">
-                  {Object.entries(weekdays).map(([k, v]) => (
+                  {diasSemana.map(({ key, label }) => (
                     <button
-                      key={k}
-                      className={`px-2 py-1 rounded border ${v ? 'bg-primary text-white' : 'bg-muted'}`}
-                      onClick={() => setWeekdays({ ...weekdays, [k]: !weekdays[k] })}
+                      key={key}
+                      className={`px-3 py-1.5 rounded-md border text-sm font-medium transition-colors ${weekdays[key] ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted hover:bg-muted/80'}`}
+                      onClick={() => setWeekdays({ ...weekdays, [key]: !weekdays[key] })}
                       type="button"
                     >
-                      {k.slice(0,3).toUpperCase()}
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -276,12 +288,16 @@ export default function Empresa() {
             </div>
 
             <div className="space-y-2">
-              <Label>Datas específicas (YYYY-MM-DD, separadas por vírgula)</Label>
+              <Label>Datas específicas com Couver (DD/MM/AAAA, separadas por vírgula)</Label>
               <Textarea
-                placeholder="2025-01-10,2025-02-14"
+                placeholder="10/01/2025, 14/02/2025, 25/12/2025"
                 value={specificDates}
                 onChange={(e) => setSpecificDates(e.target.value)}
+                rows={2}
               />
+              <p className="text-xs text-muted-foreground">
+                Adicione datas específicas para cobrar couver, além dos dias da semana selecionados.
+              </p>
             </div>
 
             <div className="flex gap-2">
