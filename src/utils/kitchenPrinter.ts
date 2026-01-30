@@ -18,6 +18,31 @@ type PrintOrder = {
   total?: number;
 };
 
+// Tipo para impressão de cupom não fiscal (Caixa)
+type CaixaReceiptItem = {
+  nome: string;
+  quantidade: number;
+  precoUnitario: number;
+  subtotal: number;
+};
+
+type CaixaReceiptData = {
+  empresaNome: string;
+  empresaEndereco?: string;
+  empresaCnpj?: string;
+  mesaNumero: number;
+  nomeCliente?: string;
+  itens: CaixaReceiptItem[];
+  subtotal: number;
+  desconto?: { percentual: number; valor: number };
+  taxaServico?: { percentual: number; valor: number };
+  couver?: { quantidade: number; valorUnitario: number; total: number };
+  total: number;
+  formaPagamento?: string;
+  troco?: number;
+  timestamp: Date;
+};
+
 export const formatKitchenOrder = (order: PrintOrder): string => {
   const { mesaNumero, itens, timestamp } = order;
   
@@ -320,4 +345,173 @@ export const triggerDeliveryKitchenPrint = (pedido: {
   notas?: string;
 }): void => {
   printDeliveryOrder(pedido);
+};
+
+// =====================================================
+// IMPRESSÃO CUPOM NÃO FISCAL - CAIXA (80mm)
+// =====================================================
+
+const formatCurrency = (value: number): string => {
+  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const rightAlignText = (left: string, right: string, width: number): string => {
+  const spaces = Math.max(1, width - left.length - right.length);
+  return left + ' '.repeat(spaces) + right;
+};
+
+export const formatCaixaReceipt = (data: CaixaReceiptData): string => {
+  const divider = '='.repeat(40);
+  const thinDivider = '-'.repeat(40);
+  
+  let receipt = '';
+  
+  // Header - Dados do restaurante
+  receipt += '\n';
+  receipt += divider + '\n';
+  receipt += centerText(data.empresaNome.toUpperCase(), 40) + '\n';
+  if (data.empresaCnpj) {
+    receipt += centerText(`CNPJ: ${data.empresaCnpj}`, 40) + '\n';
+  }
+  if (data.empresaEndereco) {
+    receipt += centerText(data.empresaEndereco, 40) + '\n';
+  }
+  receipt += divider + '\n';
+  receipt += '\n';
+  
+  // Informações da mesa/cliente
+  receipt += centerText(`MESA ${data.mesaNumero}`, 40) + '\n';
+  if (data.nomeCliente) {
+    receipt += centerText(`Cliente: ${data.nomeCliente}`, 40) + '\n';
+  }
+  receipt += '\n';
+  
+  // Data/Hora
+  receipt += `Data: ${data.timestamp.toLocaleDateString('pt-BR')}\n`;
+  receipt += `Hora: ${data.timestamp.toLocaleTimeString('pt-BR')}\n`;
+  receipt += '\n';
+  
+  // Itens consumidos
+  receipt += thinDivider + '\n';
+  receipt += 'ITENS CONSUMIDOS\n';
+  receipt += thinDivider + '\n';
+  receipt += '\n';
+  
+  data.itens.forEach((item) => {
+    const qtdPreco = `${item.quantidade}x R$ ${formatCurrency(item.precoUnitario)}`;
+    const subtotal = `R$ ${formatCurrency(item.subtotal)}`;
+    receipt += item.nome.substring(0, 22) + '\n';
+    receipt += rightAlignText(`  ${qtdPreco}`, subtotal, 40) + '\n';
+  });
+  
+  receipt += '\n';
+  receipt += thinDivider + '\n';
+  
+  // Subtotal
+  receipt += rightAlignText('SUBTOTAL:', `R$ ${formatCurrency(data.subtotal)}`, 40) + '\n';
+  
+  // Desconto (se houver)
+  if (data.desconto && data.desconto.valor > 0) {
+    receipt += rightAlignText(`DESCONTO (${data.desconto.percentual}%):`, `-R$ ${formatCurrency(data.desconto.valor)}`, 40) + '\n';
+  }
+  
+  // Taxa de serviço (se houver)
+  if (data.taxaServico && data.taxaServico.valor > 0) {
+    receipt += rightAlignText(`TAXA SERVIÇO (${data.taxaServico.percentual}%):`, `R$ ${formatCurrency(data.taxaServico.valor)}`, 40) + '\n';
+  }
+  
+  // Couver (se houver)
+  if (data.couver && data.couver.total > 0) {
+    receipt += rightAlignText(`COUVER (${data.couver.quantidade}x R$ ${formatCurrency(data.couver.valorUnitario)}):`, `R$ ${formatCurrency(data.couver.total)}`, 40) + '\n';
+  }
+  
+  receipt += thinDivider + '\n';
+  
+  // Total
+  receipt += rightAlignText('TOTAL:', `R$ ${formatCurrency(data.total)}`, 40) + '\n';
+  
+  receipt += divider + '\n';
+  
+  // Forma de pagamento
+  if (data.formaPagamento) {
+    const formaLabel = {
+      'dinheiro': 'DINHEIRO',
+      'pix': 'PIX',
+      'cartao_credito': 'CARTÃO DE CRÉDITO',
+      'cartao_debito': 'CARTÃO DE DÉBITO',
+    }[data.formaPagamento] || data.formaPagamento.toUpperCase();
+    
+    receipt += `Forma de Pagamento: ${formaLabel}\n`;
+    
+    if (data.formaPagamento === 'dinheiro' && data.troco && data.troco > data.total) {
+      receipt += `Valor Recebido: R$ ${formatCurrency(data.troco)}\n`;
+      receipt += `Troco: R$ ${formatCurrency(data.troco - data.total)}\n`;
+    }
+  }
+  
+  receipt += '\n';
+  receipt += centerText('*** CUPOM NÃO FISCAL ***', 40) + '\n';
+  receipt += centerText('Obrigado pela preferência!', 40) + '\n';
+  receipt += '\n\n\n';
+  
+  return receipt;
+};
+
+export const printCaixaReceipt = (data: CaixaReceiptData): void => {
+  const content = formatCaixaReceipt(data);
+  
+  // Create a hidden iframe for printing
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.top = '-10000px';
+  iframe.style.left = '-10000px';
+  document.body.appendChild(iframe);
+  
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    console.error('Could not access iframe document');
+    document.body.removeChild(iframe);
+    return;
+  }
+  
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Cupom - Mesa ${data.mesaNumero}</title>
+      <style>
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
+        body {
+          font-family: 'Courier New', monospace;
+          font-size: 12px;
+          line-height: 1.4;
+          margin: 0;
+          padding: 5mm;
+          width: 70mm;
+        }
+        pre {
+          margin: 0;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        }
+      </style>
+    </head>
+    <body>
+      <pre>${content}</pre>
+    </body>
+    </html>
+  `);
+  doc.close();
+  
+  // Wait for content to load then print
+  iframe.onload = () => {
+    iframe.contentWindow?.print();
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 1000);
+  };
 };

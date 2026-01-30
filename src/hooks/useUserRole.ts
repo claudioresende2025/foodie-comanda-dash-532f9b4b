@@ -326,7 +326,9 @@ export function useUserRole(): UserRoleData {
 canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('caixa')), // GARÇOM não tem acesso
     canAccessEquipe: hasFullAccess || (isAdmin && resolveFeature('equipe')), // Apenas admin
     canAccessEmpresa: hasFullAccess || (isAdmin && resolveFeature('empresa')),
-    canAccessConfiguracoes: hasFullAccess || (isAdmin && resolveFeature('configuracoes')),
+    // Configurações básicas (Notificações, Aparência, Segurança) acessíveis a todos
+    // Seções sensíveis (Delivery, Taxa de Serviço) apenas para admin
+    canAccessConfiguracoes: true,
     canAccessMarketing: hasFullAccess || (isAdmin && resolveFeature('marketing')),
     // Limites
     kdsScreensLimit: planData.kdsScreensLimit,

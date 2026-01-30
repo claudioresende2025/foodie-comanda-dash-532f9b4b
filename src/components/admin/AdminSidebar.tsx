@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -37,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { NotificationToggle } from '@/components/notifications/NotificationToggle';
+import { Badge } from '@/components/ui/badge';
 
 type MenuItemKey = 
   | 'dashboard' 
@@ -82,7 +84,11 @@ export function AdminSidebar() {
   const { signOut, user } = useAuth();
   const { setOpenMobile, isMobile } = useSidebar();
   const {
+    role,
     isLoading: isRoleLoading,
+    isProprietario,
+    isGerente,
+    isSuperAdmin,
     canAccessDashboard,
     canAccessMesas,
     canManageMenu,
@@ -98,6 +104,18 @@ export function AdminSidebar() {
     isGarcom,
     planoSlug,
   } = useUserRole();
+
+  // Verificar se é staff (não é proprietário/gerente/super admin)
+  const isStaff = !isProprietario && !isGerente && !isSuperAdmin;
+  
+  // Mapeamento de roles para labels em português
+  const roleLabels: Record<string, string> = {
+    proprietario: 'Proprietário',
+    gerente: 'Gerente',
+    garcom: 'Garçom',
+    caixa: 'Caixa',
+    motoboy: 'Motoboy',
+  };
 
   const handleLogout = async () => {
     try {
@@ -137,12 +155,21 @@ export function AdminSidebar() {
     caixa: canAccessCaixa,
     equipe: canAccessEquipe,
     empresa: canAccessEmpresa,
-    assinatura: true,
+    assinatura: !isStaff, // Staff não vê assinatura
     configuracoes: canAccessConfiguracoes,
   };
 
-  // Exibir todos os itens, mas desabilitar os que não tiver permissão
-  const visibleMenuItems = allMenuItems;
+  // Para Staff: filtrar menu para mostrar apenas itens com permissão
+  // Para Proprietário/Gerente/SuperAdmin: mostrar todos os itens
+  const visibleMenuItems = useMemo(() => {
+    if (isProprietario || isGerente || isSuperAdmin) {
+      return allMenuItems;
+    }
+    // Staff: mostrar apenas itens permitidos (sem cadeados)
+    return allMenuItems.filter(item => permissionMap[item.key]);
+  }, [isProprietario, isGerente, isSuperAdmin, canAccessDashboard, canAccessMesas, canManageMenu, 
+      canAccessPedidos, canAccessDelivery, canAccessDeliveryStats, canAccessMarketing, 
+      canAccessGarcom, canAccessCaixa, canAccessEquipe, canAccessEmpresa, canAccessConfiguracoes, isGarcom]);
 
   if (isRoleLoading) {
     return (
@@ -201,7 +228,17 @@ export function AdminSidebar() {
                           <item.icon className="w-5 h-5" />
                           <span>{item.title}</span>
                         </NavLink>
+                      ) : isStaff ? (
+                        // Staff sem permissão: apenas toast (não modal de upgrade)
+                        <button
+                          onClick={() => toast.error('Seu perfil não tem permissão para acessar esta página')}
+                          className="flex items-center gap-3 text-sidebar-foreground opacity-50 cursor-not-allowed"
+                        >
+                          <item.icon className="w-5 h-5" />
+                          <span>{item.title}</span>
+                        </button>
                       ) : (
+                        // Proprietário/Gerente sem permissão por plano: modal de upgrade
                         <button
                           onClick={() => { setUpgradeFeature(item.title); setUpgradeOpen(true); }}
                           className="flex items-center gap-3 text-sidebar-foreground"
@@ -224,26 +261,36 @@ export function AdminSidebar() {
       <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} feature={upgradeFeature} />
 
       <SidebarFooter className="p-4">
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-sidebar-accent/50">
-          <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center">
-            <span className="text-sm font-medium text-sidebar-accent-foreground">
-              {user?.email?.charAt(0).toUpperCase()}
-            </span>
+        <div className="flex flex-col gap-2 p-3 rounded-lg bg-sidebar-accent/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-sidebar-accent flex items-center justify-center">
+              <span className="text-sm font-medium text-sidebar-accent-foreground">
+                {user?.email?.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-sidebar-foreground truncate">
+                {user?.email}
+              </p>
+              {role && (
+                <Badge variant="secondary" className="text-xs mt-1">
+                  {roleLabels[role] || role}
+                </Badge>
+              )}
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
-              {user?.email}
-            </p>
+          <div className="flex items-center justify-between pt-2 border-t border-sidebar-border">
+            <NotificationToggle type="admin" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="text-sidebar-foreground hover:bg-sidebar-accent"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sair
+            </Button>
           </div>
-          <NotificationToggle type="admin" />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            className="text-sidebar-foreground hover:bg-sidebar-accent"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>
