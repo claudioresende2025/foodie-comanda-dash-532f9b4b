@@ -123,7 +123,14 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
         .maybeSingle();
 
       if (!comanda) {
-        toast.error('Nenhuma comanda aberta encontrada para esta mesa');
+        // Mesmo sem comanda aberta, libera a mesa se estiver ocupada
+        await supabase
+          .from('mesas')
+          .update({ status: 'disponivel', nome: null, mesa_juncao_id: null })
+          .eq('id', mesaId);
+
+        toast.success('Mesa liberada com sucesso');
+        onOpenChange(false);
         return;
       }
 
