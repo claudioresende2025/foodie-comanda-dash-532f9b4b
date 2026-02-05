@@ -16,12 +16,12 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2 } from 'lucide-react';
+import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MesaQRCodeDialog } from '@/components/admin/MesaQRCodeDialog';
 
-type MesaStatus = 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
+type MesaStatus = 'disponivel' | 'ocupada' | 'reservada' | 'juncao' | 'solicitou_fechamento';
 
 type Mesa = {
   id: string;
@@ -38,6 +38,7 @@ const statusConfig: Record<MesaStatus, { label: string; color: string; borderCol
   ocupada: { label: 'Ocupada', color: 'bg-orange-500', borderColor: 'border-orange-500', icon: Clock },
   reservada: { label: 'Reservada', color: 'bg-yellow-500', borderColor: 'border-yellow-500', icon: CalendarCheck },
   juncao: { label: 'Junção', color: 'bg-blue-500', borderColor: 'border-blue-500', icon: Link2 },
+  solicitou_fechamento: { label: 'Fechar Conta', color: 'bg-red-500', borderColor: 'border-red-500', icon: Receipt },
 };
 
 export default function Mesas() {
