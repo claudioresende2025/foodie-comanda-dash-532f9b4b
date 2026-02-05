@@ -1211,14 +1211,34 @@ export default function Menu() {
                       <span className="font-medium">Fechamento solicitado! Aguarde o garçom.</span>
                     </div>
                   ) : (
-                    <Button
-                      variant="outline"
-                      className="w-full h-12 text-base border-orange-500 text-orange-600 hover:bg-orange-50"
-                      onClick={() => setIsFecharContaDialogOpen(true)}
-                    >
-                      <Receipt className="w-5 h-5 mr-2" />
-                      Fechar Conta
-                    </Button>
+                    (() => {
+                      // Verificar se TODOS os pedidos estão entregues
+                      const todosEntregues = meusPedidos.every(p => p.status_cozinha === 'entregue');
+                      const pedidosPendentes = meusPedidos.filter(p => p.status_cozinha !== 'entregue' && p.status_cozinha !== 'cancelado');
+                      
+                      return (
+                        <div className="space-y-2">
+                          <Button
+                            variant="outline"
+                            className={`w-full h-12 text-base ${
+                              todosEntregues 
+                                ? 'border-orange-500 text-orange-600 hover:bg-orange-50' 
+                                : 'border-gray-300 text-gray-400 cursor-not-allowed'
+                            }`}
+                            onClick={() => todosEntregues && setIsFecharContaDialogOpen(true)}
+                            disabled={!todosEntregues}
+                          >
+                            <Receipt className="w-5 h-5 mr-2" />
+                            Fechar Conta
+                          </Button>
+                          {!todosEntregues && pedidosPendentes.length > 0 && (
+                            <p className="text-xs text-center text-muted-foreground">
+                              Aguarde a entrega de {pedidosPendentes.length} pedido{pedidosPendentes.length > 1 ? 's' : ''} para fechar a conta
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               )}

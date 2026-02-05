@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
+import { PixQRCode } from '@/components/pix/PixQRCode';
 import { 
   Users, Bell, BellRing, Check, Loader2, UtensilsCrossed, RefreshCw, 
   Clock, ChefHat, CheckCircle, Truck, XCircle, Receipt, DollarSign, CreditCard, Banknote, QrCode
@@ -175,6 +176,22 @@ export default function Garcom() {
     enabled: !!profile?.empresa_id,
     staleTime: 3000,
     refetchInterval: 8000,
+  });
+
+  // Empresa (para obter chave PIX)
+  const { data: empresa } = useQuery({
+    queryKey: ['empresa', profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return null;
+      const { data, error } = await supabase
+        .from('empresas')
+        .select('*')
+        .eq('id', profile.empresa_id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.empresa_id,
   });
 
   // ========== MUTATIONS ==========
@@ -852,6 +869,26 @@ export default function Garcom() {
                 </Label>
               </RadioGroup>
             </div>
+
+            {/* QR Code PIX - exibir quando PIX selecionado */}
+            {baixaFormaPagamento === 'pix' && (
+              <div className="border rounded-lg p-4 bg-muted/30">
+                {empresa?.chave_pix ? (
+                  <PixQRCode
+                    chavePix={empresa.chave_pix}
+                    valor={baixaTotalValue}
+                    nomeRecebedor={empresa?.nome_fantasia || 'Restaurante'}
+                    cidade={empresa?.endereco_completo?.split(',').pop()?.trim() || 'SAO PAULO'}
+                    expiracaoMinutos={5}
+                  />
+                ) : (
+                  <div className="text-center p-4 border rounded-lg bg-amber-50 text-amber-700">
+                    <p className="font-medium">Chave PIX não configurada</p>
+                    <p className="text-sm mt-1">Configure a chave PIX nas configurações da empresa.</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Observação */}
             <div className="space-y-2">
