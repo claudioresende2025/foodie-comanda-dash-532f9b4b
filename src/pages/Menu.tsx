@@ -29,8 +29,15 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 
 // --- Tipos de Dados (Types) ---
+
+// Tipo para variações de tamanho
+interface VariacaoTamanho {
+  nome: string;
+  preco: number;
+}
 
 type Categoria = {
   id: string;
@@ -47,6 +54,7 @@ type Produto = {
   imagem_url: string | null;
   categoria_id: string | null;
   ativo: boolean;
+  variacoes?: VariacaoTamanho[] | null;
 };
 
 type Empresa = {
@@ -61,6 +69,9 @@ type CartItem = {
   produto: Produto;
   quantidade: number;
   notas: string;
+  tamanhoSelecionado?: string | null;
+  precoUnitario: number;
+  cartKey: string;
 };
 
 type Pedido = {
@@ -159,6 +170,10 @@ export default function Menu() {
   const [isCallingWaiter, setIsCallingWaiter] = useState(false);
   const [waiterCallPending, setWaiterCallPending] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Estado para modal de seleção de tamanho
+  const [sizeModalProduct, setSizeModalProduct] = useState<Produto | null>(null);
+  const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
 
   // Cliente (quando abre comanda via QR) - coletar nome/telefone
   const [showClientModal, setShowClientModal] = useState(false);
@@ -480,32 +495,49 @@ export default function Menu() {
     return matchesCategory && matchesSearch;
   });
 
-  const addToCart = (produto: Produto) => {
-    setCart((prev) => {
-      const existing = prev.find((item) => item.produto.id === produto.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.produto.id === produto.id ? { ...item, quantidade: item.quantidade + 1 } : item,
-        );
-      }
-      return [...prev, { produto, quantidade: 1, notas: "" }];
-    });
-    toast.success(`${produto.nome} adicionado ao carrinho`);
+  // Função para gerar chave única do item no carrinho
+  const gerarCartKey = (produtoId: string, tamanho?: string | null): string => {
+    return tamanho ? `${produtoId}__${tamanho}` : produtoId;
   };
 
-  const updateCartItem = (produtoId: string, quantidade: number) => {
+  const addToCart = (produto: Produto, tamanhoSelecionado?: string | null, precoVariacao?: number) => {
+    const precoUnitario = precoVariacao ?? produto.preco;
+    const cartKey = gerarCartKey(produto.id, tamanhoSelecionado);
+    
+    setCart((prev) => {
+      const existing = prev.find((item) => item.cartKey === cartKey);
+      if (existing) {
+        return prev.map((item) =>
+          item.cartKey === cartKey ? { ...item, quantidade: item.quantidade + 1 } : item,
+        );
+      }
+      return [...prev, { 
+        produto, 
+        quantidade: 1, 
+        notas: "", 
+        tamanhoSelecionado, 
+        precoUnitario, 
+        cartKey 
+      }];
+    });
+    
+    const nomeExibicao = tamanhoSelecionado ? `${produto.nome} - ${tamanhoSelecionado}` : produto.nome;
+    toast.success(`${nomeExibicao} adicionado ao carrinho`);
+  };
+
+  const updateCartItem = (cartKey: string, quantidade: number) => {
     if (quantidade <= 0) {
-      setCart((prev) => prev.filter((item) => item.produto.id !== produtoId));
+      setCart((prev) => prev.filter((item) => item.cartKey !== cartKey));
     } else {
-      setCart((prev) => prev.map((item) => (item.produto.id === produtoId ? { ...item, quantidade } : item)));
+      setCart((prev) => prev.map((item) => (item.cartKey === cartKey ? { ...item, quantidade } : item)));
     }
   };
 
-  const updateCartNotes = (produtoId: string, notas: string) => {
-    setCart((prev) => prev.map((item) => (item.produto.id === produtoId ? { ...item, notas } : item)));
+  const updateCartNotes = (cartKey: string, notas: string) => {
+    setCart((prev) => prev.map((item) => (item.cartKey === cartKey ? { ...item, notas } : item)));
   };
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.produto.preco * item.quantidade, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + item.precoUnitario * item.quantidade, 0);
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantidade, 0);
 
   // #################################################################
@@ -532,9 +564,11 @@ export default function Menu() {
       const itemsToSend = cart.map((item) => ({
         produto_id: item.produto.id,
         quantidade: item.quantidade,
-        preco_unitario: item.produto.preco,
-        subtotal: item.produto.preco * item.quantidade,
-        notas_cliente: item.notas || null,
+        preco_unitario: item.precoUnitario,
+        subtotal: item.precoUnitario * item.quantidade,
+        notas_cliente: item.tamanhoSelecionado 
+          ? `[${item.tamanhoSelecionado}] ${item.notas || ''}`.trim() 
+          : (item.notas || null),
         status_cozinha: "pendente" as const,
         comanda_id: currentComandaId,
       }));
@@ -803,6 +837,21 @@ export default function Menu() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal de seleção de tamanho */}
+      {sizeModalProduct && (
+        <ProductSizeModal
+          product={sizeModalProduct}
+          open={isSizeModalOpen}
+          onOpenChange={(open) => {
+            setIsSizeModalOpen(open);
+            if (!open) setSizeModalProduct(null);
+          }}
+          onAddToCart={(tamanho, preco) => {
+            addToCart(sizeModalProduct, tamanho, preco);
+          }}
+        />
+      )}
+
       {/* Search Bar */}
       <div className="sticky top-[72px] z-40 bg-card border-b border-border shadow-sm">
         <div className="container mx-auto px-4 py-3">
@@ -863,7 +912,18 @@ export default function Menu() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredProducts.map((produto) => {
-              const cartItem = cart.find((item) => item.produto.id === produto.id);
+              const hasVariacoes = produto.variacoes && Array.isArray(produto.variacoes) && produto.variacoes.length > 0;
+              const menorPreco = hasVariacoes 
+                ? Math.min(...(produto.variacoes!.map(v => v.preco)))
+                : produto.preco;
+              // Para produtos sem variação, usa o id como cartKey
+              const cartItemsSemVariacao = cart.filter((item) => item.produto.id === produto.id && !item.tamanhoSelecionado);
+              const cartItem = cartItemsSemVariacao[0];
+              // Quantidade total (incluindo variações)
+              const quantidadeTotal = cart
+                .filter((item) => item.produto.id === produto.id)
+                .reduce((sum, item) => sum + item.quantidade, 0);
+              
               return (
                 <Card key={produto.id} className="overflow-hidden border-0 shadow-fcd">
                   <div className="aspect-video bg-muted relative">
@@ -874,6 +934,12 @@ export default function Menu() {
                         <ChefHat className="w-12 h-12 text-muted-foreground/30" />
                       </div>
                     )}
+                    {/* Badge de quantidade quando tem variações */}
+                    {hasVariacoes && quantidadeTotal > 0 && (
+                      <Badge className="absolute top-2 right-2 bg-primary">
+                        {quantidadeTotal} no carrinho
+                      </Badge>
+                    )}
                   </div>
                   <CardContent className="p-4">
                     <h3 className="font-semibold text-foreground text-lg">{produto.nome}</h3>
@@ -881,16 +947,40 @@ export default function Menu() {
                       <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{produto.descricao}</p>
                     )}
                     <div className="mt-3 flex items-center justify-between">
-                      <span className="text-xl font-bold text-primary">
-                        R$ {produto.preco.toFixed(2).replace(".", ",")}
-                      </span>
-                      {cartItem ? (
+                      <div>
+                        {hasVariacoes ? (
+                          <>
+                            <span className="text-xl font-bold text-primary">
+                              A partir de R$ {menorPreco.toFixed(2).replace(".", ",")}
+                            </span>
+                            <p className="text-xs text-muted-foreground">
+                              {produto.variacoes!.length} tamanho{produto.variacoes!.length > 1 ? 's' : ''}
+                            </p>
+                          </>
+                        ) : (
+                          <span className="text-xl font-bold text-primary">
+                            R$ {produto.preco.toFixed(2).replace(".", ",")}
+                          </span>
+                        )}
+                      </div>
+                      {/* Para produtos COM variações: sempre mostra botão de adicionar (abre modal) */}
+                      {hasVariacoes ? (
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => {
+                            setSizeModalProduct(produto);
+                            setIsSizeModalOpen(true);
+                          }}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Escolher
+                          </Button>
+                        </div>
+                      ) : cartItem ? (
                         <div className="flex items-center gap-2">
                           <Button
                             size="icon"
                             variant="outline"
                             className="h-8 w-8"
-                            onClick={() => updateCartItem(produto.id, cartItem.quantidade - 1)}
+                            onClick={() => updateCartItem(cartItem.cartKey, cartItem.quantidade - 1)}
                           >
                             <Minus className="w-4 h-4" />
                           </Button>
@@ -898,7 +988,7 @@ export default function Menu() {
                           <Button
                             size="icon"
                             className="h-8 w-8"
-                            onClick={() => updateCartItem(produto.id, cartItem.quantidade + 1)}
+                            onClick={() => updateCartItem(cartItem.cartKey, cartItem.quantidade + 1)}
                           >
                             <Plus className="w-4 h-4" />
                           </Button>
@@ -966,7 +1056,7 @@ export default function Menu() {
               <ScrollArea className="h-[calc(100%-140px)] mt-4">
                 <div className="space-y-4 pr-4">
                   {cart.map((item) => (
-                    <div key={item.produto.id} className="flex gap-3 p-3 bg-muted rounded-lg">
+                    <div key={item.cartKey} className="flex gap-3 p-3 bg-muted rounded-lg">
                       <div className="w-16 h-16 bg-background rounded-md overflow-hidden flex-shrink-0">
                         {item.produto.imagem_url ? (
                           <img
@@ -981,16 +1071,21 @@ export default function Menu() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm">{item.produto.nome}</h4>
+                        <h4 className="font-medium text-sm">
+                          {item.tamanhoSelecionado 
+                            ? `${item.produto.nome} - ${item.tamanhoSelecionado}`
+                            : item.produto.nome
+                          }
+                        </h4>
                         <p className="text-primary font-semibold text-sm">
-                          R$ {(item.produto.preco * item.quantidade).toFixed(2).replace(".", ",")}
+                          R$ {(item.precoUnitario * item.quantidade).toFixed(2).replace(".", ",")}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
                           <Button
                             size="icon"
                             variant="outline"
                             className="h-7 w-7"
-                            onClick={() => updateCartItem(item.produto.id, item.quantidade - 1)}
+                            onClick={() => updateCartItem(item.cartKey, item.quantidade - 1)}
                           >
                             {item.quantidade === 1 ? <Trash2 className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
                           </Button>
@@ -998,7 +1093,7 @@ export default function Menu() {
                           <Button
                             size="icon"
                             className="h-7 w-7"
-                            onClick={() => updateCartItem(item.produto.id, item.quantidade + 1)}
+                            onClick={() => updateCartItem(item.cartKey, item.quantidade + 1)}
                           >
                             <Plus className="w-3 h-3" />
                           </Button>
@@ -1006,7 +1101,7 @@ export default function Menu() {
                         <Textarea
                           placeholder="Observações (ex: sem cebola)"
                           value={item.notas}
-                          onChange={(e) => updateCartNotes(item.produto.id, e.target.value)}
+                          onChange={(e) => updateCartNotes(item.cartKey, e.target.value)}
                           className="mt-2 text-xs h-16 resize-none"
                         />
                       </div>
