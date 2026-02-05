@@ -1317,6 +1317,7 @@ export type Database = {
           nome: string
           preco: number
           updated_at: string
+          variacoes: { nome: string; preco: number }[] | null
         }
         Insert: {
           ativo?: boolean | null
@@ -1329,6 +1330,7 @@ export type Database = {
           nome: string
           preco: number
           updated_at?: string
+          variacoes?: { nome: string; preco: number }[] | null
         }
         Update: {
           ativo?: boolean | null
@@ -1341,6 +1343,7 @@ export type Database = {
           nome?: string
           preco?: number
           updated_at?: string
+          variacoes?: { nome: string; preco: number }[] | null
         }
         Relationships: [
           {

@@ -25,7 +25,13 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Loader2, Upload, Pencil, Trash2, ChefHat, FolderOpen, RefreshCw } from 'lucide-react';
+import { Plus, Loader2, Upload, Pencil, Trash2, ChefHat, FolderOpen, RefreshCw, X } from 'lucide-react';
+
+// Tipo para variações de tamanho
+export interface VariacaoTamanho {
+  nome: string;
+  preco: number;
+}
 
 type Categoria = {
   id: string;
@@ -43,6 +49,7 @@ type Produto = {
   imagem_url: string | null;
   categoria_id: string | null;
   ativo: boolean;
+  variacoes?: VariacaoTamanho[] | null;
 };
 
 import { Button } from '@/components/ui/button';
@@ -71,6 +78,10 @@ export default function Cardapio() {
   const [prodImage, setProdImage] = useState<File | null>(null);
   const [prodImagePreview, setProdImagePreview] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Estados para variações de tamanho
+  const [possuiVariacoes, setPossuiVariacoes] = useState(false);
+  const [variacoes, setVariacoes] = useState<VariacaoTamanho[]>([]);
 
   // Fetch categorias
   const { data: categorias = [], isLoading: isLoadingCat, refetch: refetchCat } = useQuery({
@@ -172,10 +183,47 @@ export default function Cardapio() {
     }
   };
 
+  // Funções para gerenciar variações
+  const adicionarVariacao = () => {
+    setVariacoes([...variacoes, { nome: '', preco: 0 }]);
+  };
+
+  const removerVariacao = (index: number) => {
+    setVariacoes(variacoes.filter((_, i) => i !== index));
+  };
+
+  const atualizarVariacao = (index: number, campo: keyof VariacaoTamanho, valor: string | number) => {
+    const novasVariacoes = [...variacoes];
+    novasVariacoes[index] = {
+      ...novasVariacoes[index],
+      [campo]: campo === 'preco' ? parseFloat(valor as string) || 0 : valor
+    };
+    setVariacoes(novasVariacoes);
+  };
+
   const handleSaveProduto = async () => {
-    if (!empresaId || !prodForm.nome.trim() || !prodForm.preco) {
-      toast.error('Nome e preço são obrigatórios');
+    // Validar campos obrigatórios
+    if (!empresaId || !prodForm.nome.trim()) {
+      toast.error('Nome é obrigatório');
       return;
+    }
+
+    // Se tem variações, validar variações; senão, validar preço único
+    if (possuiVariacoes) {
+      if (variacoes.length === 0) {
+        toast.error('Adicione pelo menos uma variação de tamanho');
+        return;
+      }
+      const variacoesInvalidas = variacoes.some(v => !v.nome.trim() || v.preco <= 0);
+      if (variacoesInvalidas) {
+        toast.error('Preencha nome e preço de todas as variações');
+        return;
+      }
+    } else {
+      if (!prodForm.preco) {
+        toast.error('Preço é obrigatório');
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -202,10 +250,15 @@ export default function Cardapio() {
       const produtoData = {
         nome: prodForm.nome,
         descricao: prodForm.descricao || null,
-        preco: parseFloat(prodForm.preco),
+        // Se tem variações, usa o menor preço; senão, usa o preço único
+        preco: possuiVariacoes && variacoes.length > 0
+          ? Math.min(...variacoes.map(v => v.preco))
+          : parseFloat(prodForm.preco),
         categoria_id: prodForm.categoria_id || null,
         ativo: prodForm.ativo,
         imagem_url,
+        // Salva as variações como JSON (será null se não tiver)
+        variacoes: possuiVariacoes && variacoes.length > 0 ? variacoes : null,
       };
 
       if (editingProd) {
@@ -229,6 +282,8 @@ export default function Cardapio() {
       setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
       setProdImage(null);
       setProdImagePreview(null);
+      setPossuiVariacoes(false);
+      setVariacoes([]);
       queryClient.invalidateQueries({ queryKey: ['produtos'] });
     } catch (error) {
       console.error('Error saving produto:', error);
@@ -262,6 +317,16 @@ export default function Cardapio() {
       ativo: produto.ativo,
     });
     setProdImagePreview(produto.imagem_url);
+    
+    // Carregar variações se existirem
+    if (produto.variacoes && Array.isArray(produto.variacoes) && produto.variacoes.length > 0) {
+      setPossuiVariacoes(true);
+      setVariacoes(produto.variacoes);
+    } else {
+      setPossuiVariacoes(false);
+      setVariacoes([]);
+    }
+    
     setIsProdDialogOpen(true);
   };
 
@@ -308,6 +373,8 @@ export default function Cardapio() {
                 setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
                 setProdImage(null);
                 setProdImagePreview(null);
+                setPossuiVariacoes(false);
+                setVariacoes([]);
               }
             }}>
               <DialogTrigger asChild>
@@ -359,34 +426,128 @@ export default function Cardapio() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Preço (R$) *</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0,00"
-                        value={prodForm.preco}
-                        onChange={(e) => setProdForm({ ...prodForm, preco: e.target.value })}
-                      />
+                  {/* Switch para múltiplos tamanhos */}
+                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div className="space-y-0.5">
+                      <Label className="text-base">Possui múltiplos tamanhos?</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Ex: Pequena, Média, Grande com preços diferentes
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Categoria</Label>
-                      <Select
-                        value={prodForm.categoria_id}
-                        onValueChange={(value) => setProdForm({ ...prodForm, categoria_id: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categorias.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>{cat.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <Switch
+                      checked={possuiVariacoes}
+                      onCheckedChange={(checked) => {
+                        setPossuiVariacoes(checked);
+                        if (checked && variacoes.length === 0) {
+                          setVariacoes([{ nome: '', preco: 0 }]);
+                        }
+                      }}
+                    />
                   </div>
+
+                  {/* Preço único ou Variações */}
+                  {!possuiVariacoes ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Preço (R$) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0,00"
+                          value={prodForm.preco}
+                          onChange={(e) => setProdForm({ ...prodForm, preco: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Categoria</Label>
+                        <Select
+                          value={prodForm.categoria_id}
+                          onValueChange={(value) => setProdForm({ ...prodForm, categoria_id: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categorias.map((cat) => (
+                              <SelectItem key={cat.id} value={cat.id}>{cat.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Variações de Tamanho */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label>Variações de Tamanho *</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={adicionarVariacao}
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Adicionar
+                          </Button>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          {variacoes.map((variacao, index) => (
+                            <div key={index} className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                              <Input
+                                placeholder="Nome (ex: Pequena)"
+                                value={variacao.nome}
+                                onChange={(e) => atualizarVariacao(index, 'nome', e.target.value)}
+                                className="flex-1"
+                              />
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="Preço"
+                                value={variacao.preco || ''}
+                                onChange={(e) => atualizarVariacao(index, 'preco', e.target.value)}
+                                className="w-28"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removerVariacao(index)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {variacoes.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            Clique em "Adicionar" para criar variações de tamanho
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Categoria (quando tem variações) */}
+                      <div className="space-y-2">
+                        <Label>Categoria</Label>
+                        <Select
+                          value={prodForm.categoria_id}
+                          onValueChange={(value) => setProdForm({ ...prodForm, categoria_id: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categorias.map((cat) => (
+                              <SelectItem key={cat.id} value={cat.id}>{cat.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
 
                   <div className="flex items-center justify-between">
                     <Label>Produto Ativo</Label>
@@ -433,9 +594,22 @@ export default function Cardapio() {
                       </div>
                     </div>
                     <div className="flex items-center justify-between mt-3">
-                      <span className="text-lg font-bold text-primary">
-                        R$ {produto.preco.toFixed(2)}
-                      </span>
+                      <div>
+                        {produto.variacoes && Array.isArray(produto.variacoes) && produto.variacoes.length > 0 ? (
+                          <span className="text-lg font-bold text-primary">
+                            A partir de R$ {produto.preco.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-lg font-bold text-primary">
+                            R$ {produto.preco.toFixed(2)}
+                          </span>
+                        )}
+                        {produto.variacoes && produto.variacoes.length > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            {produto.variacoes.length} tamanho{produto.variacoes.length > 1 ? 's' : ''}
+                          </p>
+                        )}
+                      </div>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEditProduto(produto)}>
                           <Pencil className="w-4 h-4" />

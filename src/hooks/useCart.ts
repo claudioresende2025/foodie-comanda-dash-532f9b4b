@@ -1,5 +1,11 @@
 import { useState, useCallback, useMemo } from 'react';
 
+// Tipo para variações de tamanho
+export interface VariacaoTamanho {
+  nome: string;
+  preco: number;
+}
+
 export interface CartItem {
   produto: {
     id: string;
@@ -7,17 +13,32 @@ export interface CartItem {
     descricao: string | null;
     preco: number;
     imagem_url: string | null;
+    variacoes?: VariacaoTamanho[] | null;
   };
   quantidade: number;
+  // Campos para variação de tamanho selecionada
+  tamanhoSelecionado?: string | null;
+  precoUnitario: number; // Preço real do item (pode ser da variação)
+  cartKey: string; // Chave única: id + tamanho (se houver)
 }
 
 const MAX_QUANTITY = 99;
 const MIN_QUANTITY = 1;
 
+// Função para gerar chave única do item no carrinho
+const gerarCartKey = (produtoId: string, tamanho?: string | null): string => {
+  return tamanho ? `${produtoId}__${tamanho}` : produtoId;
+};
+
 export function useCart(taxaEntrega: number = 0) {
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const addToCart = useCallback((produto: CartItem['produto'], quantidade: number = 1) => {
+  const addToCart = useCallback((
+    produto: CartItem['produto'], 
+    quantidade: number = 1,
+    tamanhoSelecionado?: string | null,
+    precoVariacao?: number
+  ) => {
     // Validação: quantidade deve ser positiva e inteira
     if (!Number.isInteger(quantidade) || quantidade < MIN_QUANTITY) {
       console.warn('[useCart] Quantidade inválida:', quantidade);
@@ -26,36 +47,48 @@ export function useCart(taxaEntrega: number = 0) {
     
     // Validação: limitar quantidade máxima
     const qtdFinal = Math.min(quantidade, MAX_QUANTITY);
+    
+    // Determinar preço unitário (variação ou preço único)
+    const precoUnitario = precoVariacao ?? produto.preco;
+    
+    // Gerar chave única
+    const cartKey = gerarCartKey(produto.id, tamanhoSelecionado);
 
     setCart(prev => {
-      const existing = prev.find(item => item.produto.id === produto.id);
+      const existing = prev.find(item => item.cartKey === cartKey);
       if (existing) {
         const novaQtd = Math.min(existing.quantidade + qtdFinal, MAX_QUANTITY);
         return prev.map(item =>
-          item.produto.id === produto.id
+          item.cartKey === cartKey
             ? { ...item, quantidade: novaQtd }
             : item
         );
       }
-      return [...prev, { produto, quantidade: qtdFinal }];
+      return [...prev, { 
+        produto, 
+        quantidade: qtdFinal, 
+        tamanhoSelecionado, 
+        precoUnitario, 
+        cartKey 
+      }];
     });
   }, []);
 
-  const removeFromCart = useCallback((produtoId: string) => {
+  const removeFromCart = useCallback((cartKey: string) => {
     setCart(prev => {
-      const existing = prev.find(item => item.produto.id === produtoId);
+      const existing = prev.find(item => item.cartKey === cartKey);
       if (existing && existing.quantidade > MIN_QUANTITY) {
         return prev.map(item =>
-          item.produto.id === produtoId
+          item.cartKey === cartKey
             ? { ...item, quantidade: item.quantidade - 1 }
             : item
         );
       }
-      return prev.filter(item => item.produto.id !== produtoId);
+      return prev.filter(item => item.cartKey !== cartKey);
     });
   }, []);
 
-  const setQuantity = useCallback((produtoId: string, quantidade: number) => {
+  const setQuantity = useCallback((cartKey: string, quantidade: number) => {
     // Validação: não permitir valores negativos ou não-inteiros
     if (!Number.isInteger(quantidade)) {
       console.warn('[useCart] Quantidade deve ser inteira:', quantidade);
@@ -64,7 +97,7 @@ export function useCart(taxaEntrega: number = 0) {
     
     if (quantidade <= 0) {
       // Remover item se quantidade for 0 ou menor
-      setCart(prev => prev.filter(item => item.produto.id !== produtoId));
+      setCart(prev => prev.filter(item => item.cartKey !== cartKey));
       return;
     }
     
@@ -72,7 +105,7 @@ export function useCart(taxaEntrega: number = 0) {
     const qtdFinal = Math.min(quantidade, MAX_QUANTITY);
     
     setCart(prev => prev.map(item =>
-      item.produto.id === produtoId
+      item.cartKey === cartKey
         ? { ...item, quantidade: qtdFinal }
         : item
     ));
@@ -82,13 +115,22 @@ export function useCart(taxaEntrega: number = 0) {
     setCart([]);
   }, []);
 
+  // Para produtos SEM variação - compatibilidade
   const getQuantity = useCallback((produtoId: string) => {
-    return cart.find(item => item.produto.id === produtoId)?.quantidade || 0;
+    // Soma todas as quantidades de variações do mesmo produto
+    return cart
+      .filter(item => item.produto.id === produtoId)
+      .reduce((sum, item) => sum + item.quantidade, 0);
+  }, [cart]);
+
+  // Para produtos COM variação - busca por cartKey
+  const getQuantityByKey = useCallback((cartKey: string) => {
+    return cart.find(item => item.cartKey === cartKey)?.quantidade || 0;
   }, [cart]);
 
   const subtotal = useMemo(() => 
     cart.reduce((sum, item) => {
-      const preco = Number(item.produto.preco) || 0;
+      const preco = Number(item.precoUnitario) || 0;
       const qtd = Number(item.quantidade) || 0;
       // Validação adicional: preço não pode ser negativo
       if (preco < 0 || qtd < 0) return sum;
@@ -116,6 +158,7 @@ export function useCart(taxaEntrega: number = 0) {
     setQuantity,
     clearCart,
     getQuantity,
+    getQuantityByKey,
     subtotal,
     total,
     itemCount,

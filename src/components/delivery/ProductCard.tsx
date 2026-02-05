@@ -3,6 +3,12 @@ import { Plus, Minus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
+// Tipo para variações de tamanho
+interface VariacaoTamanho {
+  nome: string;
+  preco: number;
+}
+
 interface ProductCardProps {
   product: {
     id: string;
@@ -10,18 +16,38 @@ interface ProductCardProps {
     descricao: string | null;
     preco: number;
     imagem_url: string | null;
+    variacoes?: VariacaoTamanho[] | null;
   };
   quantity?: number;
   onAdd: () => void;
   onRemove?: () => void;
+  onOpenSizeModal?: () => void; // Abre modal de seleção de tamanho
 }
 
 export const ProductCard = memo(function ProductCard({ 
   product, 
   quantity = 0, 
   onAdd, 
-  onRemove 
+  onRemove,
+  onOpenSizeModal
 }: ProductCardProps) {
+  const hasVariacoes = product.variacoes && Array.isArray(product.variacoes) && product.variacoes.length > 0;
+  
+  // Determina o menor preço das variações ou usa o preço único
+  const menorPreco = hasVariacoes 
+    ? Math.min(...(product.variacoes!.map(v => v.preco)))
+    : product.preco;
+
+  const handleAddClick = () => {
+    if (hasVariacoes && onOpenSizeModal) {
+      // Produto com variações: abre modal para selecionar tamanho
+      onOpenSizeModal();
+    } else {
+      // Produto sem variações: adiciona diretamente
+      onAdd();
+    }
+  };
+
   return (
     <Card className="overflow-hidden shadow-sm hover:shadow-md transition-shadow border-0 bg-card">
       <div className="flex p-3 gap-3">
@@ -41,10 +67,21 @@ export const ProductCard = memo(function ProductCard({
           {product.descricao && (
             <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">{product.descricao}</p>
           )}
-          <p className="text-primary font-bold mt-1.5">R$ {product.preco.toFixed(2)}</p>
+          <div className="mt-1.5">
+            {hasVariacoes ? (
+              <>
+                <p className="text-primary font-bold">A partir de R$ {menorPreco.toFixed(2)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {product.variacoes!.length} tamanho{product.variacoes!.length > 1 ? 's' : ''} disponíve{product.variacoes!.length > 1 ? 'is' : 'l'}
+                </p>
+              </>
+            ) : (
+              <p className="text-primary font-bold">R$ {product.preco.toFixed(2)}</p>
+            )}
+          </div>
         </div>
         <div className="flex items-center">
-          {quantity > 0 ? (
+          {quantity > 0 && !hasVariacoes ? (
             <div className="flex items-center gap-2 bg-primary/10 rounded-full p-1">
               <Button 
                 size="icon" 
@@ -58,7 +95,7 @@ export const ProductCard = memo(function ProductCard({
               <Button 
                 size="icon" 
                 className="h-8 w-8 rounded-full"
-                onClick={onAdd}
+                onClick={handleAddClick}
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -67,7 +104,7 @@ export const ProductCard = memo(function ProductCard({
             <Button 
               size="icon" 
               className="h-10 w-10 rounded-full shadow-md"
-              onClick={onAdd}
+              onClick={handleAddClick}
             >
               <Plus className="h-5 w-5" />
             </Button>

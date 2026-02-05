@@ -15,6 +15,7 @@ import { PixQRCode } from "@/components/pix/PixQRCode";
 import { maskPhone, maskCEP, fetchAddressByCEP, isValidCEP } from "@/utils/masks";
 import { RestaurantHeader } from "@/components/delivery/RestaurantHeader";
 import { ProductCard } from "@/components/delivery/ProductCard";
+import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
 import { useCart } from "@/hooks/useCart";
@@ -68,6 +69,10 @@ export default function DeliveryRestaurant() {
     cep: "",
     referencia: "",
   });
+
+  // Estado para modal de seleção de tamanho
+  const [sizeModalProduct, setSizeModalProduct] = useState<any>(null);
+  const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
 
   const { cart, addToCart, removeFromCart, clearCart, getQuantity, subtotal, total, itemCount } = useCart(
     config?.taxa_entrega || 0,
@@ -494,10 +499,12 @@ export default function DeliveryRestaurant() {
         notas: notasGerais || null,
         items: cart.map((item) => ({
           produto_id: item.produto.id,
-          nome_produto: item.produto.nome,
+          nome_produto: item.tamanhoSelecionado 
+            ? `${item.produto.nome} - ${item.tamanhoSelecionado}` 
+            : item.produto.nome,
           quantidade: item.quantidade,
-          preco_unitario: item.produto.preco,
-          subtotal: item.produto.preco * item.quantidade,
+          preco_unitario: item.precoUnitario,
+          subtotal: item.precoUnitario * item.quantidade,
         })),
       };
 
@@ -528,10 +535,12 @@ export default function DeliveryRestaurant() {
           cart.map((item) => ({
             pedido_delivery_id: ped.id,
             produto_id: item.produto.id,
-            nome_produto: item.produto.nome,
+            nome_produto: item.tamanhoSelecionado 
+              ? `${item.produto.nome} - ${item.tamanhoSelecionado}` 
+              : item.produto.nome,
             quantidade: item.quantidade,
-            preco_unitario: item.produto.preco,
-            subtotal: item.produto.preco * item.quantidade,
+            preco_unitario: item.precoUnitario,
+            subtotal: item.precoUnitario * item.quantidade,
           })),
         );
 
@@ -741,14 +750,39 @@ export default function DeliveryRestaurant() {
               product={p}
               quantity={getQuantity(p.id)}
               onAdd={() => {
-                addToCart(p);
+                // Produto sem variações: adiciona direto com preço padrão
+                addToCart(p, 1, null, p.preco);
                 toast.success("Adicionado!");
               }}
-              onRemove={() => removeFromCart(p.id)}
+              onRemove={() => {
+                // Para produtos sem variação, usa o id como cartKey
+                removeFromCart(p.id);
+              }}
+              onOpenSizeModal={() => {
+                // Abre modal para selecionar tamanho
+                setSizeModalProduct(p);
+                setIsSizeModalOpen(true);
+              }}
             />
           ))
         )}
       </main>
+
+      {/* Modal de seleção de tamanho */}
+      {sizeModalProduct && (
+        <ProductSizeModal
+          product={sizeModalProduct}
+          open={isSizeModalOpen}
+          onOpenChange={(open) => {
+            setIsSizeModalOpen(open);
+            if (!open) setSizeModalProduct(null);
+          }}
+          onAddToCart={(tamanho, preco) => {
+            addToCart(sizeModalProduct, 1, tamanho, preco);
+            toast.success(`${sizeModalProduct.nome} - ${tamanho} adicionado!`);
+          }}
+        />
+      )}
 
       <CartButton itemCount={itemCount} total={total} onClick={() => setIsCheckoutOpen(true)} />
 
@@ -1061,6 +1095,31 @@ export default function DeliveryRestaurant() {
                   </div>
                 )}
               </div>
+
+              {/* Resumo dos Itens do Carrinho */}
+              {cart.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="font-bold text-base text-primary">Itens do Pedido</h3>
+                  <div className="bg-muted/30 rounded-xl p-3 space-y-2">
+                    {cart.map((item) => (
+                      <div key={item.cartKey} className="flex justify-between items-center text-sm">
+                        <div className="flex-1">
+                          <span className="font-medium">{item.quantidade}x </span>
+                          <span>
+                            {item.tamanhoSelecionado 
+                              ? `${item.produto.nome} - ${item.tamanhoSelecionado}`
+                              : item.produto.nome
+                            }
+                          </span>
+                        </div>
+                        <span className="font-semibold text-primary">
+                          R$ {(item.precoUnitario * item.quantidade).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <h3 className="font-bold text-base text-primary">Forma de Pagamento</h3>
