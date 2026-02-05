@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserRole } from '@/hooks/useUserRole';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -80,9 +78,7 @@ const playNotificationSound = () => {
 };
 
 export default function Caixa() {
-  const navigate = useNavigate();
   const { profile } = useAuth();
-  const { canAccessCaixa, isLoading: isRoleLoading, isGarcom } = useUserRole();
   const queryClient = useQueryClient();
 
   // Carrega configurações do localStorage
@@ -452,13 +448,8 @@ export default function Caixa() {
     },
   });
 
-  // Proteção de rota: GARÇOM não pode acessar Caixa
-  // Movido para APÓS todos os hooks para seguir as regras do React
-  if (!isRoleLoading && !canAccessCaixa) {
-    toast.error('Acesso negado. Você não tem permissão para acessar o Caixa.');
-    navigate('/admin');
-    return null;
-  }
+  // Nota: A proteção de rota é tratada pelo AdminLayout
+  // Remomos a verificação duplicada aqui para evitar redirecionamentos em loop durante reload
 
   /** --------- HELPERS --------- */
 
