@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { 
   Users, Bell, BellRing, Check, Loader2, UtensilsCrossed, RefreshCw, 
-  Clock, ChefHat, CheckCircle, Truck, XCircle 
+  Clock, ChefHat, CheckCircle, Truck, XCircle, Receipt
 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -19,7 +19,7 @@ type PedidoStatus = Database['public']['Enums']['pedido_status'];
 type Mesa = {
   id: string;
   numero_mesa: number;
-  status: 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
+  status: 'disponivel' | 'ocupada' | 'reservada' | 'juncao' | 'solicitou_fechamento';
   capacidade: number;
   mesa_juncao_id: string | null;
   nome?: string | null;
@@ -39,6 +39,7 @@ const mesaStatusColors = {
   ocupada: 'bg-white border-orange-500 text-foreground',
   reservada: 'bg-white border-yellow-500 text-foreground',
   juncao: 'bg-white border-blue-500 text-foreground',
+  solicitou_fechamento: 'bg-red-100 border-red-500 text-red-800 animate-pulse',
 };
 
 const mesaStatusLabels = {
@@ -46,6 +47,7 @@ const mesaStatusLabels = {
   ocupada: 'Ocupada',
   reservada: 'Reservada',
   juncao: 'Junção',
+  solicitou_fechamento: 'Fechar Conta',
 };
 
 // Config de status para pedidos (igual ao KDS)
@@ -223,6 +225,11 @@ export default function Garcom() {
   // Mesas visíveis (oculta as marcadas como 'juncao')
   const visibleMesas = mesas.filter(mesa => mesa.status !== 'juncao');
 
+  // Mesas que solicitaram fechamento de conta
+  const mesasFechamento = useMemo(() => {
+    return mesas.filter(mesa => mesa.status === 'solicitou_fechamento');
+  }, [mesas]);
+
   // ========== EFFECTS ==========
 
   // Som contínuo enquanto houver chamadas pendentes
@@ -232,7 +239,10 @@ export default function Garcom() {
       setSoundIntervalRef(null);
     }
 
-    if (chamadas.length > 0 && soundEnabled) {
+    // Tocar som quando houver chamadas pendentes OU mesas solicitando fechamento
+    const hasAlerts = chamadas.length > 0 || mesasFechamento.length > 0;
+    
+    if (hasAlerts && soundEnabled) {
       playNotificationSound();
       const interval = setInterval(() => {
         playNotificationSound();
@@ -244,7 +254,7 @@ export default function Garcom() {
     return () => {
       if (soundIntervalRef) clearInterval(soundIntervalRef);
     };
-  }, [chamadas.length, soundEnabled]);
+  }, [chamadas.length, mesasFechamento.length, soundEnabled]);
 
   // Realtime subscriptions
   useEffect(() => {
@@ -270,8 +280,21 @@ export default function Garcom() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'mesas', filter: `empresa_id=eq.${profile.empresa_id}` },
-        () => {
+        (payload) => {
           queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+          
+          // Notificar quando uma mesa solicitar fechamento de conta
+          if (payload.eventType === 'UPDATE') {
+            const newStatus = (payload.new as any).status;
+            const numeroMesa = (payload.new as any).numero_mesa;
+            if (newStatus === 'solicitou_fechamento') {
+              if (soundEnabled) playNotificationSound();
+              toast.warning(`🧾 Mesa ${numeroMesa} solicitou fechamento de conta!`, { 
+                duration: 10000,
+                important: true 
+              });
+            }
+          }
         }
       )
       .subscribe();
@@ -315,6 +338,21 @@ export default function Garcom() {
       toast.success('Chamada atendida!');
       queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
       refetchChamadas();
+    }
+  };
+
+  // Atender solicitação de fechamento - volta mesa para ocupada
+  const handleAtenderFechamento = async (mesaId: string) => {
+    const { error } = await supabase
+      .from('mesas')
+      .update({ status: 'ocupada' })
+      .eq('id', mesaId);
+
+    if (error) {
+      toast.error('Erro ao atender solicitação');
+    } else {
+      toast.success('Solicitação de fechamento atendida!');
+      queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
     }
   };
 
@@ -376,6 +414,38 @@ export default function Garcom() {
                     variant="destructive"
                     className="h-20 flex flex-col gap-1"
                     onClick={() => handleAtenderChamada(chamada.id)}
+                    title={`Atender ${displayName}`}
+                  >
+                    <span className="text-lg font-bold">{displayName}</span>
+                    <span className="text-xs flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Atender
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Mesas Solicitando Fechamento de Conta */}
+      {mesasFechamento.length > 0 && (
+        <Card className="border-2 border-red-500 bg-red-50 animate-pulse">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <Receipt className="w-5 h-5" />
+              Fechamento de Conta ({mesasFechamento.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {mesasFechamento.map((mesa) => {
+                const displayName = getMesaDisplayName(mesa);
+                return (
+                  <Button
+                    key={mesa.id}
+                    className="h-20 flex flex-col gap-1 bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => handleAtenderFechamento(mesa.id)}
                     title={`Atender ${displayName}`}
                   >
                     <span className="text-lg font-bold">{displayName}</span>

@@ -16,12 +16,14 @@ import {
   Bell,
   Volume2,
   Printer,
+  Receipt,
 } from "lucide-react";
 import { PixQRCode } from '@/components/pix/PixQRCode';
 // A LINHA ABAIXO ESTÁ COMENTADA PARA EVITAR O REFERENCE ERROR
 //import { triggerKitchenPrint } from '@/utils/kitchenPrinter';
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -174,6 +176,11 @@ export default function Menu() {
   // Estado para modal de seleção de tamanho
   const [sizeModalProduct, setSizeModalProduct] = useState<Produto | null>(null);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
+
+  // Estado para solicitar fechamento de conta
+  const [isFecharContaDialogOpen, setIsFecharContaDialogOpen] = useState(false);
+  const [isRequestingFechamento, setIsRequestingFechamento] = useState(false);
+  const [fechamentoSolicitado, setFechamentoSolicitado] = useState(false);
 
   // Cliente (quando abre comanda via QR) - coletar nome/telefone
   const [showClientModal, setShowClientModal] = useState(false);
@@ -481,6 +488,43 @@ export default function Menu() {
       toast.error("Erro ao chamar garçom. Tente novamente.");
     } finally {
       setIsCallingWaiter(false);
+    }
+  };
+
+  // Solicita fechamento da conta - atualiza status da mesa
+  const handleSolicitarFechamento = async () => {
+    if (!mesaId) {
+      toast.error("Erro ao identificar mesa");
+      return;
+    }
+
+    setIsRequestingFechamento(true);
+
+    try {
+      // Atualiza o status da mesa para 'solicitou_fechamento'
+      const { error } = await supabase
+        .from("mesas")
+        .update({ status: "solicitou_fechamento" })
+        .eq("id", mesaId);
+
+      if (error) {
+        console.error("[FECHAR CONTA ERROR]", error);
+        if (error.code === "42501" || error.message?.includes("policy")) {
+          toast.error("Permissão negada. Chame o garçom.");
+        } else {
+          toast.error(`Erro ao solicitar fechamento: ${error.message || "Erro desconhecido"}`);
+        }
+        return;
+      }
+
+      setFechamentoSolicitado(true);
+      setIsFecharContaDialogOpen(false);
+      toast.success("Fechamento de conta solicitado! O garçom virá até sua mesa.");
+    } catch (err) {
+      console.error("[FECHAR CONTA EXCEPTION]", err);
+      toast.error("Erro ao solicitar fechamento. Tente novamente.");
+    } finally {
+      setIsRequestingFechamento(false);
     }
   };
 
@@ -1157,10 +1201,61 @@ export default function Menu() {
               {meusPedidos.length === 0 && (
                 <p className="text-center text-muted-foreground py-8">Nenhum pedido ainda</p>
               )}
+
+              {/* Botão Fechar Conta - só aparece se tiver pedidos */}
+              {meusPedidos.length > 0 && (
+                <div className="pt-4 border-t mt-4">
+                  {fechamentoSolicitado ? (
+                    <div className="flex items-center justify-center gap-2 p-4 bg-green-50 text-green-700 rounded-lg">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="font-medium">Fechamento solicitado! Aguarde o garçom.</span>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full h-12 text-base border-orange-500 text-orange-600 hover:bg-orange-50"
+                      onClick={() => setIsFecharContaDialogOpen(true)}
+                    >
+                      <Receipt className="w-5 h-5 mr-2" />
+                      Fechar Conta
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      {/* AlertDialog para confirmação de fechamento de conta */}
+      <AlertDialog open={isFecharContaDialogOpen} onOpenChange={setIsFecharContaDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fechar Conta</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja solicitar o fechamento da conta? 
+              O garçom virá até sua mesa para efetuar o pagamento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRequestingFechamento}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleSolicitarFechamento}
+              disabled={isRequestingFechamento}
+              className="bg-orange-500 hover:bg-orange-600"
+            >
+              {isRequestingFechamento ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Solicitando...
+                </>
+              ) : (
+                "Confirmar"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Footer */}
       <footer className="bg-muted py-6 mt-8">
