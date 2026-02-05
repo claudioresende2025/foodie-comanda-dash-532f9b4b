@@ -7,10 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { 
   Users, Bell, BellRing, Check, Loader2, UtensilsCrossed, RefreshCw, 
-  Clock, ChefHat, CheckCircle, Truck, XCircle, Receipt
+  Clock, ChefHat, CheckCircle, Truck, XCircle, Receipt, DollarSign, CreditCard, Banknote, QrCode
 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -19,7 +23,7 @@ type PedidoStatus = Database['public']['Enums']['pedido_status'];
 type Mesa = {
   id: string;
   numero_mesa: number;
-  status: 'disponivel' | 'ocupada' | 'reservada' | 'juncao' | 'solicitou_fechamento';
+  status: 'disponivel' | 'ocupada' | 'reservada' | 'juncao' | 'solicitou_fechamento' | 'aguardando_pagamento';
   capacidade: number;
   mesa_juncao_id: string | null;
   nome?: string | null;
@@ -40,6 +44,7 @@ const mesaStatusColors = {
   reservada: 'bg-white border-yellow-500 text-foreground',
   juncao: 'bg-white border-blue-500 text-foreground',
   solicitou_fechamento: 'bg-red-100 border-red-500 text-red-800 animate-pulse',
+  aguardando_pagamento: 'bg-purple-100 border-purple-500 text-purple-800 animate-pulse',
 };
 
 const mesaStatusLabels = {
@@ -48,6 +53,7 @@ const mesaStatusLabels = {
   reservada: 'Reservada',
   juncao: 'Junção',
   solicitou_fechamento: 'Fechar Conta',
+  aguardando_pagamento: 'Aguardando Pag.',
 };
 
 // Config de status para pedidos (igual ao KDS)
@@ -97,6 +103,14 @@ export default function Garcom() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundIntervalRef, setSoundIntervalRef] = useState<NodeJS.Timeout | null>(null);
   const [activeTab, setActiveTab] = useState<PedidoStatus>('pendente');
+
+  // Estados para "Dar Baixa" (finalização pelo garçom)
+  const [darBaixaDialogOpen, setDarBaixaDialogOpen] = useState(false);
+  const [selectedMesaForBaixa, setSelectedMesaForBaixa] = useState<Mesa | null>(null);
+  const [baixaFormaPagamento, setBaixaFormaPagamento] = useState<'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito'>('dinheiro');
+  const [baixaObservacao, setBaixaObservacao] = useState('');
+  const [isProcessingBaixa, setIsProcessingBaixa] = useState(false);
+  const [baixaTotalValue, setBaixaTotalValue] = useState(0);
 
   // ========== QUERIES ==========
 
@@ -362,6 +376,114 @@ export default function Garcom() {
     queryClient.invalidateQueries({ queryKey: ['pedidos-garcom', profile?.empresa_id] });
   };
 
+  // Abrir modal "Dar Baixa" - busca total da mesa
+  const handleOpenDarBaixa = async (mesa: Mesa) => {
+    setSelectedMesaForBaixa(mesa);
+    setBaixaFormaPagamento('dinheiro');
+    setBaixaObservacao('');
+    setBaixaTotalValue(0);
+    setDarBaixaDialogOpen(true);
+
+    // Buscar comanda e calcular total
+    try {
+      const { data: comanda } = await supabase
+        .from('comandas')
+        .select(`
+          id,
+          pedidos(subtotal)
+        `)
+        .eq('mesa_id', mesa.id)
+        .eq('status', 'aberta')
+        .maybeSingle();
+
+      if (comanda?.pedidos) {
+        const total = comanda.pedidos.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0);
+        setBaixaTotalValue(total);
+      }
+    } catch (e) {
+      console.error('Erro ao buscar total:', e);
+    }
+  };
+
+  // Processar "Dar Baixa" - finaliza pagamento pelo garçom
+  const handleProcessarBaixa = async () => {
+    if (!selectedMesaForBaixa || !profile?.id) return;
+
+    setIsProcessingBaixa(true);
+
+    try {
+      // 1. Validação de concorrência: Verificar se status ainda é válido
+      const { data: mesaAtual } = await supabase
+        .from('mesas')
+        .select('status')
+        .eq('id', selectedMesaForBaixa.id)
+        .single();
+
+      if (!mesaAtual || (mesaAtual.status !== 'solicitou_fechamento' && mesaAtual.status !== 'aguardando_pagamento' && mesaAtual.status !== 'ocupada')) {
+        toast.error('Esta mesa já foi processada por outro funcionário.');
+        setDarBaixaDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+        return;
+      }
+
+      // 2. Buscar comanda da mesa
+      const { data: comanda } = await supabase
+        .from('comandas')
+        .select('id, mesa_id')
+        .eq('mesa_id', selectedMesaForBaixa.id)
+        .eq('status', 'aberta')
+        .maybeSingle();
+
+      if (comanda) {
+        // 3. Registrar na tabela vendas_concluidas
+        await supabase.from('vendas_concluidas').insert({
+          empresa_id: profile.empresa_id,
+          comanda_id: comanda.id,
+          mesa_id: selectedMesaForBaixa.id,
+          valor_total: baixaTotalValue,
+          valor_subtotal: baixaTotalValue,
+          forma_pagamento: baixaFormaPagamento,
+          processado_por: profile.id,
+          tipo_processamento: 'garcom',
+          observacao: baixaObservacao || null,
+        });
+
+        // 4. Fechar comanda
+        await supabase
+          .from('comandas')
+          .update({
+            status: 'fechada',
+            forma_pagamento: baixaFormaPagamento,
+            total: baixaTotalValue,
+            data_fechamento: new Date().toISOString(),
+          })
+          .eq('id', comanda.id);
+
+        // 5. Marcar pedidos como finalizados
+        await supabase
+          .from('pedidos')
+          .update({ status_cozinha: 'entregue' })
+          .eq('comanda_id', comanda.id);
+      }
+
+      // 6. Liberar mesa
+      await supabase
+        .from('mesas')
+        .update({ status: 'disponivel' })
+        .eq('id', selectedMesaForBaixa.id);
+
+      toast.success('Baixa realizada com sucesso! Mesa liberada.');
+      setDarBaixaDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
+    } catch (error: any) {
+      console.error('Erro ao dar baixa:', error);
+      toast.error(`Erro ao processar baixa: ${error.message}`);
+    } finally {
+      setIsProcessingBaixa(false);
+    }
+  };
+
   // ========== RENDER ==========
 
   if (isLoadingMesas) {
@@ -438,21 +560,38 @@ export default function Garcom() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {mesasFechamento.map((mesa) => {
                 const displayName = getMesaDisplayName(mesa);
                 return (
-                  <Button
+                  <div
                     key={mesa.id}
-                    className="h-20 flex flex-col gap-1 bg-red-600 hover:bg-red-700 text-white"
-                    onClick={() => handleAtenderFechamento(mesa.id)}
-                    title={`Atender ${displayName}`}
+                    className="p-3 bg-white border-2 border-red-400 rounded-lg space-y-2"
                   >
-                    <span className="text-lg font-bold">{displayName}</span>
-                    <span className="text-xs flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Atender
-                    </span>
-                  </Button>
+                    <div className="text-center">
+                      <span className="text-lg font-bold text-red-700">{displayName}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAtenderFechamento(mesa.id)}
+                        title="Ir até a mesa"
+                      >
+                        <Check className="w-3 h-3 mr-1" />
+                        Atender
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => handleOpenDarBaixa(mesa)}
+                        title="Registrar pagamento"
+                      >
+                        <DollarSign className="w-3 h-3 mr-1" />
+                        Dar Baixa
+                      </Button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -636,6 +775,121 @@ export default function Garcom() {
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Modal Dar Baixa */}
+      <Dialog open={darBaixaDialogOpen} onOpenChange={setDarBaixaDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-green-600" />
+              Dar Baixa - {selectedMesaForBaixa ? getMesaDisplayName(selectedMesaForBaixa) : ''}
+            </DialogTitle>
+            <DialogDescription>
+              Registre o pagamento recebido pelo garçom
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Valor Total */}
+            <div className="p-4 bg-green-50 rounded-lg text-center">
+              <p className="text-sm text-muted-foreground">Valor Total</p>
+              <p className="text-3xl font-bold text-green-600">
+                R$ {baixaTotalValue.toFixed(2).replace('.', ',')}
+              </p>
+            </div>
+
+            {/* Forma de Pagamento */}
+            <div className="space-y-2">
+              <Label>Forma de Pagamento</Label>
+              <RadioGroup
+                value={baixaFormaPagamento}
+                onValueChange={(v) => setBaixaFormaPagamento(v as any)}
+                className="grid grid-cols-2 gap-2"
+              >
+                <Label
+                  htmlFor="dinheiro"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    baixaFormaPagamento === 'dinheiro' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="dinheiro" id="dinheiro" />
+                  <Banknote className="w-4 h-4" />
+                  <span>Dinheiro</span>
+                </Label>
+                <Label
+                  htmlFor="pix"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    baixaFormaPagamento === 'pix' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="pix" id="pix" />
+                  <QrCode className="w-4 h-4" />
+                  <span>PIX</span>
+                </Label>
+                <Label
+                  htmlFor="cartao_credito"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    baixaFormaPagamento === 'cartao_credito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="cartao_credito" id="cartao_credito" />
+                  <CreditCard className="w-4 h-4" />
+                  <span>Crédito</span>
+                </Label>
+                <Label
+                  htmlFor="cartao_debito"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    baixaFormaPagamento === 'cartao_debito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="cartao_debito" id="cartao_debito" />
+                  <CreditCard className="w-4 h-4" />
+                  <span>Débito</span>
+                </Label>
+              </RadioGroup>
+            </div>
+
+            {/* Observação */}
+            <div className="space-y-2">
+              <Label htmlFor="observacao">Observação (opcional)</Label>
+              <Textarea
+                id="observacao"
+                placeholder="Alguma anotação sobre o fechamento..."
+                value={baixaObservacao}
+                onChange={(e) => setBaixaObservacao(e.target.value)}
+                className="h-20 resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDarBaixaDialogOpen(false)}
+              disabled={isProcessingBaixa}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleProcessarBaixa}
+              disabled={isProcessingBaixa}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessingBaixa ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Confirmar Baixa
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

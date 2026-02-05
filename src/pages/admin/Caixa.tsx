@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search,
@@ -27,18 +28,55 @@ import {
   Filter,
   RefreshCw,
   Music,
+  Bell,
+  AlertCircle,
+  CreditCard,
+  Banknote,
+  X,
 } from 'lucide-react';
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { printCaixaReceipt } from '@/utils/kitchenPrinter';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
 type CaixaTab = 'mesas' | 'delivery';
+type MesaStatus = 'disponivel' | 'ocupada' | 'reservada' | 'juncao' | 'solicitou_fechamento' | 'aguardando_pagamento';
 
 type PagamentoItem = {
   metodo: PaymentMethod;
   valor: number;
+};
+
+type MesaPendente = {
+  id: string;
+  numero_mesa: number;
+  status: MesaStatus;
+  nome?: string | null;
+};
+
+// Som de notificação para alertas
+const playNotificationSound = () => {
+  try {
+    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioContext = new AudioContextClass();
+    if (audioContext.state === 'suspended') audioContext.resume();
+
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.frequency.value = 600;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+    osc.start(audioContext.currentTime);
+    osc.stop(audioContext.currentTime + 0.3);
+  } catch (e) {
+    console.log('Audio error:', e);
+  }
 };
 
 export default function Caixa() {
@@ -91,7 +129,35 @@ export default function Caixa() {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('');
 
+  // Estados para Monitoramento de Mesas Pendentes
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [liquidacaoDialogOpen, setLiquidacaoDialogOpen] = useState(false);
+  const [selectedMesaLiquidacao, setSelectedMesaLiquidacao] = useState<MesaPendente | null>(null);
+  const [liquidacaoItems, setLiquidacaoItems] = useState<any[]>([]);
+  const [liquidacaoTotal, setLiquidacaoTotal] = useState(0);
+  const [liquidacaoComandaId, setLiquidacaoComandaId] = useState<string | null>(null);
+  const [liquidacaoFormaPagamento, setLiquidacaoFormaPagamento] = useState<PaymentMethod>('dinheiro');
+  const [isProcessingLiquidacao, setIsProcessingLiquidacao] = useState(false);
+
   /** --------- QUERIES --------- */
+
+  // Mesas com status de fechamento pendente
+  const { data: mesasPendentes = [] } = useQuery({
+    queryKey: ['mesas-pendentes', profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return [];
+      const { data, error } = await supabase
+        .from('mesas')
+        .select('id, numero_mesa, status, nome')
+        .eq('empresa_id', profile.empresa_id)
+        .in('status', ['solicitou_fechamento', 'aguardando_pagamento'])
+        .order('numero_mesa');
+      if (error) throw error;
+      return data as MesaPendente[];
+    },
+    enabled: !!profile?.empresa_id,
+    refetchInterval: 5000,
+  });
 
   // Empresa
   const { data: empresa } = useQuery({
@@ -194,6 +260,42 @@ export default function Caixa() {
     refetchOnWindowFocus: true,
     refetchInterval: 10000,
   });
+
+  /** --------- REALTIME & SOUND EFFECTS --------- */
+
+  // Realtime subscription para mesas
+  useEffect(() => {
+    if (!profile?.empresa_id) return;
+
+    const channel = supabase
+      .channel('caixa-mesas-monitor')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'mesas', filter: `empresa_id=eq.${profile.empresa_id}` },
+        (payload) => {
+          const newStatus = (payload.new as any).status;
+          const numeroMesa = (payload.new as any).numero_mesa;
+          
+          // Notificar quando mesa solicitar fechamento
+          if (newStatus === 'solicitou_fechamento' || newStatus === 'aguardando_pagamento') {
+            if (soundEnabled) playNotificationSound();
+            toast.warning(`💰 Mesa ${numeroMesa} aguardando fechamento!`, { duration: 8000 });
+          }
+          
+          queryClient.invalidateQueries({ queryKey: ['mesas-pendentes', profile.empresa_id] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.empresa_id, soundEnabled, queryClient]);
+
+  // Computed: alertas pendentes
+  const alertasPendentes = useMemo(() => {
+    return mesasPendentes?.length || 0;
+  }, [mesasPendentes]);
 
   /** --------- MUTATION: fechar comanda --------- */
 
@@ -469,6 +571,113 @@ export default function Caixa() {
     }
   };
 
+  // ========== LIQUIDAÇÃO DE MESAS PENDENTES ==========
+
+  // Abrir modal de liquidação para mesa pendente
+  const handleOpenLiquidacao = async (mesa: MesaPendente) => {
+    setSelectedMesaLiquidacao(mesa);
+    setLiquidacaoFormaPagamento('dinheiro');
+    setLiquidacaoItems([]);
+    setLiquidacaoTotal(0);
+    setLiquidacaoComandaId(null);
+    setLiquidacaoDialogOpen(true);
+
+    // Buscar comanda e pedidos
+    try {
+      const { data: comanda } = await supabase
+        .from('comandas')
+        .select(`
+          id,
+          nome_cliente,
+          pedidos(id, quantidade, preco_unitario, subtotal, produto:produtos(nome))
+        `)
+        .eq('mesa_id', mesa.id)
+        .eq('status', 'aberta')
+        .maybeSingle();
+
+      if (comanda) {
+        setLiquidacaoComandaId(comanda.id);
+        setLiquidacaoItems(comanda.pedidos || []);
+        const total = comanda.pedidos?.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0) || 0;
+        setLiquidacaoTotal(total);
+      }
+    } catch (e) {
+      console.error('Erro ao buscar dados:', e);
+      toast.error('Erro ao carregar dados da mesa');
+    }
+  };
+
+  // Processar liquidação da mesa pendente
+  const handleProcessarLiquidacao = async () => {
+    if (!selectedMesaLiquidacao || !liquidacaoComandaId || !profile?.id) return;
+
+    setIsProcessingLiquidacao(true);
+
+    try {
+      // 1. Validação de concorrência
+      const { data: mesaAtual } = await supabase
+        .from('mesas')
+        .select('status')
+        .eq('id', selectedMesaLiquidacao.id)
+        .single();
+
+      if (!mesaAtual || (mesaAtual.status !== 'solicitou_fechamento' && mesaAtual.status !== 'aguardando_pagamento')) {
+        toast.error('Esta mesa já foi processada por outro funcionário.');
+        setLiquidacaoDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['mesas-pendentes', profile?.empresa_id] });
+        return;
+      }
+
+      // 2. Registrar na tabela vendas_concluidas
+      await supabase.from('vendas_concluidas').insert({
+        empresa_id: profile.empresa_id,
+        comanda_id: liquidacaoComandaId,
+        mesa_id: selectedMesaLiquidacao.id,
+        valor_total: liquidacaoTotal,
+        valor_subtotal: liquidacaoTotal,
+        forma_pagamento: liquidacaoFormaPagamento,
+        processado_por: profile.id,
+        tipo_processamento: 'caixa',
+      });
+
+      // 3. Fechar comanda
+      await supabase
+        .from('comandas')
+        .update({
+          status: 'fechada',
+          forma_pagamento: liquidacaoFormaPagamento,
+          total: liquidacaoTotal,
+          data_fechamento: new Date().toISOString(),
+        })
+        .eq('id', liquidacaoComandaId);
+
+      // 4. Marcar pedidos como finalizados
+      await supabase
+        .from('pedidos')
+        .update({ status_cozinha: 'entregue' })
+        .eq('comanda_id', liquidacaoComandaId);
+
+      // 5. Liberar mesa
+      await supabase
+        .from('mesas')
+        .update({ status: 'disponivel' })
+        .eq('id', selectedMesaLiquidacao.id);
+
+      toast.success(`Mesa ${selectedMesaLiquidacao.numero_mesa} liberada com sucesso!`);
+      setLiquidacaoDialogOpen(false);
+      
+      // Atualizar todas as queries relacionadas
+      queryClient.invalidateQueries({ queryKey: ['mesas-pendentes', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] });
+    } catch (error: any) {
+      console.error('Erro ao processar liquidação:', error);
+      toast.error(`Erro ao processar: ${error.message}`);
+    } finally {
+      setIsProcessingLiquidacao(false);
+    }
+  };
+
   const handlePrint = () => {
     if (!selectedComanda) {
       toast.error('Nenhuma comanda selecionada para impressão');
@@ -581,16 +790,185 @@ export default function Caixa() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal de Liquidação de Mesa Pendente */}
+      <Dialog open={liquidacaoDialogOpen} onOpenChange={setLiquidacaoDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-green-600" />
+              Finalizar Conta - Mesa {selectedMesaLiquidacao?.numero_mesa}
+            </DialogTitle>
+            <DialogDescription>
+              Confirme os itens e selecione a forma de pagamento
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Resumo dos itens */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Itens do Pedido</Label>
+              <ScrollArea className="h-40 border rounded-lg p-2">
+                {liquidacaoItems.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">Nenhum item encontrado</p>
+                ) : (
+                  <div className="space-y-2">
+                    {liquidacaoItems.map((item: any) => (
+                      <div key={item.id} className="flex justify-between text-sm">
+                        <span>{item.quantidade}x {item.produto?.nome || 'Item'}</span>
+                        <span className="font-medium">R$ {(item.subtotal || 0).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+
+            {/* Valor Total */}
+            <div className="p-4 bg-green-50 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-medium">Total</span>
+                <span className="text-2xl font-bold text-green-600">
+                  R$ {liquidacaoTotal.toFixed(2).replace('.', ',')}
+                </span>
+              </div>
+            </div>
+
+            {/* Forma de Pagamento */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Forma de Pagamento</Label>
+              <RadioGroup
+                value={liquidacaoFormaPagamento}
+                onValueChange={(v) => setLiquidacaoFormaPagamento(v as PaymentMethod)}
+                className="grid grid-cols-2 gap-2"
+              >
+                <Label
+                  htmlFor="liq-dinheiro"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    liquidacaoFormaPagamento === 'dinheiro' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="dinheiro" id="liq-dinheiro" />
+                  <Banknote className="w-4 h-4" />
+                  <span>Dinheiro</span>
+                </Label>
+                <Label
+                  htmlFor="liq-pix"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    liquidacaoFormaPagamento === 'pix' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="pix" id="liq-pix" />
+                  <QrCode className="w-4 h-4" />
+                  <span>PIX</span>
+                </Label>
+                <Label
+                  htmlFor="liq-credito"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    liquidacaoFormaPagamento === 'cartao_credito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="cartao_credito" id="liq-credito" />
+                  <CreditCard className="w-4 h-4" />
+                  <span>Crédito</span>
+                </Label>
+                <Label
+                  htmlFor="liq-debito"
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    liquidacaoFormaPagamento === 'cartao_debito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="cartao_debito" id="liq-debito" />
+                  <CreditCard className="w-4 h-4" />
+                  <span>Débito</span>
+                </Label>
+              </RadioGroup>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setLiquidacaoDialogOpen(false)}
+              disabled={isProcessingLiquidacao}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleProcessarLiquidacao}
+              disabled={isProcessingLiquidacao || liquidacaoItems.length === 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessingLiquidacao ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Confirmar Pagamento
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alerta de Mesas Pendentes */}
+      {mesasPendentes.length > 0 && (
+        <Card className="border-2 border-red-500 bg-red-50 animate-pulse">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-red-600">
+                <AlertCircle className="w-5 h-5" />
+                Mesas Aguardando Fechamento ({mesasPendentes.length})
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className="text-red-600"
+              >
+                <Bell className={`w-4 h-4 ${soundEnabled ? '' : 'opacity-50'}`} />
+                <span className="ml-1 text-xs">{soundEnabled ? 'Som On' : 'Som Off'}</span>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+              {mesasPendentes.map((mesa) => (
+                <Button
+                  key={mesa.id}
+                  variant="destructive"
+                  className="h-16 flex flex-col gap-1"
+                  onClick={() => handleOpenLiquidacao(mesa)}
+                >
+                  <DollarSign className="w-5 h-5" />
+                  <span className="font-bold">Mesa {mesa.numero_mesa}</span>
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header com botão de atualizar */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Caixa</h1>
           <p className="text-muted-foreground">Gerencie pagamentos de mesas e delivery</p>
         </div>
-        <Button variant="outline" onClick={handleRefreshAll}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Atualizar
-        </Button>
+        <div className="flex gap-2">
+          {alertasPendentes > 0 && (
+            <Badge variant="destructive" className="text-sm px-3 py-1">
+              {alertasPendentes} pendente{alertasPendentes > 1 ? 's' : ''}
+            </Badge>
+          )}
+          <Button variant="outline" onClick={handleRefreshAll}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
