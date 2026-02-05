@@ -401,24 +401,31 @@ export default function Garcom() {
     setBaixaTotalValue(0);
     setDarBaixaDialogOpen(true);
 
-    // Buscar TODAS as comandas abertas da mesa e somar pedidos
+    // Buscar TODAS as comandas da mesa (não fechadas) e somar pedidos
     try {
-      const { data: comandas } = await supabase
+      const { data: comandas, error } = await supabase
         .from('comandas')
         .select(`
           id,
+          status,
           pedidos(subtotal)
         `)
         .eq('mesa_id', mesa.id)
-        .eq('status', 'aberta');
+        .neq('status', 'fechada');
+
+      console.log('[DAR BAIXA] Comandas encontradas:', comandas, 'Erro:', error);
 
       if (comandas && comandas.length > 0) {
         // Somar todos os pedidos de todas as comandas
         const total = comandas.reduce((acc: number, comanda: any) => {
           const subtotalComanda = comanda.pedidos?.reduce((sub: number, p: any) => sub + (p.subtotal || 0), 0) || 0;
+          console.log('[DAR BAIXA] Comanda:', comanda.id, 'Status:', comanda.status, 'Subtotal:', subtotalComanda);
           return acc + subtotalComanda;
         }, 0);
+        console.log('[DAR BAIXA] Total final:', total);
         setBaixaTotalValue(total);
+      } else {
+        console.log('[DAR BAIXA] Nenhuma comanda encontrada para mesa:', mesa.id);
       }
     } catch (e) {
       console.error('Erro ao buscar total:', e);
@@ -446,12 +453,12 @@ export default function Garcom() {
         return;
       }
 
-      // 2. Buscar TODAS as comandas abertas da mesa
+      // 2. Buscar TODAS as comandas da mesa (não fechadas)
       const { data: comandas } = await supabase
         .from('comandas')
         .select('id')
         .eq('mesa_id', selectedMesaForBaixa.id)
-        .eq('status', 'aberta');
+        .neq('status', 'fechada');
 
       if (comandas && comandas.length > 0) {
         const comandaIds = comandas.map(c => c.id);

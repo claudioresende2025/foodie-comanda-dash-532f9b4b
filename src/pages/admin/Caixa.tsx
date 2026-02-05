@@ -582,17 +582,20 @@ export default function Caixa() {
     setLiquidacaoComandaIds([]);
     setLiquidacaoDialogOpen(true);
 
-    // Buscar TODAS as comandas abertas e seus pedidos
+    // Buscar TODAS as comandas (não fechadas) e seus pedidos
     try {
-      const { data: comandas } = await supabase
+      const { data: comandas, error } = await supabase
         .from('comandas')
         .select(`
           id,
+          status,
           nome_cliente,
           pedidos(id, quantidade, preco_unitario, subtotal, produto:produtos(nome))
         `)
         .eq('mesa_id', mesa.id)
-        .eq('status', 'aberta');
+        .neq('status', 'fechada');
+
+      console.log('[LIQUIDACAO] Comandas encontradas:', comandas, 'Erro:', error);
 
       if (comandas && comandas.length > 0) {
         // Armazenar TODOS os IDs de comandas para fechamento
@@ -604,7 +607,10 @@ export default function Caixa() {
         
         // Calcular total de todos os pedidos
         const total = todosOsPedidos.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0);
+        console.log('[LIQUIDACAO] Total calculado:', total);
         setLiquidacaoTotal(total);
+      } else {
+        console.log('[LIQUIDACAO] Nenhuma comanda encontrada para mesa:', mesa.id);
       }
     } catch (e) {
       console.error('Erro ao buscar dados:', e);
@@ -888,6 +894,26 @@ export default function Caixa() {
                 </Label>
               </RadioGroup>
             </div>
+
+            {/* QR Code PIX - exibir quando PIX selecionado */}
+            {liquidacaoFormaPagamento === 'pix' && (
+              <div className="border rounded-lg p-4 bg-muted/30">
+                {empresa?.chave_pix ? (
+                  <PixQRCode
+                    chavePix={empresa.chave_pix}
+                    valor={liquidacaoTotal}
+                    nomeRecebedor={empresa?.nome_fantasia || 'Restaurante'}
+                    cidade={empresa?.endereco_completo?.split(',').pop()?.trim() || 'SAO PAULO'}
+                    expiracaoMinutos={5}
+                  />
+                ) : (
+                  <div className="text-center p-4 border rounded-lg bg-amber-50 text-amber-700">
+                    <p className="font-medium">Chave PIX não configurada</p>
+                    <p className="text-sm mt-1">Configure a chave PIX nas configurações da empresa.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2">
