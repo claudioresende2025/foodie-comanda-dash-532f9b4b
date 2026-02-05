@@ -384,20 +384,23 @@ export default function Garcom() {
     setBaixaTotalValue(0);
     setDarBaixaDialogOpen(true);
 
-    // Buscar comanda e calcular total
+    // Buscar TODAS as comandas abertas da mesa e somar pedidos
     try {
-      const { data: comanda } = await supabase
+      const { data: comandas } = await supabase
         .from('comandas')
         .select(`
           id,
           pedidos(subtotal)
         `)
         .eq('mesa_id', mesa.id)
-        .eq('status', 'aberta')
-        .maybeSingle();
+        .eq('status', 'aberta');
 
-      if (comanda?.pedidos) {
-        const total = comanda.pedidos.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0);
+      if (comandas && comandas.length > 0) {
+        // Somar todos os pedidos de todas as comandas
+        const total = comandas.reduce((acc: number, comanda: any) => {
+          const subtotalComanda = comanda.pedidos?.reduce((sub: number, p: any) => sub + (p.subtotal || 0), 0) || 0;
+          return acc + subtotalComanda;
+        }, 0);
         setBaixaTotalValue(total);
       }
     } catch (e) {
@@ -426,19 +429,20 @@ export default function Garcom() {
         return;
       }
 
-      // 2. Buscar comanda da mesa
-      const { data: comanda } = await supabase
+      // 2. Buscar TODAS as comandas abertas da mesa
+      const { data: comandas } = await supabase
         .from('comandas')
-        .select('id, mesa_id')
+        .select('id')
         .eq('mesa_id', selectedMesaForBaixa.id)
-        .eq('status', 'aberta')
-        .maybeSingle();
+        .eq('status', 'aberta');
 
-      if (comanda) {
-        // 3. Registrar na tabela vendas_concluidas
+      if (comandas && comandas.length > 0) {
+        const comandaIds = comandas.map(c => c.id);
+        
+        // 3. Registrar na tabela vendas_concluidas (uma entrada por comanda ou consolidado)
         await supabase.from('vendas_concluidas').insert({
           empresa_id: profile.empresa_id,
-          comanda_id: comanda.id,
+          comanda_id: comandaIds[0], // Usa a primeira como referência
           mesa_id: selectedMesaForBaixa.id,
           valor_total: baixaTotalValue,
           valor_subtotal: baixaTotalValue,
@@ -448,22 +452,22 @@ export default function Garcom() {
           observacao: baixaObservacao || null,
         });
 
-        // 4. Fechar comanda
+        // 4. Fechar TODAS as comandas
         await supabase
           .from('comandas')
           .update({
             status: 'fechada',
             forma_pagamento: baixaFormaPagamento,
-            total: baixaTotalValue,
+            total: baixaTotalValue / comandas.length, // Divide proporcionalmente
             data_fechamento: new Date().toISOString(),
           })
-          .eq('id', comanda.id);
+          .in('id', comandaIds);
 
-        // 5. Marcar pedidos como finalizados
+        // 5. Marcar TODOS os pedidos como finalizados
         await supabase
           .from('pedidos')
           .update({ status_cozinha: 'entregue' })
-          .eq('comanda_id', comanda.id);
+          .in('comanda_id', comandaIds);
       }
 
       // 6. Liberar mesa

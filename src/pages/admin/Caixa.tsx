@@ -135,7 +135,7 @@ export default function Caixa() {
   const [selectedMesaLiquidacao, setSelectedMesaLiquidacao] = useState<MesaPendente | null>(null);
   const [liquidacaoItems, setLiquidacaoItems] = useState<any[]>([]);
   const [liquidacaoTotal, setLiquidacaoTotal] = useState(0);
-  const [liquidacaoComandaId, setLiquidacaoComandaId] = useState<string | null>(null);
+  const [liquidacaoComandaIds, setLiquidacaoComandaIds] = useState<string[]>([]);
   const [liquidacaoFormaPagamento, setLiquidacaoFormaPagamento] = useState<PaymentMethod>('dinheiro');
   const [isProcessingLiquidacao, setIsProcessingLiquidacao] = useState(false);
 
@@ -579,12 +579,12 @@ export default function Caixa() {
     setLiquidacaoFormaPagamento('dinheiro');
     setLiquidacaoItems([]);
     setLiquidacaoTotal(0);
-    setLiquidacaoComandaId(null);
+    setLiquidacaoComandaIds([]);
     setLiquidacaoDialogOpen(true);
 
-    // Buscar comanda e pedidos
+    // Buscar TODAS as comandas abertas e seus pedidos
     try {
-      const { data: comanda } = await supabase
+      const { data: comandas } = await supabase
         .from('comandas')
         .select(`
           id,
@@ -592,13 +592,18 @@ export default function Caixa() {
           pedidos(id, quantidade, preco_unitario, subtotal, produto:produtos(nome))
         `)
         .eq('mesa_id', mesa.id)
-        .eq('status', 'aberta')
-        .maybeSingle();
+        .eq('status', 'aberta');
 
-      if (comanda) {
-        setLiquidacaoComandaId(comanda.id);
-        setLiquidacaoItems(comanda.pedidos || []);
-        const total = comanda.pedidos?.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0) || 0;
+      if (comandas && comandas.length > 0) {
+        // Armazenar TODOS os IDs de comandas para fechamento
+        setLiquidacaoComandaIds(comandas.map((c: any) => c.id));
+        
+        // Juntar todos os pedidos de todas as comandas
+        const todosOsPedidos = comandas.flatMap((c: any) => c.pedidos || []);
+        setLiquidacaoItems(todosOsPedidos);
+        
+        // Calcular total de todos os pedidos
+        const total = todosOsPedidos.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0);
         setLiquidacaoTotal(total);
       }
     } catch (e) {
@@ -609,7 +614,7 @@ export default function Caixa() {
 
   // Processar liquidação da mesa pendente
   const handleProcessarLiquidacao = async () => {
-    if (!selectedMesaLiquidacao || !liquidacaoComandaId || !profile?.id) return;
+    if (!selectedMesaLiquidacao || liquidacaoComandaIds.length === 0 || !profile?.id) return;
 
     setIsProcessingLiquidacao(true);
 
@@ -628,10 +633,10 @@ export default function Caixa() {
         return;
       }
 
-      // 2. Registrar na tabela vendas_concluidas
+      // 2. Registrar na tabela vendas_concluidas (usando a primeira comanda como referência)
       await supabase.from('vendas_concluidas').insert({
         empresa_id: profile.empresa_id,
-        comanda_id: liquidacaoComandaId,
+        comanda_id: liquidacaoComandaIds[0],
         mesa_id: selectedMesaLiquidacao.id,
         valor_total: liquidacaoTotal,
         valor_subtotal: liquidacaoTotal,
@@ -640,22 +645,22 @@ export default function Caixa() {
         tipo_processamento: 'caixa',
       });
 
-      // 3. Fechar comanda
+      // 3. Fechar TODAS as comandas
       await supabase
         .from('comandas')
         .update({
           status: 'fechada',
           forma_pagamento: liquidacaoFormaPagamento,
-          total: liquidacaoTotal,
+          total: liquidacaoTotal / liquidacaoComandaIds.length,
           data_fechamento: new Date().toISOString(),
         })
-        .eq('id', liquidacaoComandaId);
+        .in('id', liquidacaoComandaIds);
 
-      // 4. Marcar pedidos como finalizados
+      // 4. Marcar TODOS os pedidos como finalizados
       await supabase
         .from('pedidos')
         .update({ status_cozinha: 'entregue' })
-        .eq('comanda_id', liquidacaoComandaId);
+        .in('comanda_id', liquidacaoComandaIds);
 
       // 5. Liberar mesa
       await supabase
