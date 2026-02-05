@@ -401,29 +401,35 @@ export default function Garcom() {
     setBaixaTotalValue(0);
     setDarBaixaDialogOpen(true);
 
-    // Buscar TODAS as comandas da mesa (não fechadas) e somar pedidos
+    // Buscar total dos pedidos diretamente pela mesa
     try {
-      const { data: comandas, error } = await supabase
+      // Primeiro buscar comandas da mesa
+      const { data: comandas, error: errorComandas } = await supabase
         .from('comandas')
-        .select(`
-          id,
-          status,
-          pedidos(subtotal)
-        `)
+        .select('id, status')
         .eq('mesa_id', mesa.id)
         .neq('status', 'fechada');
 
-      console.log('[DAR BAIXA] Comandas encontradas:', comandas, 'Erro:', error);
+      console.log('[DAR BAIXA] Comandas da mesa:', comandas, 'Erro:', errorComandas);
 
       if (comandas && comandas.length > 0) {
-        // Somar todos os pedidos de todas as comandas
-        const total = comandas.reduce((acc: number, comanda: any) => {
-          const subtotalComanda = comanda.pedidos?.reduce((sub: number, p: any) => sub + (p.subtotal || 0), 0) || 0;
-          console.log('[DAR BAIXA] Comanda:', comanda.id, 'Status:', comanda.status, 'Subtotal:', subtotalComanda);
-          return acc + subtotalComanda;
-        }, 0);
-        console.log('[DAR BAIXA] Total final:', total);
-        setBaixaTotalValue(total);
+        const comandaIds = comandas.map(c => c.id);
+        
+        // Buscar pedidos dessas comandas
+        const { data: pedidos, error: errorPedidos } = await supabase
+          .from('pedidos')
+          .select('id, subtotal, comanda_id')
+          .in('comanda_id', comandaIds);
+
+        console.log('[DAR BAIXA] Pedidos encontrados:', pedidos, 'Erro:', errorPedidos);
+
+        if (pedidos && pedidos.length > 0) {
+          const total = pedidos.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0);
+          console.log('[DAR BAIXA] Total calculado:', total);
+          setBaixaTotalValue(total);
+        } else {
+          console.log('[DAR BAIXA] Nenhum pedido encontrado para as comandas');
+        }
       } else {
         console.log('[DAR BAIXA] Nenhuma comanda encontrada para mesa:', mesa.id);
       }
@@ -806,7 +812,7 @@ export default function Garcom() {
 
       {/* Modal Dar Baixa */}
       <Dialog open={darBaixaDialogOpen} onOpenChange={setDarBaixaDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-green-600" />

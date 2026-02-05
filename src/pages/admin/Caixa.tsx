@@ -582,33 +582,37 @@ export default function Caixa() {
     setLiquidacaoComandaIds([]);
     setLiquidacaoDialogOpen(true);
 
-    // Buscar TODAS as comandas (não fechadas) e seus pedidos
+    // Buscar dados com queries separadas para evitar problemas de relacionamento
     try {
-      const { data: comandas, error } = await supabase
+      // Primeiro buscar comandas da mesa
+      const { data: comandas, error: errorComandas } = await supabase
         .from('comandas')
-        .select(`
-          id,
-          status,
-          nome_cliente,
-          pedidos(id, quantidade, preco_unitario, subtotal, produto:produtos(nome))
-        `)
+        .select('id, status, nome_cliente')
         .eq('mesa_id', mesa.id)
         .neq('status', 'fechada');
 
-      console.log('[LIQUIDACAO] Comandas encontradas:', comandas, 'Erro:', error);
+      console.log('[LIQUIDACAO] Comandas da mesa:', comandas, 'Erro:', errorComandas);
 
       if (comandas && comandas.length > 0) {
-        // Armazenar TODOS os IDs de comandas para fechamento
-        setLiquidacaoComandaIds(comandas.map((c: any) => c.id));
+        const comandaIds = comandas.map(c => c.id);
+        setLiquidacaoComandaIds(comandaIds);
         
-        // Juntar todos os pedidos de todas as comandas
-        const todosOsPedidos = comandas.flatMap((c: any) => c.pedidos || []);
-        setLiquidacaoItems(todosOsPedidos);
-        
-        // Calcular total de todos os pedidos
-        const total = todosOsPedidos.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0);
-        console.log('[LIQUIDACAO] Total calculado:', total);
-        setLiquidacaoTotal(total);
+        // Buscar pedidos dessas comandas
+        const { data: pedidos, error: errorPedidos } = await supabase
+          .from('pedidos')
+          .select('id, quantidade, preco_unitario, subtotal, comanda_id, produto:produtos(nome)')
+          .in('comanda_id', comandaIds);
+
+        console.log('[LIQUIDACAO] Pedidos encontrados:', pedidos, 'Erro:', errorPedidos);
+
+        if (pedidos && pedidos.length > 0) {
+          setLiquidacaoItems(pedidos);
+          const total = pedidos.reduce((acc: number, p: any) => acc + (p.subtotal || 0), 0);
+          console.log('[LIQUIDACAO] Total calculado:', total);
+          setLiquidacaoTotal(total);
+        } else {
+          console.log('[LIQUIDACAO] Nenhum pedido encontrado para as comandas');
+        }
       } else {
         console.log('[LIQUIDACAO] Nenhuma comanda encontrada para mesa:', mesa.id);
       }
@@ -803,7 +807,7 @@ export default function Caixa() {
 
       {/* Modal de Liquidação de Mesa Pendente */}
       <Dialog open={liquidacaoDialogOpen} onOpenChange={setLiquidacaoDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-green-600" />
@@ -818,7 +822,7 @@ export default function Caixa() {
             {/* Resumo dos itens */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Itens do Pedido</Label>
-              <ScrollArea className="h-40 border rounded-lg p-2">
+              <ScrollArea className="h-32 border rounded-lg p-2">
                 {liquidacaoItems.length === 0 ? (
                   <p className="text-center text-muted-foreground py-4">Nenhum item encontrado</p>
                 ) : (
