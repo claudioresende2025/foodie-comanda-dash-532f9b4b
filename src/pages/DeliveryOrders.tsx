@@ -35,6 +35,7 @@ export default function DeliveryOrders() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
     checkAuth();
@@ -42,6 +43,7 @@ export default function DeliveryOrders() {
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
+    console.log('[DeliveryOrders] Session:', session?.user?.id);
     if (!session) {
       navigate('/delivery/auth', { state: { from: '/delivery/orders' } });
       return;
@@ -52,6 +54,7 @@ export default function DeliveryOrders() {
 
   const fetchPedidos = async (userId: string) => {
     setIsLoading(true);
+    console.log('[DeliveryOrders] Fetching pedidos for user:', userId);
     try {
       const { data, error } = await supabase
         .from('pedidos_delivery')
@@ -60,16 +63,21 @@ export default function DeliveryOrders() {
           created_at,
           status,
           total,
+          user_id,
           empresa:empresas(nome_fantasia, logo_url),
           itens:itens_delivery(nome_produto, quantidade)
         `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
+      console.log('[DeliveryOrders] Query result:', { data, error, userId });
+      setDebugInfo(`User: ${userId}, Pedidos: ${data?.length || 0}, Error: ${error?.message || 'none'}`);
+      
       if (error) throw error;
       setPedidos(data as any[] || []);
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
+      setDebugInfo(`Error: ${(error as any).message}`);
     } finally {
       setIsLoading(false);
     }

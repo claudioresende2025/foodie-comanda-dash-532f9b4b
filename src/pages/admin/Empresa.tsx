@@ -363,14 +363,16 @@ export default function Empresa() {
                 <Label htmlFor="chave_pix">Chave PIX</Label>
                 <Input
                   id="chave_pix"
+                  type="text"
                   value={formData.chave_pix}
                   onChange={(e) => setFormData({ ...formData, chave_pix: e.target.value })}
-                  placeholder="CPF, CNPJ, E-mail, Telefone ou Chave Aleatória"
+                  placeholder="Ex: 123.456.789-00 ou email@exemplo.com ou chave-aleatoria"
                   disabled={!canEditPixKey}
+                  autoComplete="off"
                 />
                 <p className="text-xs text-muted-foreground">
                   {canEditPixKey 
-                    ? 'Configure sua chave PIX para gerar QR Codes de pagamento corretos'
+                    ? 'Aceita: CPF (000.000.000-00), CNPJ (00.000.000/0000-00), E-mail, Telefone (+5531999999999) ou Chave Aleatória'
                     : 'Apenas o proprietário pode editar a chave PIX'}
                 </p>
               </div>
