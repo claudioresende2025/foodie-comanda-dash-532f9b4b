@@ -56,7 +56,7 @@ import { Button } from '@/components/ui/button';
 
 export default function Cardapio() {
   const { profile } = useAuth();
-  const { canManageCategories } = useUserRole();
+  const { canEditCardapio } = useUserRole();
   const queryClient = useQueryClient();
   const empresaId = profile?.empresa_id;
   
@@ -365,24 +365,25 @@ export default function Cardapio() {
 
         {/* PRODUTOS TAB */}
         <TabsContent value="produtos" className="space-y-4">
-          <div className="flex justify-end">
-            <Dialog open={isProdDialogOpen} onOpenChange={(open) => {
-              setIsProdDialogOpen(open);
-              if (!open) {
-                setEditingProd(null);
-                setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
-                setProdImage(null);
-                setProdImagePreview(null);
-                setPossuiVariacoes(false);
-                setVariacoes([]);
-              }
-            }}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary hover:bg-primary/90">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Novo Produto
-                </Button>
-              </DialogTrigger>
+          {canEditCardapio && (
+            <div className="flex justify-end">
+              <Dialog open={isProdDialogOpen} onOpenChange={(open) => {
+                setIsProdDialogOpen(open);
+                if (!open) {
+                  setEditingProd(null);
+                  setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
+                  setProdImage(null);
+                  setProdImagePreview(null);
+                  setPossuiVariacoes(false);
+                  setVariacoes([]);
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="bg-primary hover:bg-primary/90">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Novo Produto
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>{editingProd ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
@@ -565,6 +566,7 @@ export default function Cardapio() {
               </DialogContent>
             </Dialog>
           </div>
+          )}
 
           {produtos.length === 0 ? (
             <Card className="shadow-fcd border-0">
@@ -610,14 +612,16 @@ export default function Cardapio() {
                           </p>
                         )}
                       </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEditProduto(produto)}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteProduto(produto.id)}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
+                      {canEditCardapio && (
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEditProduto(produto)}>
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteProduto(produto.id)}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -627,7 +631,7 @@ export default function Cardapio() {
         </TabsContent>
 
         <TabsContent value="categorias" className="space-y-4">
-          {canManageCategories && (
+          {canEditCardapio && (
             <div className="flex justify-end">
               <Dialog open={isCatDialogOpen} onOpenChange={(open) => {
                 setIsCatDialogOpen(open);
@@ -691,7 +695,7 @@ export default function Cardapio() {
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">{categoria.nome}</CardTitle>
-                        {canManageCategories && (
+                        {canEditCardapio && (
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => openEditCategoria(categoria)}>
                               <Pencil className="w-4 h-4" />

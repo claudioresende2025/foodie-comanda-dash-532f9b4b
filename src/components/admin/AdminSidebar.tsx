@@ -91,7 +91,7 @@ export function AdminSidebar() {
     isSuperAdmin,
     canAccessDashboard,
     canAccessMesas,
-    canManageMenu,
+    canAccessCardapio,
     canAccessPedidos,
     canAccessDelivery,
     canAccessDeliveryStats,
@@ -101,6 +101,7 @@ export function AdminSidebar() {
     canAccessEmpresa,
     canAccessConfiguracoes,
     canAccessMarketing,
+    canAccessAssinatura,
     isGarcom,
     planoSlug,
   } = useUserRole();
@@ -146,7 +147,7 @@ export function AdminSidebar() {
   const permissionMap: Record<MenuItemKey, boolean> = {
     dashboard: canAccessDashboard,
     mesas: canAccessMesas,
-    cardapio: canManageMenu || isGarcom,
+    cardapio: canAccessCardapio,
     pedidos: canAccessPedidos,
     delivery: canAccessDelivery,
     deliveryStats: canAccessDeliveryStats,
@@ -155,7 +156,7 @@ export function AdminSidebar() {
     caixa: canAccessCaixa,
     equipe: canAccessEquipe,
     empresa: canAccessEmpresa,
-    assinatura: !isStaff, // Staff não vê assinatura
+    assinatura: canAccessAssinatura,
     configuracoes: canAccessConfiguracoes,
   };
 
@@ -167,9 +168,10 @@ export function AdminSidebar() {
     }
     // Staff: mostrar apenas itens permitidos (sem cadeados)
     return allMenuItems.filter(item => permissionMap[item.key]);
-  }, [isProprietario, isGerente, isSuperAdmin, canAccessDashboard, canAccessMesas, canManageMenu, 
+  }, [isProprietario, isGerente, isSuperAdmin, canAccessDashboard, canAccessMesas, canAccessCardapio, 
       canAccessPedidos, canAccessDelivery, canAccessDeliveryStats, canAccessMarketing, 
-      canAccessGarcom, canAccessCaixa, canAccessEquipe, canAccessEmpresa, canAccessConfiguracoes, isGarcom]);
+      canAccessGarcom, canAccessCaixa, canAccessEquipe, canAccessEmpresa, canAccessConfiguracoes, 
+      canAccessAssinatura]);
 
   if (isRoleLoading) {
     return (

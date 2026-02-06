@@ -12,14 +12,20 @@ export interface UserRoleData {
   isGerente: boolean;
   isGarcom: boolean;
   isCaixa: boolean;
+  isMotoboy: boolean;
   isSuperAdmin: boolean;
+  // Permissões gerais
   canManageTeam: boolean;
   canManageCompany: boolean;
   canManageMenu: boolean;
   canAccessCaixa: boolean;
   canManageCategories: boolean;
+  canEditPixKey: boolean;
+  // Permissões de acesso a páginas
   canAccessDashboard: boolean;
   canAccessMesas: boolean;
+  canAccessCardapio: boolean;
+  canEditCardapio: boolean;
   canAccessPedidos: boolean;
   canAccessDelivery: boolean;
   canAccessDeliveryStats: boolean;
@@ -28,13 +34,12 @@ export interface UserRoleData {
   canAccessEmpresa: boolean;
   canAccessConfiguracoes: boolean;
   canAccessMarketing: boolean;
-  canEditPixKey: boolean;
+  canAccessAssinatura: boolean;
   // Limites do plano
   kdsScreensLimit: number | null;
   staffLimit: number | null;
   mesasLimit: number | null;
   garcomLimit: number | null;
-  isMotoboy: boolean;
   // Plano atual
   planoSlug: string | null;
   planoNome: string | null;
@@ -299,8 +304,18 @@ export function useUserRole(): UserRoleData {
     return false;
   };
 
-  // Super admin tem acesso total, outros respeitam o plano
+  // Super admin tem acesso total
   const hasFullAccess = isSuperAdmin;
+
+  /**
+   * MATRIZ DE PERMISSÕES POR CARGO:
+   * 
+   * Proprietário: Acesso irrestrito a todos os módulos
+   * Gerente: Dashboard, Mesas, Cardápio, Pedidos, Delivery, Estatísticas (parcial), Caixa
+   * Caixa: Dashboard, Mesas, Pedidos, Delivery, Caixa
+   * Garçom: Cardápio (Somente Leitura), Mesas, Pedidos (KDS)
+   * Motoboy: Pedidos (KDS), Delivery
+   */
 
   return {
     role,
@@ -309,33 +324,64 @@ export function useUserRole(): UserRoleData {
     isGerente,
     isGarcom,
     isCaixa,
+    isMotoboy,
     isSuperAdmin,
+    
     // Permissões gerais
-    canManageTeam: isProprietario && resolveFeature('equipe'),
-    canManageCompany: isAdmin,
-    canManageMenu: (isAdmin || resolveFeature('cardapio')) && resolveFeature('cardapio'),
-    canManageCategories: isAdmin && resolveFeature('cardapio'),
-    canEditPixKey: isProprietario,
-    // Acesso às páginas - respeita o plano (exceto super admin)
-    canAccessDashboard: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('dashboard')),
-    canAccessMesas: hasFullAccess || ((isAdmin || isGarcom || isCaixa) && resolveFeature('mesas')),
-    canAccessPedidos: hasFullAccess || ((isAdmin || isGarcom) && (resolveFeature('kds') || resolveFeature('pedidos'))),
-    canAccessDelivery: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('delivery')),
-    canAccessDeliveryStats: hasFullAccess || (isAdmin && resolveFeature('estatisticas')),
-    canAccessGarcom: hasFullAccess || ((isAdmin || isGarcom || isCaixa) && resolveFeature('garcom')),
-canAccessCaixa: hasFullAccess || ((isAdmin || isCaixa) && resolveFeature('caixa')), // GARÇOM não tem acesso
-    canAccessEquipe: hasFullAccess || (isAdmin && resolveFeature('equipe')), // Apenas admin
-    canAccessEmpresa: hasFullAccess || (isAdmin && resolveFeature('empresa')),
-    // Configurações básicas (Notificações, Aparência, Segurança) acessíveis a todos
-    // Seções sensíveis (Delivery, Taxa de Serviço) apenas para admin
-    canAccessConfiguracoes: true,
-    canAccessMarketing: hasFullAccess || (isAdmin && resolveFeature('marketing')),
-    // Limites
+    canManageTeam: hasFullAccess || (isProprietario && resolveFeature('equipe')),
+    canManageCompany: hasFullAccess || isProprietario || isGerente,
+    canManageMenu: hasFullAccess || ((isProprietario || isGerente) && resolveFeature('cardapio')),
+    canManageCategories: hasFullAccess || ((isProprietario || isGerente) && resolveFeature('cardapio')),
+    canEditPixKey: hasFullAccess || isProprietario,
+    
+    // === ACESSO A PÁGINAS ===
+    
+    // Dashboard: Proprietário, Gerente, Caixa
+    canAccessDashboard: hasFullAccess || isProprietario || isGerente || isCaixa,
+    
+    // Mesas: Proprietário, Gerente, Caixa, Garçom
+    canAccessMesas: hasFullAccess || isProprietario || isGerente || isCaixa || isGarcom,
+    
+    // Cardápio: Proprietário, Gerente (CRUD), Garçom (Somente Leitura)
+    canAccessCardapio: hasFullAccess || isProprietario || isGerente || isGarcom,
+    canEditCardapio: hasFullAccess || isProprietario || isGerente, // Garçom NÃO pode editar
+    
+    // Pedidos (KDS): Proprietário, Gerente, Garçom, Motoboy
+    canAccessPedidos: hasFullAccess || isProprietario || isGerente || isGarcom || isMotoboy,
+    
+    // Delivery: Proprietário, Gerente, Caixa, Motoboy
+    canAccessDelivery: hasFullAccess || isProprietario || isGerente || isCaixa || isMotoboy,
+    
+    // Estatísticas Delivery: Proprietário, Gerente
+    canAccessDeliveryStats: hasFullAccess || isProprietario || isGerente,
+    
+    // Garçom (página): Proprietário, Gerente, Garçom, Caixa
+    canAccessGarcom: hasFullAccess || isProprietario || isGerente || isGarcom || isCaixa,
+    
+    // Caixa: Proprietário, Gerente, Caixa
+    canAccessCaixa: hasFullAccess || isProprietario || isGerente || isCaixa,
+    
+    // Equipe: Proprietário, Gerente
+    canAccessEquipe: hasFullAccess || isProprietario || isGerente,
+    
+    // Empresa: Proprietário, Gerente
+    canAccessEmpresa: hasFullAccess || isProprietario || isGerente,
+    
+    // Assinatura: Proprietário apenas
+    canAccessAssinatura: hasFullAccess || isProprietario,
+    
+    // Configurações: Todos (mas seções sensíveis só admin)
+    canAccessConfiguracoes: hasFullAccess || isProprietario || isGerente,
+    
+    // Marketing: Proprietário, Gerente
+    canAccessMarketing: hasFullAccess || ((isProprietario || isGerente) && resolveFeature('marketing')),
+    
+    // Limites do plano
     kdsScreensLimit: planData.kdsScreensLimit,
     staffLimit: planData.staffLimit,
     mesasLimit: planData.mesasLimit,
     garcomLimit: planData.garcomLimit,
-    isMotoboy,
+    
     // Plano
     planoSlug: planData.planoSlug,
     planoNome: planData.planoNome,

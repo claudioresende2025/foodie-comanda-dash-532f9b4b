@@ -7,9 +7,10 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Bell, Printer, QrCode, Palette, Shield, Download, Eye, EyeOff, Music, Percent } from "lucide-react";
+import { Bell, Printer, QrCode, Palette, Shield, Download, Eye, EyeOff, Music, Percent, User, Settings2 } from "lucide-react";
 import DeliveryConfigSection from "@/components/admin/DeliveryConfigSection";
 import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
 
 type ConfigSettings = {
   notifyNewOrders: boolean;
@@ -30,6 +31,9 @@ type ConfigSettings = {
 };
 
 export default function Configuracoes() {
+  const { isProprietario, isGerente, isSuperAdmin } = useUserRole();
+  const isAdmin = isProprietario || isGerente || isSuperAdmin;
+
   const [settings, setSettings] = useState<ConfigSettings>({
     notifyNewOrders: true,
     notifyReadyOrders: true,
@@ -173,8 +177,88 @@ export default function Configuracoes() {
       </div>
 
       <div className="grid gap-6">
-        {/* Delivery - Componente autocontido */}
-        <DeliveryConfigSection />
+        {/* ================================ */}
+        {/* SEÇÃO: MINHA CONTA (TODOS OS CARGOS) */}
+        {/* ================================ */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-lg font-semibold text-foreground">
+            <User className="w-5 h-5 text-primary" />
+            Minha Conta
+          </div>
+          <p className="text-sm text-muted-foreground">Preferências pessoais e segurança da sua conta</p>
+        </div>
+
+        {/* Aparência */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Palette className="w-5 h-5 text-primary" />
+              <CardTitle className="text-lg">Aparência</CardTitle>
+            </div>
+            <CardDescription>Personalize a aparência do sistema</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Tema escuro</Label>
+                <p className="text-sm text-muted-foreground">Usar tema escuro no painel administrativo</p>
+              </div>
+              <Switch
+                checked={settings.darkTheme}
+                onCheckedChange={(v) => {
+                  updateSetting("darkTheme", v);
+                  document.documentElement.classList.toggle("dark", v);
+                }}
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Menu compacto</Label>
+                <p className="text-sm text-muted-foreground">Exibir sidebar em modo compacto</p>
+              </div>
+              <Switch checked={settings.compactMenu} onCheckedChange={(v) => updateSetting("compactMenu", v)} />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Segurança */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-primary" />
+              <CardTitle className="text-lg">Segurança</CardTitle>
+            </div>
+            <CardDescription>Configurações de segurança da conta</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button variant="outline" onClick={() => setPasswordDialog(true)}>
+                Alterar Senha
+              </Button>
+              <Button variant="outline" onClick={() => toast.info("Autenticação em dois fatores em desenvolvimento")}>
+                Configurar 2FA
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ================================ */}
+        {/* SEÇÃO: SISTEMA (APENAS ADMIN) */}
+        {/* ================================ */}
+        {isAdmin && (
+          <>
+            <Separator className="my-4" />
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <Settings2 className="w-5 h-5 text-primary" />
+                Sistema
+              </div>
+              <p className="text-sm text-muted-foreground">Configurações da empresa e parâmetros do sistema</p>
+            </div>
+
+            {/* Delivery - Componente autocontido */}
+            <DeliveryConfigSection />
 
         {/* Taxa de Serviço e Couver */}
         <Card>
@@ -343,61 +427,8 @@ export default function Configuracoes() {
             </Button>
           </CardContent>
         </Card>
-
-        {/* Aparência */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Palette className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">Aparência</CardTitle>
-            </div>
-            <CardDescription>Personalize a aparência do sistema</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Tema escuro</Label>
-                <p className="text-sm text-muted-foreground">Usar tema escuro no painel administrativo</p>
-              </div>
-              <Switch
-                checked={settings.darkTheme}
-                onCheckedChange={(v) => {
-                  updateSetting("darkTheme", v);
-                  document.documentElement.classList.toggle("dark", v);
-                }}
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Menu compacto</Label>
-                <p className="text-sm text-muted-foreground">Exibir sidebar em modo compacto</p>
-              </div>
-              <Switch checked={settings.compactMenu} onCheckedChange={(v) => updateSetting("compactMenu", v)} />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Segurança */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">Segurança</CardTitle>
-            </div>
-            <CardDescription>Configurações de segurança da conta</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="outline" onClick={() => setPasswordDialog(true)}>
-                Alterar Senha
-              </Button>
-              <Button variant="outline" onClick={() => toast.info("Autenticação em dois fatores em desenvolvimento")}>
-                Configurar 2FA
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          </>
+        )}
       </div>
 
       {/* Password Change Dialog */}
