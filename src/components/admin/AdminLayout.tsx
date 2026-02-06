@@ -7,11 +7,15 @@ import { Loader2 } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 
+// Roles que pertencem à equipe (staff) - devem ter acesso ao Admin
+const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
+
 export function AdminLayout() {
-  const { user, loading } = useAuth();
+  const { user, loading, profile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const {
+    role,
     isLoading: roleLoading,
     canAccessDashboard,
     canAccessMesas,
@@ -26,6 +30,30 @@ export function AdminLayout() {
     canAccessConfiguracoes,
     canAccessMarketing,
   } = useUserRole();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/auth');
+    }
+  }, [user, loading, navigate]);
+
+  // Bloquear usuários 'client' (sem role de staff) de acessar rotas admin
+  useEffect(() => {
+    if (loading || roleLoading || !user || !profile?.empresa_id) return;
+    
+    // Se role não estiver na lista de staff, bloquear acesso
+    if (role && !STAFF_ROLES.includes(role)) {
+      toast.error('Você não tem permissão para acessar o painel administrativo.');
+      navigate(`/menu/${profile.empresa_id}`);
+      return;
+    }
+    
+    // Se não tem role definido, também bloquear (é um cliente)
+    if (!role) {
+      navigate(`/menu/${profile.empresa_id}`);
+      return;
+    }
+  }, [loading, roleLoading, user, role, profile, navigate]);
 
   useEffect(() => {
     if (!loading && !user) {

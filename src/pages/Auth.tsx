@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,6 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Utensils, Loader2 } from 'lucide-react';
 import { z } from 'zod';
+
+// Roles que pertencem à equipe (staff)
+const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
 
 const emailSchema = z.string().email('E-mail inválido');
 const passwordSchema = z.string().min(6, 'Senha deve ter no mínimo 6 caracteres');
@@ -24,27 +27,61 @@ export default function Auth() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, user, profile } = useAuth();
   const navigate = useNavigate();
+
+  // Função para verificar o role do usuário e redirecionar apropriadamente
+  const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
+    if (!empresaId) {
+      // Usuário sem empresa - pode ser onboarding ou cliente
+      navigate('/admin/onboarding');
+      return;
+    }
+
+    // Buscar role do usuário
+    const { data: userRole } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+
+    const role = userRole?.role;
+
+    // Se o role for de staff, vai para /admin
+    if (role && STAFF_ROLES.includes(role)) {
+      navigate('/admin');
+    } else {
+      // Se for 'client' ou não tiver role, vai para o cardápio digital
+      navigate(`/menu/${empresaId}`);
+    }
+  }, [navigate]);
 
   useEffect(() => {
     // Ouvir mudanças de autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
         // Usuário fez logout - permitir exibir formulário
         return;
       } else if (session) {
-        navigate('/admin');
+        // Buscar profile para obter empresa_id
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('empresa_id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        
+        await redirectBasedOnRole(session.user.id, profileData?.empresa_id || null);
       }
     });
 
     // Verificar se já está logado
-    if (user) {
-      navigate('/admin');
+    if (user && profile) {
+      redirectBasedOnRole(user.id, profile.empresa_id);
     }
 
     return () => subscription.unsubscribe();
-  }, [user, navigate]);
+  }, [user, profile, navigate, redirectBasedOnRole]);
 
   const validateLogin = () => {
     try {
@@ -89,7 +126,7 @@ export default function Auth() {
       }
     } else {
       toast.success('Login realizado com sucesso!');
-      navigate('/admin');
+      // O redirecionamento é feito automaticamente pelo useEffect onAuthStateChange
     }
   };
 

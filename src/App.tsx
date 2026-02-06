@@ -65,9 +65,11 @@ const App = () => (
             <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            {/* Public menu route for customers */}
+            {/* Public menu routes for customers - accessible without login */}
             <Route path="/menu/:empresaId" element={<Menu />} />
             <Route path="/menu/:empresaId/:mesaId" element={<Menu />} />
+            <Route path="/cardapio/:empresaId" element={<Menu />} />
+            <Route path="/cardapio/:empresaId/:mesaId" element={<Menu />} />
             {/* PWA Install page */}
             <Route path="/install" element={<Install />} />
             {/* Planos e Assinatura */}
