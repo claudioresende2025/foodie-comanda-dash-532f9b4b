@@ -1317,7 +1317,6 @@ export type Database = {
           nome: string
           preco: number
           updated_at: string
-          variacoes: { nome: string; preco: number }[] | null
         }
         Insert: {
           ativo?: boolean | null
@@ -1330,7 +1329,6 @@ export type Database = {
           nome: string
           preco: number
           updated_at?: string
-          variacoes?: { nome: string; preco: number }[] | null
         }
         Update: {
           ativo?: boolean | null
@@ -1343,7 +1341,6 @@ export type Database = {
           nome?: string
           preco?: number
           updated_at?: string
-          variacoes?: { nome: string; preco: number }[] | null
         }
         Relationships: [
           {
@@ -1766,7 +1763,7 @@ export type Database = {
         | "entregue"
         | "cancelado"
       forma_pagamento: "dinheiro" | "pix" | "cartao_credito" | "cartao_debito"
-      mesa_status: "disponivel" | "ocupada" | "reservada" | "juncao" | "solicitou_fechamento" | "aguardando_pagamento"
+      mesa_status: "disponivel" | "ocupada" | "reservada" | "juncao"
       pedido_status:
         | "pendente"
         | "preparando"
@@ -1911,7 +1908,7 @@ export const Constants = {
         "cancelado",
       ],
       forma_pagamento: ["dinheiro", "pix", "cartao_credito", "cartao_debito"],
-      mesa_status: ["disponivel", "ocupada", "reservada", "juncao", "solicitou_fechamento", "aguardando_pagamento"],
+      mesa_status: ["disponivel", "ocupada", "reservada", "juncao"],
       pedido_status: [
         "pendente",
         "preparando",

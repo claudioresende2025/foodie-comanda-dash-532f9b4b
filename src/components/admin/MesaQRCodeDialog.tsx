@@ -12,7 +12,7 @@ type MesaQRCodeDialogProps = {
   mesaNumero: number;
   mesaId: string;
   empresaId: string;
-  mesaStatus?: 'disponivel' | 'ocupada' | 'reservada' | 'juncao';
+  mesaStatus?: 'disponivel' | 'ocupada' | 'reservada' | 'juncao' | 'solicitou_fechamento' | 'aguardando_pagamento';
 };
 
 // URL base usando o dominio atual
