@@ -352,8 +352,8 @@ export function useUserRole(): UserRoleData {
     // Delivery: Proprietário, Gerente, Caixa, Motoboy
     canAccessDelivery: hasFullAccess || isProprietario || isGerente || isCaixa || isMotoboy,
     
-    // Estatísticas Delivery: Proprietário, Gerente
-    canAccessDeliveryStats: hasFullAccess || isProprietario || isGerente,
+    // Estatísticas Delivery: Proprietário, Gerente (mas só se o plano permitir)
+    canAccessDeliveryStats: hasFullAccess || ((isProprietario || isGerente) && resolveFeature('estatisticas')),
     
     // Garçom (página): Proprietário, Gerente, Garçom, Caixa
     canAccessGarcom: hasFullAccess || isProprietario || isGerente || isGarcom || isCaixa,

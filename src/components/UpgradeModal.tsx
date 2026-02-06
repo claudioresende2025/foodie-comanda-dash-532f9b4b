@@ -30,13 +30,12 @@ const planos = [
       { nome: 'Dashboard', incluso: true, detalhe: 'Básico' },
       { nome: 'Cardápio', incluso: true },
       { nome: 'Mesas', incluso: true, detalhe: 'Limite 10' },
+      { nome: 'Pedidos (KDS)', incluso: true, detalhe: '1 tela' },
       { nome: 'Delivery', incluso: true, detalhe: 'WhatsApp' },
-      { nome: 'Caixa', incluso: true, detalhe: 'Fluxo + Estoque' },
-      { nome: 'App Garçom', incluso: true, detalhe: '1 usuário' },
-      { nome: 'KDS', incluso: true, detalhe: '1 tela' },
-      { nome: 'Equipe', incluso: true, detalhe: 'Até 2 colaboradores' },
       { nome: 'Estatísticas Delivery', incluso: false },
+      { nome: 'App Garçom', incluso: true, detalhe: '1 usuário' },
       { nome: 'Marketing', incluso: false },
+      { nome: 'Equipe', incluso: true, detalhe: 'Até 2 colaboradores' },
     ],
   },
   {
@@ -50,13 +49,12 @@ const planos = [
       { nome: 'Dashboard', incluso: true, detalhe: 'Completo' },
       { nome: 'Cardápio', incluso: true },
       { nome: 'Mesas', incluso: true, detalhe: 'Ilimitado' },
+      { nome: 'Pedidos (KDS)', incluso: true, detalhe: '1 tela' },
       { nome: 'Delivery', incluso: true, detalhe: 'Integrado' },
-      { nome: 'Caixa', incluso: true, detalhe: 'Completo + Estoque' },
+      { nome: 'Estatísticas Delivery', incluso: true },
       { nome: 'App Garçom', incluso: true, detalhe: 'Até 3 usuários' },
-      { nome: 'KDS', incluso: true, detalhe: '1 tela' },
+      { nome: 'Marketing', incluso: true },
       { nome: 'Equipe', incluso: true, detalhe: 'Até 5 colaboradores' },
-      { nome: 'Estatísticas Delivery', incluso: false },
-      { nome: 'Marketing', incluso: false },
     ],
   },
   {
@@ -70,13 +68,12 @@ const planos = [
       { nome: 'Dashboard', incluso: true, detalhe: 'Avançado + Comparativos' },
       { nome: 'Cardápio', incluso: true },
       { nome: 'Mesas', incluso: true, detalhe: 'Ilimitado' },
+      { nome: 'Pedidos (KDS)', incluso: true, detalhe: 'Ilimitado' },
       { nome: 'Delivery', incluso: true, detalhe: 'Integrado' },
-      { nome: 'Caixa', incluso: true, detalhe: 'Completo + Auditoria' },
-      { nome: 'App Garçom', incluso: true, detalhe: 'Ilimitado' },
-      { nome: 'KDS', incluso: true, detalhe: 'Ilimitado' },
-      { nome: 'Equipe', incluso: true, detalhe: 'Ilimitado' },
       { nome: 'Estatísticas Delivery', incluso: true },
+      { nome: 'App Garçom', incluso: true, detalhe: 'Ilimitado' },
       { nome: 'Marketing', incluso: true, detalhe: 'Cupons + Fidelidade' },
+      { nome: 'Equipe', incluso: true, detalhe: 'Ilimitado' },
     ],
   },
 ];
@@ -178,8 +175,8 @@ export function UpgradeModal({
                     </p>
                   </div>
 
-                  <div className="space-y-2 mb-4">
-                    {plano.recursos.slice(0, 6).map((recurso, idx) => (
+                  <div className="space-y-2 mb-4 max-h-[200px] overflow-y-auto">
+                    {plano.recursos.map((recurso, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-sm">
                         {recurso.incluso ? (
                           <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
