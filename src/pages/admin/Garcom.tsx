@@ -321,8 +321,7 @@ export default function Garcom() {
             if (newStatus === 'solicitou_fechamento') {
               if (soundEnabled) playNotificationSound();
               toast.warning(`🧾 Mesa ${numeroMesa} solicitou fechamento de conta!`, { 
-                duration: 10000,
-                important: true 
+                duration: 10000
               });
             }
           }
