@@ -36,30 +36,33 @@ export function AdminLayout() {
   useEffect(() => {
     if (loading || roleLoading || !user) return;
     const path = location.pathname;
-    const checks: { test: boolean; match: (p: string) => boolean }[] = [
-      { test: canAccessDashboard, match: (p) => p === '/admin' },
-      { test: canAccessMesas, match: (p) => p.startsWith('/admin/mesas') },
-      { test: canManageMenu, match: (p) => p.startsWith('/admin/cardapio') },
-      { test: canAccessPedidos, match: (p) => p.startsWith('/admin/pedidos') },
-      { test: canAccessDelivery, match: (p) => p === '/admin/delivery' },
-      { test: canAccessDeliveryStats, match: (p) => p.startsWith('/admin/delivery/dashboard') },
-      { test: canAccessGarcom, match: (p) => p.startsWith('/admin/garcom') },
-      { test: canAccessCaixa, match: (p) => p.startsWith('/admin/caixa') },
-      { test: canAccessEquipe, match: (p) => p.startsWith('/admin/equipe') },
-      { test: canAccessEmpresa, match: (p) => p.startsWith('/admin/empresa') },
-      { test: canAccessConfiguracoes, match: (p) => p.startsWith('/admin/configuracoes') },
-      { test: canAccessMarketing, match: (p) => p.startsWith('/admin/marketing') },
-      { test: true, match: (p) => p.startsWith('/admin/assinatura') },
+    
+    // Lista de rotas com suas permissões e URLs
+    const routePermissions = [
+      { permission: canAccessDashboard, url: '/admin', match: (p: string) => p === '/admin' },
+      { permission: canAccessMesas, url: '/admin/mesas', match: (p: string) => p.startsWith('/admin/mesas') },
+      { permission: canManageMenu, url: '/admin/cardapio', match: (p: string) => p.startsWith('/admin/cardapio') },
+      { permission: canAccessPedidos, url: '/admin/pedidos', match: (p: string) => p.startsWith('/admin/pedidos') },
+      { permission: canAccessDelivery, url: '/admin/delivery', match: (p: string) => p === '/admin/delivery' },
+      { permission: canAccessDeliveryStats, url: '/admin/delivery/dashboard', match: (p: string) => p.startsWith('/admin/delivery/dashboard') },
+      { permission: canAccessGarcom, url: '/admin/garcom', match: (p: string) => p.startsWith('/admin/garcom') },
+      { permission: canAccessCaixa, url: '/admin/caixa', match: (p: string) => p.startsWith('/admin/caixa') },
+      { permission: canAccessEquipe, url: '/admin/equipe', match: (p: string) => p.startsWith('/admin/equipe') },
+      { permission: canAccessEmpresa, url: '/admin/empresa', match: (p: string) => p.startsWith('/admin/empresa') },
+      { permission: canAccessConfiguracoes, url: '/admin/configuracoes', match: (p: string) => p.startsWith('/admin/configuracoes') },
+      { permission: canAccessMarketing, url: '/admin/marketing', match: (p: string) => p.startsWith('/admin/marketing') },
+      { permission: true, url: '/admin/assinatura', match: (p: string) => p.startsWith('/admin/assinatura') },
     ];
-    const match = checks.find((c) => c.match(path));
-    // Se encontrou uma rota correspondente mas o usuário não tem permissão,
-    // NÃO redirecionar automaticamente em reloads de páginas internas (ex: /admin/mesas).
-    // Apenas redireciona quando o usuário está na raiz '/admin'.
-    if (match && !match.test) {
-      if (path === '/admin') {
-        navigate('/admin/assinatura');
+    
+    // Encontra a rota atual
+    const currentRoute = routePermissions.find((r) => r.match(path));
+    
+    // Se a rota atual não tem permissão, redireciona para a primeira rota disponível
+    if (currentRoute && !currentRoute.permission) {
+      const firstAvailable = routePermissions.find((r) => r.permission && r.url !== '/admin/assinatura');
+      if (firstAvailable) {
+        navigate(firstAvailable.url);
       }
-      // Removido toast de erro para evitar exibição em page reload
     }
   }, [
     loading,

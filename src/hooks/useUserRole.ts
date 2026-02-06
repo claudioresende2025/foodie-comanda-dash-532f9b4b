@@ -370,8 +370,8 @@ export function useUserRole(): UserRoleData {
     // Assinatura: Proprietário apenas
     canAccessAssinatura: hasFullAccess || isProprietario,
     
-    // Configurações: Todos (mas seções sensíveis só admin)
-    canAccessConfiguracoes: hasFullAccess || isProprietario || isGerente,
+    // Configurações: TODOS os cargos (para Aparência e Segurança)
+    canAccessConfiguracoes: true,
     
     // Marketing: Proprietário, Gerente
     canAccessMarketing: hasFullAccess || ((isProprietario || isGerente) && resolveFeature('marketing')),
