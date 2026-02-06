@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Auth from "@/pages/Auth";
+import AuthChoice from "@/pages/AuthChoice";
+import AuthCliente from "@/pages/AuthCliente";
 import NotFound from "@/pages/NotFound";
 import Menu from "@/pages/Menu";
 import Delivery from "@/pages/Delivery";
@@ -64,7 +66,10 @@ const App = () => (
           <ErrorBoundary>
             <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
+            {/* Auth routes - escolha cliente/restaurante */}
+            <Route path="/auth" element={<AuthChoice />} />
+            <Route path="/auth/cliente" element={<AuthCliente />} />
+            <Route path="/auth/restaurante" element={<Auth />} />
             {/* Public menu routes for customers - accessible without login */}
             <Route path="/menu/:empresaId" element={<Menu />} />
             <Route path="/menu/:empresaId/:mesaId" element={<Menu />} />
