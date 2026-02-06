@@ -84,8 +84,8 @@ const defaultPlanResources: Record<string, {
       configuracoes: true,
       mesas: true,
       kds: true,
-      estatisticas: false,
-      marketing: false,
+      estatisticas: true, // Plano Prata inclui Estatísticas Delivery
+      marketing: true,    // Plano Prata inclui Marketing
       garcom: true,
       caixa: true,
       equipe: true,
