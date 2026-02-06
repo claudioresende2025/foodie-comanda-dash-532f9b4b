@@ -119,6 +119,16 @@ export default function Caixa() {
   // PIX modal
   const [showPixModal, setShowPixModal] = useState(false);
   const [pixValue, setPixValue] = useState(0);
+  
+  // Dados pendentes para fechar comanda após confirmação do PIX
+  const [pendingPixPayment, setPendingPixPayment] = useState<{
+    comandaId: string;
+    formaPagamento: PaymentMethod | 'multiplo';
+    formasPagamento?: PagamentoItem[];
+    trocoPara?: number;
+    total: number;
+    mesaId?: string;
+  } | null>(null);
 
   // Filtros do histórico (Mesas)
   const [filterStartDate, setFilterStartDate] = useState('');
@@ -371,23 +381,17 @@ export default function Caixa() {
       queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
 
-      // Verifica se algum dos pagamentos é PIX
-      const temPix = result.formaPagamento === 'pix' || 
-        result.formasPagamento?.some(p => p.metodo === 'pix');
+      // Limpa os estados da comanda
+      setSelectedComanda(null);
+      setFormaPagamento('');
+      setTrocoPara('');
+      setPagamentoMultiplo(false);
+      setPagamentos([]);
+      setMetodosAtivos([]);
       
-      if (temPix) {
-        const valorPix = result.formasPagamento 
-          ? result.formasPagamento.find(p => p.metodo === 'pix')?.valor || 0
-          : result.total;
-        setPixValue(valorPix);
-        setShowPixModal(true);
-        toast.success('Comanda fechada! Exibindo QR Code PIX.');
-      } else {
-        setSelectedComanda(null);
-        setFormaPagamento('');
-        setTrocoPara('');
-        toast.success('Comanda fechada com sucesso!');
-      }
+      // Quando for PIX, o modal já foi exibido ANTES de fechar a comanda,
+      // então só mostramos a mensagem de sucesso
+      toast.success('Comanda fechada com sucesso!');
     },
     onError: (error: any) => {
       console.error('Erro ao fechar comanda:', error);
@@ -537,14 +541,36 @@ export default function Caixa() {
       }
       
       const trocoParaNum = trocoPara ? parseFloat(trocoPara) : undefined;
-      closeComandaMutation.mutate({
-        comandaId: selectedComanda.id,
-        formaPagamento: 'multiplo',
-        formasPagamento: pagamentos.filter(p => p.valor > 0),
-        trocoPara: trocoParaNum,
-        total,
-        mesaId: selectedComanda.mesa_id,
-      });
+      const pagamentosFiltrados = pagamentos.filter(p => p.valor > 0);
+      
+      // Verifica se tem PIX no pagamento múltiplo
+      const temPix = pagamentosFiltrados.some(p => p.metodo === 'pix');
+      
+      if (temPix) {
+        // Se tem PIX, guarda os dados e exibe o QR Code PRIMEIRO
+        const valorPix = pagamentosFiltrados.find(p => p.metodo === 'pix')?.valor || 0;
+        setPixValue(valorPix);
+        setPendingPixPayment({
+          comandaId: selectedComanda.id,
+          formaPagamento: 'multiplo',
+          formasPagamento: pagamentosFiltrados,
+          trocoPara: trocoParaNum,
+          total,
+          mesaId: selectedComanda.mesa_id,
+        });
+        toast.info('Exibindo QR Code PIX. Após pagamento, clique em "Entendido/Fechar".');
+        setShowPixModal(true);
+      } else {
+        // Sem PIX, fecha a comanda normalmente
+        closeComandaMutation.mutate({
+          comandaId: selectedComanda.id,
+          formaPagamento: 'multiplo',
+          formasPagamento: pagamentosFiltrados,
+          trocoPara: trocoParaNum,
+          total,
+          mesaId: selectedComanda.mesa_id,
+        });
+      }
     } else {
       // Pagamento único
       if (!formaPagamento) {
@@ -552,13 +578,29 @@ export default function Caixa() {
         return;
       }
       const trocoParaNum = trocoPara ? parseFloat(trocoPara) : undefined;
-      closeComandaMutation.mutate({
-        comandaId: selectedComanda.id,
-        formaPagamento: formaPagamento as PaymentMethod,
-        trocoPara: trocoParaNum,
-        total,
-        mesaId: selectedComanda.mesa_id,
-      });
+      
+      if (formaPagamento === 'pix') {
+        // Se for PIX, guarda os dados e exibe o QR Code PRIMEIRO
+        setPixValue(total);
+        setPendingPixPayment({
+          comandaId: selectedComanda.id,
+          formaPagamento: 'pix' as PaymentMethod,
+          trocoPara: trocoParaNum,
+          total,
+          mesaId: selectedComanda.mesa_id,
+        });
+        toast.info('Exibindo QR Code PIX. Após pagamento, clique em "Entendido/Fechar".');
+        setShowPixModal(true);
+      } else {
+        // Não é PIX, fecha a comanda normalmente
+        closeComandaMutation.mutate({
+          comandaId: selectedComanda.id,
+          formaPagamento: formaPagamento as PaymentMethod,
+          trocoPara: trocoParaNum,
+          total,
+          mesaId: selectedComanda.mesa_id,
+        });
+      }
     }
   };
 
@@ -727,13 +769,22 @@ export default function Caixa() {
   };
 
   const handleClosePixModal = () => {
+    // Fecha o modal primeiro
     setShowPixModal(false);
-    setSelectedComanda(null);
-    setFormaPagamento('');
-    setTrocoPara('');
-    setPagamentoMultiplo(false);
-    setPagamentos([]);
-    setMetodosAtivos([]);
+    
+    // Se há pagamento PIX pendente, agora fecha a comanda
+    if (pendingPixPayment) {
+      closeComandaMutation.mutate(pendingPixPayment);
+      setPendingPixPayment(null);
+    } else {
+      // Caso não haja pagamento pendente (caso antigo), apenas limpa o estado
+      setSelectedComanda(null);
+      setFormaPagamento('');
+      setTrocoPara('');
+      setPagamentoMultiplo(false);
+      setPagamentos([]);
+      setMetodosAtivos([]);
+    }
   };
 
   const handleApplyFilters = () => {
