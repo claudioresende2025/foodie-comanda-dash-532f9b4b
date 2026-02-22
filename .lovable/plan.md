@@ -1,39 +1,87 @@
 
-# Correcao de Bugs Criticos do QA
+
+# Melhorias na Pagina de Autenticacao (Auth)
 
 ## Resumo
-Corrigir 4 bugs identificados no QA: padronizar `trial_fim` para `trial_end`, corrigir textos enganosos na pagina de Planos, e mover `useLocation` para o topo do componente.
+Corrigir 5 problemas na pagina Auth: criar pagina `/reset-password` (sem ela o reset de senha nao funciona), substituir modal manual por Dialog acessivel, adicionar toggle de visibilidade de senha, tratar erro `EMAIL_NOT_CONFIRMED`, e corrigir o `redirectTo` do reset.
 
-## Alteracoes
+---
 
-### 1. SubscriptionGuard.tsx - `trial_fim` para `trial_end`
-- Linha 191: `.select('status, data_fim, trial_fim, canceled_at')` -> `.select('status, data_fim, trial_end, canceled_at')`
-- Linha 246: `assinatura.trial_fim` -> `assinatura.trial_end`
-- Linha 258: `assinatura.trial_fim` -> `assinatura.trial_end` (condicao if)
-- Linha 263: `trial_ends_at: assinatura.trial_fim` -> `trial_ends_at: assinatura.trial_end`
+## 1. Criar pagina `/reset-password`
 
-### 2. TrialValueBanner.tsx - `trial_fim` para `trial_end`
-- Linha 22: `.select('status, trial_fim, data_inicio')` -> `.select('status, trial_end, data_inicio')`
-- Linha 50: `assinatura.trial_fim` -> `assinatura.trial_end`
+**Problema:** Hoje o `redirectTo` aponta para `/auth`, o que faz o usuario ser logado automaticamente sem definir nova senha. E preciso uma pagina dedicada.
 
-### 3. Assinatura.tsx - `trial_fim` para `trial_end`
-- Linha 57: interface `trial_fim: string | null` -> `trial_end: string | null`
-- Linha 396: `assinatura?.trial_fim` -> `assinatura?.trial_end`
-- Linha 434: `assinatura?.trial_fim` -> `assinatura?.trial_end`
-- Linha 435: `assinatura!.trial_fim` -> `assinatura!.trial_end`
-- Todas as demais referencias a `trial_fim` no arquivo
+**O que sera feito:**
+- Criar `src/pages/ResetPassword.tsx` com formulario para nova senha
+- Verificar presenca de `type=recovery` no hash da URL
+- Chamar `supabase.auth.updateUser({ password })` ao submeter
+- Adicionar rota publica `/reset-password` no `App.tsx`
 
-### 4. Planos.tsx - Textos enganosos e useLocation
-- Linha 400: `"14 dias gratis em qualquer plano"` -> `"Teste gratis disponivel em todos os planos"`
-- Linha 410: `"Sem cartao de credito . 7 dias de garantia apos assinar"` -> `"Cancele quando quiser . 7 dias de garantia apos assinar"`
-- Mover `useLocation()` da linha 359 (dentro de IIFE no JSX) para o topo do componente (depois de `useNavigate()` na linha 68), e usar a variavel `location` no JSX
+---
 
-## Detalhes Tecnicos
+## 2. Corrigir `redirectTo` no reset de senha
 
-Todos os arquivos afetados:
-- `src/components/subscription/SubscriptionGuard.tsx` (4 alteracoes)
-- `src/components/admin/TrialValueBanner.tsx` (2 alteracoes)
-- `src/pages/admin/Assinatura.tsx` (4+ alteracoes)
-- `src/pages/Planos.tsx` (3 alteracoes)
+**Problema:** Linha 168 do Auth.tsx aponta para `/auth` em vez de `/reset-password`.
 
-Nenhuma alteracao de banco de dados necessaria - a coluna `trial_end` ja existe no banco.
+**Correcao:**
+```
+redirectTo: `${window.location.origin}/reset-password`
+```
+
+---
+
+## 3. Substituir modal manual por Dialog
+
+**Problema:** O modal "Esqueci minha senha" (linhas 260-303) usa `div` com `fixed inset-0`, sem acessibilidade, sem fechar com Escape, sem trap de foco.
+
+**Correcao:** Substituir por componente `Dialog` do Radix UI que ja existe no projeto (`@/components/ui/dialog`).
+
+---
+
+## 4. Adicionar toggle de visibilidade de senha
+
+**Problema:** Os campos de senha nao tem botao para mostrar/ocultar a senha digitada.
+
+**Correcao:** Adicionar icone `Eye`/`EyeOff` do lucide-react ao lado do campo de senha (login e cadastro), alternando entre `type="password"` e `type="text"`.
+
+---
+
+## 5. Tratar erro `EMAIL_NOT_CONFIRMED`
+
+**Problema:** Se o email nao foi confirmado, a mensagem generica "Erro ao fazer login" aparece, sem orientar o usuario.
+
+**Correcao:** Adicionar verificacao no `handleLogin`:
+```
+if (error.message.includes('Email not confirmed')) {
+  toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
+}
+```
+
+---
+
+## Secao Tecnica
+
+### Novo arquivo: `src/pages/ResetPassword.tsx`
+- Estados: `password`, `confirmPassword`, `isLoading`, `isValid`
+- No `useEffect`, verificar hash da URL para `type=recovery`
+- Validar senha minima 6 caracteres e confirmacao igual
+- Chamar `supabase.auth.updateUser({ password: newPassword })`
+- Redirecionar para `/auth` apos sucesso com toast de confirmacao
+- UI: Card centralizado com 2 campos de senha + botao, toggle de visibilidade
+
+### Alteracoes em `src/App.tsx`
+- Importar `ResetPassword` de `@/pages/ResetPassword`
+- Adicionar rota: `<Route path="/reset-password" element={<ResetPassword />} />`
+
+### Alteracoes em `src/pages/Auth.tsx`
+- Linha 168: trocar `/auth` por `/reset-password` no `redirectTo`
+- Linhas 260-303: substituir div manual por `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`
+- Adicionar estado `showPassword` e icone `Eye`/`EyeOff` nos campos de senha (login e signup)
+- Linhas 121-126: adicionar tratamento para `Email not confirmed`
+- Importar `Eye`, `EyeOff` do lucide-react e componentes Dialog
+
+### Arquivos afetados
+- `src/pages/ResetPassword.tsx` (novo)
+- `src/App.tsx` (1 import + 1 rota)
+- `src/pages/Auth.tsx` (4 alteracoes)
+
