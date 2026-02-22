@@ -1,87 +1,58 @@
 
 
-# Melhorias na Pagina de Autenticacao (Auth)
+# Correcao do Fluxo de Reset de Senha
 
-## Resumo
-Corrigir 5 problemas na pagina Auth: criar pagina `/reset-password` (sem ela o reset de senha nao funciona), substituir modal manual por Dialog acessivel, adicionar toggle de visibilidade de senha, tratar erro `EMAIL_NOT_CONFIRMED`, e corrigir o `redirectTo` do reset.
+## Problema
+Quando o usuario clica no link de recuperacao de senha no e-mail:
+1. Supabase processa o token e dispara evento `PASSWORD_RECOVERY` no `onAuthStateChange`
+2. AuthContext seta o usuario como autenticado
+3. O roteamento redireciona para `/admin` (porque o usuario agora esta logado)
+4. A pagina `/reset-password` nunca e exibida
+5. O toast "Link de recuperacao invalido ou expirado" aparece porque o hash ja foi consumido pelo Supabase
 
----
+## Solucao
 
-## 1. Criar pagina `/reset-password`
+### 1. Interceptar evento `PASSWORD_RECOVERY` no AuthContext
 
-**Problema:** Hoje o `redirectTo` aponta para `/auth`, o que faz o usuario ser logado automaticamente sem definir nova senha. E preciso uma pagina dedicada.
+No `src/contexts/AuthContext.tsx`, dentro do `onAuthStateChange` (linha 77), detectar o evento `PASSWORD_RECOVERY` e redirecionar para `/reset-password`:
 
-**O que sera feito:**
-- Criar `src/pages/ResetPassword.tsx` com formulario para nova senha
-- Verificar presenca de `type=recovery` no hash da URL
-- Chamar `supabase.auth.updateUser({ password })` ao submeter
-- Adicionar rota publica `/reset-password` no `App.tsx`
-
----
-
-## 2. Corrigir `redirectTo` no reset de senha
-
-**Problema:** Linha 168 do Auth.tsx aponta para `/auth` em vez de `/reset-password`.
-
-**Correcao:**
 ```
-redirectTo: `${window.location.origin}/reset-password`
-```
-
----
-
-## 3. Substituir modal manual por Dialog
-
-**Problema:** O modal "Esqueci minha senha" (linhas 260-303) usa `div` com `fixed inset-0`, sem acessibilidade, sem fechar com Escape, sem trap de foco.
-
-**Correcao:** Substituir por componente `Dialog` do Radix UI que ja existe no projeto (`@/components/ui/dialog`).
-
----
-
-## 4. Adicionar toggle de visibilidade de senha
-
-**Problema:** Os campos de senha nao tem botao para mostrar/ocultar a senha digitada.
-
-**Correcao:** Adicionar icone `Eye`/`EyeOff` do lucide-react ao lado do campo de senha (login e cadastro), alternando entre `type="password"` e `type="text"`.
-
----
-
-## 5. Tratar erro `EMAIL_NOT_CONFIRMED`
-
-**Problema:** Se o email nao foi confirmado, a mensagem generica "Erro ao fazer login" aparece, sem orientar o usuario.
-
-**Correcao:** Adicionar verificacao no `handleLogin`:
-```
-if (error.message.includes('Email not confirmed')) {
-  toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
+if (event === 'PASSWORD_RECOVERY') {
+  window.location.href = '/reset-password';
+  return;
 }
 ```
 
----
+Isso garante que, antes de qualquer outra logica de roteamento, o usuario seja levado a pagina correta.
 
-## Secao Tecnica
+### 2. Ajustar ResetPassword.tsx para nao depender do hash
 
-### Novo arquivo: `src/pages/ResetPassword.tsx`
-- Estados: `password`, `confirmPassword`, `isLoading`, `isValid`
-- No `useEffect`, verificar hash da URL para `type=recovery`
-- Validar senha minima 6 caracteres e confirmacao igual
-- Chamar `supabase.auth.updateUser({ password: newPassword })`
-- Redirecionar para `/auth` apos sucesso com toast de confirmacao
-- UI: Card centralizado com 2 campos de senha + botao, toggle de visibilidade
+No `src/pages/ResetPassword.tsx`, o `useEffect` (linhas 20-29) atualmente verifica `type=recovery` no hash da URL. Como o Supabase ja consumiu o hash neste ponto, a verificacao deve mudar para:
 
-### Alteracoes em `src/App.tsx`
-- Importar `ResetPassword` de `@/pages/ResetPassword`
-- Adicionar rota: `<Route path="/reset-password" element={<ResetPassword />} />`
+- Verificar se existe uma sessao ativa (o Supabase ja autenticou o usuario via recovery)
+- Remover a verificacao de hash, pois o redirecionamento vem do AuthContext que ja validou o evento `PASSWORD_RECOVERY`
+- Usar `supabase.auth.getSession()` para confirmar que o usuario esta autenticado
 
-### Alteracoes em `src/pages/Auth.tsx`
-- Linha 168: trocar `/auth` por `/reset-password` no `redirectTo`
-- Linhas 260-303: substituir div manual por `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`
-- Adicionar estado `showPassword` e icone `Eye`/`EyeOff` nos campos de senha (login e signup)
-- Linhas 121-126: adicionar tratamento para `Email not confirmed`
-- Importar `Eye`, `EyeOff` do lucide-react e componentes Dialog
+```typescript
+useEffect(() => {
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      setIsValid(true);
+    } else {
+      toast.error('Link de recuperacao invalido ou expirado.');
+      navigate('/auth/restaurante');
+    }
+  });
+}, [navigate]);
+```
 
-### Arquivos afetados
-- `src/pages/ResetPassword.tsx` (novo)
-- `src/App.tsx` (1 import + 1 rota)
-- `src/pages/Auth.tsx` (4 alteracoes)
+## Arquivos afetados
+- `src/contexts/AuthContext.tsx` (adicionar 3 linhas no onAuthStateChange)
+- `src/pages/ResetPassword.tsx` (substituir useEffect de verificacao de hash)
 
+## Resultado esperado
+1. Usuario clica no link de reset no e-mail
+2. Supabase processa o token, dispara `PASSWORD_RECOVERY`
+3. AuthContext intercepta e redireciona para `/reset-password`
+4. ResetPassword verifica a sessao ativa e exibe o formulario
+5. Usuario define nova senha com sucesso
