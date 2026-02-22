@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Auth from "@/pages/Auth";
+import ResetPassword from "@/pages/ResetPassword";
 import AuthChoice from "@/pages/AuthChoice";
 import AuthCliente from "@/pages/AuthCliente";
 import NotFound from "@/pages/NotFound";
@@ -82,6 +83,7 @@ const App = () => (
             {/* Planos e Assinatura */}
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription/success" element={<SubscriptionSuccess />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             {/* Super Admin (Desenvolvedor) */}
             <Route path="/super-admin" element={<SuperAdmin />} />
             {/* Delivery marketplace */}

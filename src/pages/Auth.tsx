@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Utensils, Loader2 } from 'lucide-react';
+import { Utensils, Loader2, Eye, EyeOff } from 'lucide-react';
 import { z } from 'zod';
 
 // Roles que pertencem à equipe (staff)
@@ -26,6 +27,7 @@ export default function Auth() {
   const [activeTab, setActiveTab] = useState('login');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const { signIn, signUp, user, profile } = useAuth();
   const navigate = useNavigate();
@@ -33,12 +35,10 @@ export default function Auth() {
   // Função para verificar o role do usuário e redirecionar apropriadamente
   const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
     if (!empresaId) {
-      // Usuário sem empresa - pode ser onboarding ou cliente
       navigate('/admin/onboarding');
       return;
     }
 
-    // Buscar role do usuário
     const { data: userRole } = await supabase
       .from('user_roles')
       .select('role')
@@ -48,23 +48,18 @@ export default function Auth() {
 
     const role = userRole?.role;
 
-    // Se o role for de staff, vai para /admin
     if (role && STAFF_ROLES.includes(role)) {
       navigate('/admin');
     } else {
-      // Se for 'client' ou não tiver role, vai para o cardápio digital
       navigate(`/menu/${empresaId}`);
     }
   }, [navigate]);
 
   useEffect(() => {
-    // Ouvir mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
-        // Usuário fez logout - permitir exibir formulário
         return;
       } else if (session) {
-        // Buscar profile para obter empresa_id
         const { data: profileData } = await supabase
           .from('profiles')
           .select('empresa_id')
@@ -75,7 +70,6 @@ export default function Auth() {
       }
     });
 
-    // Verificar se já está logado
     if (user && profile) {
       redirectBasedOnRole(user.id, profile.empresa_id);
     }
@@ -121,12 +115,13 @@ export default function Auth() {
     if (error) {
       if (error.message.includes('Invalid login credentials')) {
         toast.error('E-mail ou senha incorretos');
+      } else if (error.message.includes('Email not confirmed')) {
+        toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
       } else {
         toast.error('Erro ao fazer login. Tente novamente.');
       }
     } else {
       toast.success('Login realizado com sucesso!');
-      // O redirecionamento é feito automaticamente pelo useEffect onAuthStateChange
     }
   };
 
@@ -165,7 +160,7 @@ export default function Auth() {
     
     setIsLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/auth`,
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     setIsLoading(false);
     
@@ -221,14 +216,25 @@ export default function Auth() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Senha</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="login-password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                   <Button 
                     type="submit" 
@@ -256,51 +262,49 @@ export default function Auth() {
                   </button>
                 </form>
                 
-                {/* Modal Esqueci minha senha */}
-                {showForgotPassword && (
-                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <Card className="w-full max-w-md animate-fade-in">
-                      <CardHeader>
-                        <CardTitle>Recuperar Senha</CardTitle>
-                        <CardDescription>
-                          Digite seu e-mail para receber o link de recuperação
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="forgot-email">E-mail</Label>
-                          <Input
-                            id="forgot-email"
-                            type="email"
-                            placeholder="seu@email.com"
-                            value={forgotEmail}
-                            onChange={(e) => setForgotEmail(e.target.value)}
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
-                            className="flex-1"
-                            onClick={() => setShowForgotPassword(false)}
-                          >
-                            Cancelar
-                          </Button>
-                          <Button 
-                            className="flex-1 bg-primary hover:bg-primary/90"
-                            onClick={handleForgotPassword}
-                            disabled={isLoading}
-                          >
-                            {isLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              'Enviar'
-                            )}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
+                {/* Dialog Esqueci minha senha */}
+                <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Recuperar Senha</DialogTitle>
+                      <DialogDescription>
+                        Digite seu e-mail para receber o link de recuperação
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="forgot-email">E-mail</Label>
+                        <Input
+                          id="forgot-email"
+                          type="email"
+                          placeholder="seu@email.com"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => setShowForgotPassword(false)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button 
+                          className="flex-1 bg-primary hover:bg-primary/90"
+                          onClick={handleForgotPassword}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Enviar'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
               
               <TabsContent value="signup">
@@ -329,14 +333,25 @@ export default function Auth() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Senha</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="Mínimo 6 caracteres"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="signup-password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Mínimo 6 caracteres"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                   <Button 
                     type="submit" 
