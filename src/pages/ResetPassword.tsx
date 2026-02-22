@@ -18,14 +18,14 @@ export default function ResetPassword() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check for recovery token in URL hash
-    const hash = window.location.hash;
-    if (!hash.includes('type=recovery')) {
-      toast.error('Link de recuperação inválido ou expirado.');
-      navigate('/auth/restaurante');
-    } else {
-      setIsValid(true);
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setIsValid(true);
+      } else {
+        toast.error('Link de recuperação inválido ou expirado.');
+        navigate('/auth/restaurante');
+      }
+    });
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
