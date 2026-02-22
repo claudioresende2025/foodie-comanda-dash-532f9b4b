@@ -208,7 +208,7 @@ export function AdminSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="scrollbar-hide">
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/60">
             Menu Principal
