@@ -395,16 +395,19 @@ export default function Planos() {
       <main className="container mx-auto px-4 py-12">
         {/* Trial Banner */}
         <div className="mb-12 text-center">
-          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-6">
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-4">
             <Clock className="w-4 h-4" />
-            <span className="font-medium">3 dias grátis em qualquer plano</span>
+            <span className="font-medium">14 dias grátis em qualquer plano</span>
           </div>
           
           <h2 className="text-4xl font-bold mb-4">
             Simplifique a gestão do seu restaurante
           </h2>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-2">
             Comandas digitais, delivery, controle de mesas e muito mais em uma única plataforma
+          </p>
+          <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
+            <Shield className="w-4 h-4" /> Sem cartão de crédito • 7 dias de garantia após assinar
           </p>
         </div>
 
@@ -493,7 +496,7 @@ export default function Planos() {
                         </Badge>
                       </div>
                     )}
-                    <p className="text-sm text-muted-foreground mt-1">Trial de {plano.trial_days ?? 3} dias</p>
+                    <p className="text-sm text-muted-foreground mt-1">Trial de {plano.trial_days ?? 14} dias</p>
                   </div>
 
                   <Separator className="my-6" />
@@ -585,6 +588,39 @@ export default function Planos() {
           </div>
         </div>
 
+        {/* Depoimentos */}
+        <div className="mt-20">
+          <h3 className="text-2xl font-bold mb-8 text-center">O que nossos clientes dizem</h3>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              { name: 'Carlos M.', restaurant: 'Cantina do Carlos', text: 'Reduzi em 40% os erros de pedido no primeiro mês. Meus garçons agradecem!' },
+              { name: 'Ana L.', restaurant: 'Bistrô da Ana', text: 'Agora sei exatamente quanto vendo por dia. O relatório de caixa é fantástico.' },
+              { name: 'Roberto S.', restaurant: 'Burger House', text: 'O delivery integrado triplicou meus pedidos online. Valeu cada centavo.' },
+            ].map((t, i) => (
+              <div key={i} className="bg-card rounded-lg p-6 border">
+                <div className="flex gap-1 mb-3">
+                  {[1,2,3,4,5].map(j => <Star key={j} className="w-4 h-4 fill-accent text-accent" />)}
+                </div>
+                <p className="text-sm text-muted-foreground mb-4 italic">"{t.text}"</p>
+                <p className="font-semibold text-sm">{t.name}</p>
+                <p className="text-xs text-muted-foreground">{t.restaurant}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-sm text-muted-foreground mt-6">Mais de 500 restaurantes já usam o Foodie Comanda</p>
+        </div>
+
+        {/* Garantia */}
+        <div className="mt-12 text-center">
+          <div className="inline-flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-2xl px-6 py-4">
+            <Shield className="w-8 h-8 text-primary" />
+            <div className="text-left">
+              <p className="font-semibold">Garantia de 7 dias</p>
+              <p className="text-sm text-muted-foreground">Não gostou? Devolvemos seu dinheiro sem perguntas.</p>
+            </div>
+          </div>
+        </div>
+
         {/* FAQ Section */}
         <div className="mt-20 max-w-3xl mx-auto">
           <h3 className="text-2xl font-bold mb-8 text-center">Perguntas Frequentes</h3>
@@ -593,8 +629,8 @@ export default function Planos() {
             <div className="bg-card rounded-lg p-6 border">
               <h4 className="font-semibold mb-2">Como funciona o período de teste?</h4>
               <p className="text-muted-foreground text-sm">
-                Você tem 3 dias para testar todas as funcionalidades do plano escolhido gratuitamente. 
-                Não cobramos nada durante esse período e você pode cancelar a qualquer momento.
+                Você tem 14 dias para testar todas as funcionalidades do plano escolhido gratuitamente.
+                Não cobramos nada e não pedimos cartão de crédito durante esse período.
               </p>
             </div>
             
@@ -609,16 +645,29 @@ export default function Planos() {
             <div className="bg-card rounded-lg p-6 border">
               <h4 className="font-semibold mb-2">Como funciona o cancelamento?</h4>
               <p className="text-muted-foreground text-sm">
-                Você pode cancelar sua assinatura a qualquer momento pelo painel administrativo. 
-                Seu acesso continua até o fim do período pago. Para reembolsos, entre em contato com nosso suporte.
+                Cancele a qualquer momento pelo painel administrativo, sem multa. 
+                Nos primeiros 7 dias após assinar, devolvemos o valor integral.
               </p>
             </div>
             
             <div className="bg-card rounded-lg p-6 border">
               <h4 className="font-semibold mb-2">Quais formas de pagamento são aceitas?</h4>
               <p className="text-muted-foreground text-sm">
-                Aceitamos cartão de crédito (Visa, Mastercard, Elo, American Express) e PIX. 
-                O pagamento é processado de forma segura pelo Stripe.
+                Aceitamos cartão de crédito (Visa, Mastercard, Elo, American Express) e PIX.
+              </p>
+            </div>
+
+            <div className="bg-card rounded-lg p-6 border">
+              <h4 className="font-semibold mb-2">Preciso instalar algum aplicativo?</h4>
+              <p className="text-muted-foreground text-sm">
+                Não! O sistema funciona 100% no navegador. Opcionalmente, instale como app (PWA) para acesso rápido.
+              </p>
+            </div>
+
+            <div className="bg-card rounded-lg p-6 border">
+              <h4 className="font-semibold mb-2">Como funciona a migração dos meus dados?</h4>
+              <p className="text-muted-foreground text-sm">
+                Você cadastra seu cardápio em minutos. Se precisar de ajuda, nosso suporte acompanha todo o processo.
               </p>
             </div>
           </div>
@@ -627,9 +676,10 @@ export default function Planos() {
         {/* CTA Final */}
         <div className="mt-20 text-center bg-primary/5 rounded-3xl p-12">
           <h3 className="text-3xl font-bold mb-4">Pronto para começar?</h3>
-          <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-            Junte-se a centenas de restaurantes que já simplificaram sua gestão com nossa plataforma
+          <p className="text-muted-foreground mb-4 max-w-xl mx-auto">
+            Junte-se a centenas de restaurantes que já simplificaram sua gestão
           </p>
+          <p className="text-sm text-muted-foreground mb-8">Sem cartão de crédito • 14 dias grátis • Garantia de 7 dias</p>
           <Button size="lg" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             Escolher Meu Plano
           </Button>

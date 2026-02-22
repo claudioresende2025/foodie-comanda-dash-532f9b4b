@@ -27,6 +27,7 @@ export type Database = {
           status: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          trial_emails_sent: Json | null
           trial_fim: string | null
           updated_at: string | null
         }
@@ -42,6 +43,7 @@ export type Database = {
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          trial_emails_sent?: Json | null
           trial_fim?: string | null
           updated_at?: string | null
         }
@@ -57,6 +59,7 @@ export type Database = {
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          trial_emails_sent?: Json | null
           trial_fim?: string | null
           updated_at?: string | null
         }
@@ -862,6 +865,54 @@ export type Database = {
             columns: ["pedido_delivery_id"]
             isOneToOne: false
             referencedRelation: "pedidos_delivery"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      indicacoes: {
+        Row: {
+          codigo_indicacao: string
+          convertida_at: string | null
+          created_at: string | null
+          empresa_indicada_id: string | null
+          empresa_indicadora_id: string
+          id: string
+          recompensa_aplicada: boolean | null
+          status: string
+        }
+        Insert: {
+          codigo_indicacao: string
+          convertida_at?: string | null
+          created_at?: string | null
+          empresa_indicada_id?: string | null
+          empresa_indicadora_id: string
+          id?: string
+          recompensa_aplicada?: boolean | null
+          status?: string
+        }
+        Update: {
+          codigo_indicacao?: string
+          convertida_at?: string | null
+          created_at?: string | null
+          empresa_indicada_id?: string | null
+          empresa_indicadora_id?: string
+          id?: string
+          recompensa_aplicada?: boolean | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "indicacoes_empresa_indicada_id_fkey"
+            columns: ["empresa_indicada_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "indicacoes_empresa_indicadora_id_fkey"
+            columns: ["empresa_indicadora_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
         ]

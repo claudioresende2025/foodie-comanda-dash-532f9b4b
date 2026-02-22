@@ -20,6 +20,7 @@ import DeliveryOrders from "@/pages/DeliveryOrders";
 import DeliveryProfile from "@/pages/DeliveryProfile";
 import Install from "@/pages/Install";
 import Index from "@/pages/Index";
+import LandingRestaurantes from "@/pages/LandingRestaurantes";
 import Planos from "@/pages/Planos";
 import SuperAdmin from "@/pages/SuperAdmin";
 import SubscriptionSuccess from "@/pages/subscription/Success";
@@ -66,6 +67,7 @@ const App = () => (
           <ErrorBoundary>
             <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/para-restaurantes" element={<LandingRestaurantes />} />
             {/* Auth routes - escolha cliente/restaurante */}
             <Route path="/auth" element={<AuthChoice />} />
             <Route path="/auth/cliente" element={<AuthCliente />} />
