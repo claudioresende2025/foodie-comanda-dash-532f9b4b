@@ -57,7 +57,7 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
       const registration = await navigator.serviceWorker.ready;
       
       // Check for existing subscription
-      let pushSubscription = await registration.pushManager.getSubscription();
+      let pushSubscription = await (registration as any).pushManager?.getSubscription();
       
       if (!pushSubscription) {
         // For demo purposes, we're using a placeholder VAPID key

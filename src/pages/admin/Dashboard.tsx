@@ -18,6 +18,9 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import WaiterNotifications from '@/components/admin/WaiterNotifications';
+import OnboardingChecklist from '@/components/admin/OnboardingChecklist';
+import TrialValueBanner from '@/components/admin/TrialValueBanner';
+import ValueMetrics from '@/components/admin/ValueMetrics';
 import { exportSalesReport, exportSalesReportPDF } from '@/utils/exportReports';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
@@ -317,6 +320,15 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Trial Value Banner */}
+      <TrialValueBanner />
+
+      {/* Onboarding Checklist */}
+      <OnboardingChecklist />
+
+      {/* Value Metrics */}
+      <ValueMetrics />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

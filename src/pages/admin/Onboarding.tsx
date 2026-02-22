@@ -111,7 +111,7 @@ export default function Onboarding() {
         // Depois verificar localStorage
         const pending = localStorage.getItem('post_subscribe_plan');
         const now = new Date();
-        const trialEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // 3 dias de trial
+        const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // 14 dias de trial
         const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 dias
         
         console.log('[Onboarding] URL params:', { urlPlanoId, urlPeriodo });

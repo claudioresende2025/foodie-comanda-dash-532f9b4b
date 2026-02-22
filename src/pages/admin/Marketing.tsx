@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Ticket, Star, Gift, Percent, Plus, Trash2, Package, Save } from 'lucide-react';
+import { Ticket, Star, Gift, Percent, Plus, Trash2, Package, Save, Share2 } from 'lucide-react';
+import ReferralCard from '@/components/admin/ReferralCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -357,6 +358,10 @@ export default function Marketing() {
             <Percent className="h-4 w-4" />
             Ofertas
           </TabsTrigger>
+          <TabsTrigger value="indicacoes" className="gap-2">
+            <Share2 className="h-4 w-4" />
+            Indicações
+          </TabsTrigger>
         </TabsList>
 
         {/* ABA CUPONS */}
@@ -605,6 +610,11 @@ export default function Marketing() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ABA INDICAÇÕES */}
+        <TabsContent value="indicacoes" className="space-y-4">
+          <ReferralCard />
         </TabsContent>
       </Tabs>
 
