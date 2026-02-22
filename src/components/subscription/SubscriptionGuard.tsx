@@ -188,7 +188,7 @@ export function useSubscription() {
       // Busca assinatura da empresa
       const { data: assinatura, error } = await supabase
         .from('assinaturas')
-        .select('status, data_fim, trial_end, canceled_at')
+        .select('status, data_fim, trial_fim, canceled_at')
         .eq('empresa_id', profile.empresa_id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -243,7 +243,7 @@ export function useSubscription() {
       // Trial expirado sem assinatura ativa = bloqueado
       // Suporta ambos: 'trial' e 'trialing' (Stripe usa 'trialing')
       if (assinatura.status === 'trial' || assinatura.status === 'trialing') {
-        const trialFim = assinatura.trial_end ? new Date(assinatura.trial_end) : null;
+        const trialFim = (assinatura as any).trial_fim ? new Date((assinatura as any).trial_fim) : null;
         if (trialFim && trialFim < now) {
           setStatus({ 
             blocked: true, 
@@ -260,7 +260,7 @@ export function useSubscription() {
           setStatus({ 
             blocked: false, 
             status: 'trialing',
-            trial_ends_at: assinatura.trial_end,
+            trial_ends_at: (assinatura as any).trial_fim,
             days_remaining: daysRemaining
           });
           setIsLoading(false);
