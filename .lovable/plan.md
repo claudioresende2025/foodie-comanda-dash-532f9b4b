@@ -1,58 +1,54 @@
 
+# Correcoes no Modal de Upgrade e SubscriptionGuard
 
-# Correcao do Fluxo de Reset de Senha
+## Problema 1: Modal de planos aparece apos login
+Isso e o comportamento correto -- o trial da sua empresa expirou em janeiro e estamos em fevereiro. O sistema esta bloqueando o acesso corretamente. Nenhuma correcao necessaria aqui.
 
-## Problema
-Quando o usuario clica no link de recuperacao de senha no e-mail:
-1. Supabase processa o token e dispara evento `PASSWORD_RECOVERY` no `onAuthStateChange`
-2. AuthContext seta o usuario como autenticado
-3. O roteamento redireciona para `/admin` (porque o usuario agora esta logado)
-4. A pagina `/reset-password` nunca e exibida
-5. O toast "Link de recuperacao invalido ou expirado" aparece porque o hash ja foi consumido pelo Supabase
+## Problema 2: Clicar em plano vai para pagina de planos em vez de checkout
+Quando voce clica em "Selecionar" no modal, o sistema navega para `/planos?mode=upgrade&plano=xxx`, que mostra a pagina de planos novamente em vez de ir direto para o checkout do Stripe.
 
-## Solucao
+**Correcao:** Alterar o `UpgradeModal` para chamar a funcao de checkout diretamente (invocar `create-subscription-checkout`) ao clicar em "Selecionar", redirecionando o usuario direto para o Stripe.
 
-### 1. Interceptar evento `PASSWORD_RECOVERY` no AuthContext
+## Problema 3: Nome de coluna incorreto no SubscriptionGuard
+O `SubscriptionGuard` consulta `trial_end` mas a coluna real no banco e `trial_fim`. Isso pode causar falha na consulta.
 
-No `src/contexts/AuthContext.tsx`, dentro do `onAuthStateChange` (linha 77), detectar o evento `PASSWORD_RECOVERY` e redirecionar para `/reset-password`:
+**Correcao:** Trocar `trial_end` por `trial_fim` no select da query.
 
+---
+
+## Secao Tecnica
+
+### Arquivo: `src/components/UpgradeModal.tsx`
+
+**Mudancas:**
+- Importar `supabase` e `useState` e `toast`
+- Adicionar estado `processingPlan` para controle de loading
+- Substituir `handleUpgrade` para invocar `create-subscription-checkout` diretamente:
+  1. Buscar `empresa_id` do perfil do usuario autenticado
+  2. Buscar o `plano.id` real do banco de dados pelo slug
+  3. Chamar `supabase.functions.invoke('create-subscription-checkout')` com os dados
+  4. Redirecionar para a URL do Stripe retornada
+- Manter o fallback de navegacao para `/planos` caso a chamada falhe
+- Mostrar estado de loading no botao durante o processamento
+
+### Arquivo: `src/components/subscription/SubscriptionGuard.tsx`
+
+**Mudanca (linha 191):**
 ```
-if (event === 'PASSWORD_RECOVERY') {
-  window.location.href = '/reset-password';
-  return;
-}
-```
-
-Isso garante que, antes de qualquer outra logica de roteamento, o usuario seja levado a pagina correta.
-
-### 2. Ajustar ResetPassword.tsx para nao depender do hash
-
-No `src/pages/ResetPassword.tsx`, o `useEffect` (linhas 20-29) atualmente verifica `type=recovery` no hash da URL. Como o Supabase ja consumiu o hash neste ponto, a verificacao deve mudar para:
-
-- Verificar se existe uma sessao ativa (o Supabase ja autenticou o usuario via recovery)
-- Remover a verificacao de hash, pois o redirecionamento vem do AuthContext que ja validou o evento `PASSWORD_RECOVERY`
-- Usar `supabase.auth.getSession()` para confirmar que o usuario esta autenticado
-
-```typescript
-useEffect(() => {
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
-      setIsValid(true);
-    } else {
-      toast.error('Link de recuperacao invalido ou expirado.');
-      navigate('/auth/restaurante');
-    }
-  });
-}, [navigate]);
+// De:
+.select('status, data_fim, trial_end, canceled_at')
+// Para:
+.select('status, data_fim, trial_fim, canceled_at')
 ```
 
-## Arquivos afetados
-- `src/contexts/AuthContext.tsx` (adicionar 3 linhas no onAuthStateChange)
-- `src/pages/ResetPassword.tsx` (substituir useEffect de verificacao de hash)
+**Mudanca (linha 246):**
+```
+// De:
+const trialFim = assinatura.trial_end ? new Date(assinatura.trial_end) : null;
+// Para:
+const trialFim = assinatura.trial_fim ? new Date(assinatura.trial_fim) : null;
+```
 
-## Resultado esperado
-1. Usuario clica no link de reset no e-mail
-2. Supabase processa o token, dispara `PASSWORD_RECOVERY`
-3. AuthContext intercepta e redireciona para `/reset-password`
-4. ResetPassword verifica a sessao ativa e exibe o formulario
-5. Usuario define nova senha com sucesso
+### Arquivos afetados
+- `src/components/UpgradeModal.tsx` (checkout direto)
+- `src/components/subscription/SubscriptionGuard.tsx` (correcao nome coluna)
