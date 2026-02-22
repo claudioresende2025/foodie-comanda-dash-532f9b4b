@@ -1,54 +1,55 @@
 
-# Correcoes no Modal de Upgrade e SubscriptionGuard
+# Dados Fictícios para Teste + Correção da Sidebar
 
-## Problema 1: Modal de planos aparece apos login
-Isso e o comportamento correto -- o trial da sua empresa expirou em janeiro e estamos em fevereiro. O sistema esta bloqueando o acesso corretamente. Nenhuma correcao necessaria aqui.
+## Parte 1: Dados Fictícios no Banco de Dados
 
-## Problema 2: Clicar em plano vai para pagina de planos em vez de checkout
-Quando voce clica em "Selecionar" no modal, o sistema navega para `/planos?mode=upgrade&plano=xxx`, que mostra a pagina de planos novamente em vez de ir direto para o checkout do Stripe.
+O usuário `usercontratada@gmail.com` (id: `47649b1e-...`) não tem empresa vinculada nem dados de teste. Será necessário criar dados completos para um teste funcional.
 
-**Correcao:** Alterar o `UpgradeModal` para chamar a funcao de checkout diretamente (invocar `create-subscription-checkout`) ao clicar em "Selecionar", redirecionando o usuario direto para o Stripe.
+### Dados a serem criados (via SQL insert):
 
-## Problema 3: Nome de coluna incorreto no SubscriptionGuard
-O `SubscriptionGuard` consulta `trial_end` mas a coluna real no banco e `trial_fim`. Isso pode causar falha na consulta.
+1. **Empresa**: "Restaurante Sabor & Arte" vinculada ao usuário
+2. **Profile update**: Vincular `empresa_id` no perfil do usuário
+3. **User role**: Criar role `proprietario` para o usuário
+4. **Assinatura ativa**: Criar assinatura com trial válido (trial_fim = 30 dias no futuro) usando plano Bronze
+5. **Categorias** (4): Entradas, Pratos Principais, Bebidas, Sobremesas
+6. **Produtos** (8-10): 2-3 produtos por categoria com nomes, preços e descrições realistas
+7. **Mesas** (5): Mesas numeradas de 1 a 5 com capacidades variadas
+8. **Config Delivery**: Configuração básica de delivery ativa
 
-**Correcao:** Trocar `trial_end` por `trial_fim` no select da query.
+### Execução
+- Usar a ferramenta de insert do banco para cada grupo de dados
+- Garantir que todos os `empresa_id` referenciam a nova empresa
 
 ---
 
-## Secao Tecnica
+## Parte 2: Correção da Barra de Rolagem na Sidebar
 
-### Arquivo: `src/components/UpgradeModal.tsx`
+### Problema
+O componente `SidebarContent` em `src/components/ui/sidebar.tsx` (linha 334) tem a classe `overflow-auto`, que exibe uma barra de rolagem quando o conteúdo excede a altura disponível.
 
-**Mudancas:**
-- Importar `supabase` e `useState` e `toast`
-- Adicionar estado `processingPlan` para controle de loading
-- Substituir `handleUpgrade` para invocar `create-subscription-checkout` diretamente:
-  1. Buscar `empresa_id` do perfil do usuario autenticado
-  2. Buscar o `plano.id` real do banco de dados pelo slug
-  3. Chamar `supabase.functions.invoke('create-subscription-checkout')` com os dados
-  4. Redirecionar para a URL do Stripe retornada
-- Manter o fallback de navegacao para `/planos` caso a chamada falhe
-- Mostrar estado de loading no botao durante o processamento
+### Solução
+Alterar a classe no `SidebarContent` para ocultar a scrollbar visualmente mas manter a funcionalidade de scroll:
 
-### Arquivo: `src/components/subscription/SubscriptionGuard.tsx`
+**Arquivo: `src/components/admin/AdminSidebar.tsx`**
+- Passar `className="overflow-y-auto scrollbar-hide"` no `SidebarContent`
 
-**Mudanca (linha 191):**
-```
-// De:
-.select('status, data_fim, trial_end, canceled_at')
-// Para:
-.select('status, data_fim, trial_fim, canceled_at')
+**Arquivo: `src/index.css`**
+- Adicionar CSS utilitário para ocultar a scrollbar:
+```css
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
 ```
 
-**Mudanca (linha 246):**
-```
-// De:
-const trialFim = assinatura.trial_end ? new Date(assinatura.trial_end) : null;
-// Para:
-const trialFim = assinatura.trial_fim ? new Date(assinatura.trial_fim) : null;
-```
+Isso mantém a possibilidade de scroll por toque/trackpad mas remove a barra visível.
 
-### Arquivos afetados
-- `src/components/UpgradeModal.tsx` (checkout direto)
-- `src/components/subscription/SubscriptionGuard.tsx` (correcao nome coluna)
+---
+
+## Arquivos afetados
+- `src/components/admin/AdminSidebar.tsx` (classe no SidebarContent)
+- `src/index.css` (utilitário CSS scrollbar-hide)
+- Banco de dados: inserts de dados fictícios (empresa, categorias, produtos, mesas, assinatura, config_delivery)
