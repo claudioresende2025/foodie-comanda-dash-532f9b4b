@@ -303,6 +303,35 @@ export default function Mesas() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Gerenciamento de Mesas</h1>
           <p className="text-muted-foreground">Gerencie as mesas do seu estabelecimento</p>
+          {mesasLimit !== null && (
+            (() => {
+              const used = mesas?.length || 0;
+              const pct = mesasLimit > 0 ? (used / mesasLimit) * 100 : 0;
+              const isAtLimit = used >= mesasLimit;
+              const isWarning = pct >= 80 && !isAtLimit;
+              return (
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge
+                    variant="outline"
+                    className={
+                      isAtLimit
+                        ? 'border-destructive text-destructive bg-destructive/10'
+                        : isWarning
+                        ? 'border-yellow-500 text-yellow-700 bg-yellow-50'
+                        : 'border-green-500 text-green-700 bg-green-50'
+                    }
+                  >
+                    {used} de {mesasLimit} mesas
+                  </Badge>
+                  {isAtLimit && (
+                    <span className="text-xs text-destructive font-medium">
+                      Limite atingido — Faça upgrade
+                    </span>
+                  )}
+                </div>
+              );
+            })()
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => refetch()}>
