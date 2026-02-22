@@ -1,17 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, Crown, Zap, Building2, LogOut } from 'lucide-react';
+import { Check, X, Crown, Zap, Building2, LogOut, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   feature?: string | null;
   currentPlan?: string | null;
-  // Novas props para modo de bloqueio
   showExitButton?: boolean;
   onExit?: () => void;
   blockingReason?: string;
@@ -96,10 +98,50 @@ export function UpgradeModal({
   isBlocking = false
 }: Props) {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const [processingPlan, setProcessingPlan] = useState<string | null>(null);
 
-  const handleUpgrade = (planoSlug: string) => {
-    onOpenChange(false);
-    navigate(`/planos?mode=upgrade&plano=${planoSlug}`);
+  const handleUpgrade = async (planoSlug: string) => {
+    setProcessingPlan(planoSlug);
+    try {
+      // Buscar plano real do banco
+      const { data: plano, error: planoError } = await supabase
+        .from('planos')
+        .select('id')
+        .eq('slug', planoSlug)
+        .single();
+
+      if (planoError || !plano) {
+        throw new Error('Plano não encontrado');
+      }
+
+      const empresaId = profile?.empresa_id || null;
+
+      const { data, error } = await supabase.functions.invoke('create-subscription-checkout', {
+        body: {
+          planoId: plano.id,
+          empresaId,
+          periodo: 'mensal',
+          isUpgrade: !!empresaId,
+          successUrl: `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}`,
+          cancelUrl: `${window.location.origin}/planos?canceled=true`,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success || !data?.url) {
+        throw new Error(data?.error || 'Erro ao criar checkout');
+      }
+
+      window.location.href = data.url;
+    } catch (err: any) {
+      console.error('Erro no checkout:', err);
+      toast.error('Erro ao iniciar checkout. Redirecionando para planos...');
+      onOpenChange(false);
+      navigate(`/planos?mode=upgrade&plano=${planoSlug}`);
+    } finally {
+      setProcessingPlan(null);
+    }
   };
 
   const handleDowngrade = () => {
@@ -107,7 +149,6 @@ export function UpgradeModal({
     navigate('/planos?mode=downgrade');
   };
 
-  // Título e descrição dinâmicos baseado no contexto
   const getTitle = () => {
     if (isBlocking) return 'Escolha um Plano para Continuar';
     return 'Recurso Indisponível';
@@ -137,6 +178,7 @@ export function UpgradeModal({
             {planos.map((plano) => {
               const Icon = plano.icon;
               const isCurrentPlan = currentPlan?.toLowerCase() === plano.slug;
+              const isProcessing = processingPlan === plano.slug;
               
               return (
                 <Card 
@@ -199,9 +241,11 @@ export function UpgradeModal({
                     className="w-full" 
                     variant={plano.destaque ? 'default' : 'outline'}
                     onClick={() => handleUpgrade(plano.slug)}
-                    disabled={isCurrentPlan}
+                    disabled={isCurrentPlan || !!processingPlan}
                   >
-                    {isCurrentPlan ? 'Plano Atual' : 'Selecionar'}
+                    {isProcessing ? (
+                      <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processando...</>
+                    ) : isCurrentPlan ? 'Plano Atual' : 'Selecionar'}
                   </Button>
                 </Card>
               );
@@ -210,12 +254,10 @@ export function UpgradeModal({
 
           <div className="flex justify-center gap-4 pt-4 border-t">
             {showExitButton && onExit ? (
-              <>
-                <Button variant="outline" onClick={onExit} className="gap-2">
-                  <LogOut className="w-4 h-4" />
-                  Sair da Conta
-                </Button>
-              </>
+              <Button variant="outline" onClick={onExit} className="gap-2">
+                <LogOut className="w-4 h-4" />
+                Sair da Conta
+              </Button>
             ) : (
               <>
                 <Button variant="ghost" onClick={() => onOpenChange(false)}>
