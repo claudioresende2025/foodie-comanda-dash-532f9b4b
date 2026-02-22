@@ -19,7 +19,7 @@ export default function TrialValueBanner() {
       if (!empresaId) return null;
       const { data } = await (supabase as any)
         .from('assinaturas')
-        .select('status, trial_fim, data_inicio')
+        .select('status, trial_end, data_inicio')
         .eq('empresa_id', empresaId)
         .single();
       return data;
@@ -47,7 +47,7 @@ export default function TrialValueBanner() {
   const isTrial = assinatura?.status === 'trialing' || assinatura?.status === 'trial';
   if (!isTrial || !assinatura) return null;
 
-  const trialEnd = assinatura.trial_fim ? new Date(assinatura.trial_fim) : null;
+  const trialEnd = assinatura.trial_end ? new Date(assinatura.trial_end) : null;
   const now = new Date();
   const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))) : null;
   const isUrgent = daysLeft !== null && daysLeft <= 3;

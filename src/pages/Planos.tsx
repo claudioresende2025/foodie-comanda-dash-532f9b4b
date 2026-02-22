@@ -66,6 +66,7 @@ const defaultRecursosByPlan: Record<string, string[]> = {
 };
 export default function Planos() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnual, setIsAnual] = useState(false);
@@ -356,8 +357,7 @@ export default function Planos() {
         <div className="container mx-auto px-4 py-4">
               {/* Mostrar header mais simples quando acessado pela rota pública /planos */}
               {(() => {
-                const loc = useLocation();
-                if (loc.pathname === '/planos') {
+                if (location.pathname === '/planos') {
                   return (
                     <div className="text-center py-2">
                       <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
@@ -397,7 +397,7 @@ export default function Planos() {
         <div className="mb-12 text-center">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full mb-4">
             <Clock className="w-4 h-4" />
-            <span className="font-medium">14 dias grátis em qualquer plano</span>
+            <span className="font-medium">Teste grátis disponível em todos os planos</span>
           </div>
           
           <h2 className="text-4xl font-bold mb-4">
@@ -407,7 +407,7 @@ export default function Planos() {
             Comandas digitais, delivery, controle de mesas e muito mais em uma única plataforma
           </p>
           <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
-            <Shield className="w-4 h-4" /> Sem cartão de crédito • 7 dias de garantia após assinar
+            <Shield className="w-4 h-4" /> Cancele quando quiser • 7 dias de garantia após assinar
           </p>
         </div>
 

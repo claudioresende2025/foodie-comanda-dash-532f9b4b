@@ -54,7 +54,7 @@ interface Assinatura {
   periodo: string;
   data_inicio: string | null;
   data_fim: string | null;
-  trial_fim: string | null;
+  trial_end: string | null;
   canceled_at: string | null;
   cancel_at_period_end?: boolean;
   updated_at?: string;
@@ -393,7 +393,7 @@ export default function Assinatura() {
   };
   
   const trialStartDateRaw = resolveDate(assinatura?.data_inicio) || resolveDate(assinatura?.updated_at);
-  const trialEndDateRaw = resolveDate(assinatura?.trial_fim);
+  const trialEndDateRaw = resolveDate(assinatura?.trial_end);
   
   const planSlug = assinatura?.plano?.slug?.toLowerCase();
   const defaultTrialDays = planSlug === 'ouro' ? 7 : 3;
@@ -431,8 +431,8 @@ export default function Assinatura() {
   
   const getNextChargeDate = () => {
     if (assinatura?.status === 'trialing') {
-      if (isValidDate(assinatura?.trial_fim)) {
-        return formatDateBR(assinatura!.trial_fim);
+      if (isValidDate(assinatura?.trial_end)) {
+        return formatDateBR(assinatura!.trial_end);
       }
       if (isValidDate(assinatura?.data_fim)) {
         return formatDateBR(assinatura!.data_fim);
