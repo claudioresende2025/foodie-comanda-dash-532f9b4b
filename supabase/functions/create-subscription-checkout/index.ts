@@ -192,7 +192,7 @@ serve(async (req: Request) => {
       'payment_method_types[]': 'card',
       'line_items[0][price]': stripePriceId,
       'line_items[0][quantity]': '1',
-      success_url: successUrl || `${req.headers.get('origin')}/admin/assinatura?subscription=success&planoId=${planoId}&session_id={CHECKOUT_SESSION_ID}&periodo=${periodo}`,
+      success_url: successUrl || `${req.headers.get('origin')}/subscription/success?session_id={CHECKOUT_SESSION_ID}&planoId=${planoId}&periodo=${periodo}`,
       cancel_url: cancelUrl || `${req.headers.get('origin')}/planos?canceled=true`,
       allow_promotion_codes: 'true',
       billing_address_collection: 'required',

@@ -123,7 +123,7 @@ export function UpgradeModal({
           empresaId,
           periodo: 'mensal',
           isUpgrade: !!empresaId,
-          successUrl: `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}`,
+          successUrl: `${window.location.origin}/subscription/success?session_id={CHECKOUT_SESSION_ID}&planoId=${plano.id}&periodo=mensal`,
           cancelUrl: `${window.location.origin}/planos?canceled=true`,
         },
       });
