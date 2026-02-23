@@ -1,63 +1,53 @@
 
 
-# Correcao do Erro "Restaurante nao encontrado" + Imagens nos Produtos
+# Correção dos Dados e Imagens dos Produtos
 
-## Problema 1: "Restaurante nao encontrado" ao visualizar cardapio na pagina mesas
+## Problema Identificado
+Existem duas empresas duplicadas no banco de dados:
+- **Empresa A** (`3e3d5937`): "Restaurante sabor e arte" - vinculada ao perfil do usuario, mas SEM produtos, mesas ou categorias
+- **Empresa B** (`a1b2c3d4`): "Restaurante Sabor & Arte" - possui os 10 produtos, 4 categorias e 5 mesas, mas NAO esta vinculada ao perfil
 
-### Causa raiz
-O arquivo `.env` foi alterado para apontar para o banco de dados externo (`zlwpxflqtyhdwanmupgy`), porem os dados fictícios (empresa, produtos, mesas, etc.) foram inseridos no banco de dados do Lovable Cloud (`jejpufnzaineihemdrgd`). Assim, quando o app tenta buscar a empresa pelo ID no banco externo, ela nao existe la.
+Isso causa o erro "restaurante nao encontrado" porque ao acessar o cardapio, o sistema busca os produtos pela empresa do perfil (`3e3d5937`), que nao tem nenhum produto.
 
-### Solucao
-Restaurar o `.env` para os valores originais do Lovable Cloud:
-- `VITE_SUPABASE_PROJECT_ID` = `jejpufnzaineihemdrgd`
-- `VITE_SUPABASE_URL` = `https://jejpufnzaineihemdrgd.supabase.co`
-- `VITE_SUPABASE_PUBLISHABLE_KEY` = chave original
+## Solucao
 
-Isso fara o app se conectar ao banco onde os dados de teste realmente existem. Apos restaurar, a empresa "Restaurante Sabor & Arte" sera encontrada normalmente.
+### Passo 1: Mover os produtos para a empresa correta
+Atualizar todos os registros da empresa `a1b2c3d4` para apontar para `3e3d5937` (a empresa vinculada ao perfil):
+- 10 produtos
+- 4 categorias
+- 5 mesas
+- Configuracao de delivery
 
----
+Apos a migracao, excluir a empresa duplicada `a1b2c3d4`.
 
-## Problema 2: Inserir imagens nos produtos
+### Passo 2: Adicionar imagens nos produtos
+Atualizar os 10 produtos com URLs de imagens publicas de alimentos:
 
-### Situacao atual
-- A tabela `produtos` ja possui a coluna `imagem_url`
-- A pagina de administracao do Cardapio ja possui upload de imagens funcional (upload para o storage "produtos")
-- Os 10 produtos de teste criados estao todos sem imagem (`imagem_url = null`)
+| Produto | URL da Imagem |
+|---------|---------------|
+| Bolinho de Bacalhau | Imagem de bolinhos fritos (Unsplash) |
+| Bruschetta Caprese | Imagem de bruschetta (Unsplash) |
+| File Mignon ao Molho Madeira | Imagem de file mignon (Unsplash) |
+| Salmao Grelhado | Imagem de salmao (Unsplash) |
+| Risoto de Camarao | Imagem de risoto (Unsplash) |
+| Suco Natural | Imagem de suco (Unsplash) |
+| Refrigerante Lata | Imagem de refrigerante (Unsplash) |
+| Caipirinha | Imagem de caipirinha (Unsplash) |
+| Petit Gateau | Imagem de petit gateau (Unsplash) |
+| Pudim de Leite | Imagem de pudim (Unsplash) |
 
-### Solucao
-Atualizar os 10 produtos de teste com URLs de imagens de alimentos reais, usando imagens publicas de alta qualidade. Cada produto recebera uma imagem condizente com seu nome:
+## Resultado Esperado
+- O cardapio abrira normalmente com os 10 produtos e suas imagens
+- A pagina Mesas mostrara as 5 mesas criadas
+- Nao havera mais empresas duplicadas no banco
 
-| Produto | Imagem |
-|---------|--------|
-| Bolinho de Bacalhau | Imagem de bolinhos fritos |
-| Bruschetta Caprese | Imagem de bruschetta |
-| File Mignon ao Molho Madeira | Imagem de file mignon |
-| Salmao Grelhado | Imagem de salmao |
-| Risoto de Camarao | Imagem de risoto |
-| Suco Natural | Imagem de suco |
-| Refrigerante Lata | Imagem de refrigerante |
-| Caipirinha | Imagem de caipirinha |
-| Petit Gateau | Imagem de petit gateau |
-| Pudim de Leite | Imagem de pudim |
+## Detalhes Tecnicos
+Serão executados os seguintes comandos SQL no banco de dados:
+1. `UPDATE categorias SET empresa_id = '3e3d5937-...' WHERE empresa_id = 'a1b2c3d4-...'`
+2. `UPDATE produtos SET empresa_id = '3e3d5937-...' WHERE empresa_id = 'a1b2c3d4-...'`
+3. `UPDATE mesas SET empresa_id = '3e3d5937-...' WHERE empresa_id = 'a1b2c3d4-...'`
+4. `UPDATE empresas SET delivery_ativo = true, ... WHERE id = '3e3d5937-...'`
+5. `UPDATE produtos SET imagem_url = '...' WHERE id = '...'` (para cada produto)
+6. `DELETE FROM empresas WHERE id = 'a1b2c3d4-...'`
 
-As imagens serao URLs publicas de bancos de imagem gratuitos (Unsplash/Pexels).
-
----
-
-## Secao Tecnica
-
-### Arquivo: `.env`
-Restaurar para valores originais:
-```
-VITE_SUPABASE_PROJECT_ID="jejpufnzaineihemdrgd"
-VITE_SUPABASE_PUBLISHABLE_KEY="[chave original do Lovable Cloud]"
-VITE_SUPABASE_URL="https://jejpufnzaineihemdrgd.supabase.co"
-```
-
-### Banco de dados
-Executar UPDATE nos 10 produtos para preencher `imagem_url` com URLs publicas de imagens de alimentos.
-
-### Resultado esperado
-- Ao clicar em "Visualizar Cardapio" na pagina Mesas, o cardapio abrira normalmente com os produtos e imagens
-- Os produtos aparecerao com fotos no cardapio digital e na pagina de administracao
-
+Nenhum arquivo de codigo precisa ser alterado.
