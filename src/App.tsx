@@ -130,30 +130,54 @@ function SubscriptionHandler() {
   const location = useLocation();
   useEffect(() => {
     try {
+      // Ignorar rotas de subscription (já tratam o fluxo)
       if (location.pathname.startsWith('/subscription')) {
         return;
       }
       const params = new URLSearchParams(window.location.search);
       if (params.get('subscription') === 'success') {
+        const planoId = params.get('planoId');
+        const periodo = params.get('periodo');
+        const sessionId = params.get('session_id');
+
         (async () => {
           try {
-            const planoId = params.get('planoId');
-            const periodo = params.get('periodo');
-            // store pending plan so onboarding/signup can link company
-            if (planoId) {
-              try {
-                localStorage.setItem('post_subscribe_plan', JSON.stringify({ planoId, periodo }));
-              } catch (e) {
-                console.warn('Erro salvando post_subscribe_plan', e);
+            const { supabase } = await import('@/integrations/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (user) {
+              // Usuário logado: verificar se tem empresa
+              const { data: prof } = await supabase
+                .from('profiles')
+                .select('empresa_id')
+                .eq('id', user.id)
+                .single();
+
+              if (prof?.empresa_id) {
+                // Upgrade: processar assinatura diretamente sem deslogar
+                if (sessionId) {
+                  try {
+                    await supabase.functions.invoke('process-subscription', {
+                      body: { sessionId, empresaId: prof.empresa_id, planoId, periodo },
+                    });
+                  } catch (e) {
+                    console.warn('Erro ao processar assinatura inline:', e);
+                  }
+                }
+                // Redirecionar para o admin sem deslogar
+                navigate('/admin', { replace: true });
+                return;
               }
             }
-            // force sign out so user logs in again and gets updated roles
-            const { supabase } = await import('@/integrations/supabase/client');
-            await supabase.auth.signOut();
-            // send user to auth
-            navigate('/auth');
+
+            // Novo usuário (sem empresa): redirecionar para /subscription/success
+            const successParams = new URLSearchParams();
+            if (sessionId) successParams.set('session_id', sessionId);
+            if (planoId) successParams.set('planoId', planoId);
+            if (periodo) successParams.set('periodo', periodo);
+            navigate(`/subscription/success?${successParams.toString()}`, { replace: true });
           } catch (e) {
-            console.warn('Erro ao deslogar após subscribe', e);
+            console.warn('Erro no SubscriptionHandler:', e);
           }
         })();
       }
