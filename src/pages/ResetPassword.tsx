@@ -13,19 +13,66 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isValid, setIsValid] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    let resolved = false;
+
+    // Listen for PASSWORD_RECOVERY event (fires when Supabase processes the recovery token)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (resolved) return;
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        resolved = true;
         setIsValid(true);
-      } else {
-        toast.error('Link de recuperação inválido ou expirado.');
-        navigate('/auth/restaurante');
+        setChecking(false);
+        sessionStorage.removeItem('password_recovery');
       }
     });
+
+    // Also check if we already have a session (e.g. from the redirect)
+    const checkSession = async () => {
+      // Small delay to let onAuthStateChange fire first
+      await new Promise(r => setTimeout(r, 500));
+      if (resolved) return;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const hasFlag = sessionStorage.getItem('password_recovery') === 'true';
+
+      if (session && hasFlag) {
+        resolved = true;
+        setIsValid(true);
+        setChecking(false);
+        sessionStorage.removeItem('password_recovery');
+      } else if (session) {
+        // Has session but no recovery flag — might still be valid recovery
+        resolved = true;
+        setIsValid(true);
+        setChecking(false);
+      } else {
+        // Wait a bit more for the token to be processed
+        await new Promise(r => setTimeout(r, 1500));
+        if (resolved) return;
+        
+        const { data: { session: retrySession } } = await supabase.auth.getSession();
+        if (retrySession) {
+          resolved = true;
+          setIsValid(true);
+          setChecking(false);
+        } else {
+          resolved = true;
+          setChecking(false);
+          toast.error('Link de recuperação inválido ou expirado.');
+          navigate('/auth');
+        }
+      }
+    };
+
+    checkSession();
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,9 +96,20 @@ export default function ResetPassword() {
       toast.error('Erro ao redefinir senha. Tente novamente.');
     } else {
       toast.success('Senha redefinida com sucesso!');
-      navigate('/auth/restaurante');
+      navigate('/auth');
     }
   };
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+          <p className="mt-4 text-muted-foreground">Verificando link de recuperação...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isValid) return null;
 
