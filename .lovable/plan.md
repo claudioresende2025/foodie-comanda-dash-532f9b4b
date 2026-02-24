@@ -1,74 +1,87 @@
 
 
-# Reestruturacao do Fluxo de Login
+# Correcao: Barra de Atualizacao Nao Aparece
 
-## Problema Atual
+## Problema
 
-A tela `/auth` (AuthChoice) mostra 3 opcoes: "Sou Cliente", "Sou Restaurante" e "Sou Funcionario". Isso e confuso porque:
-1. Clientes nao deveriam ver opcoes de restaurante/funcionario
-2. "Sou Restaurante" e "Sou Funcionario" levam para a mesma tela (`/auth/restaurante`)
-3. A pagina de escolha adiciona um passo desnecessario
+A barra verde "Nova atualizacao disponivel!" depende 100% do Service Worker detectar uma versao nova em espera (`waiting`). Se o SW nao estiver ativo (como no preview do Lovable em iframe) ou se o navegador nao disparar o evento `updatefound`, a barra nunca aparece.
+
+## Causa Raiz
+
+O componente `UpdateNotification` so mostra a barra quando:
+1. `registration.waiting` existe (SW novo instalado esperando), OU
+2. O evento `statechange` do SW muda para `installed`
+
+No ambiente de preview (iframe), Service Workers frequentemente nao funcionam. Alem disso, ha um bug de closure: a funcao `triggerShowWithDelay` referencia `showTimer` do render inicial, pois o `useEffect` tem dependencias vazias `[]`.
 
 ## Solucao
 
-Simplificar para **dois fluxos separados** com acesso direto:
-
-```text
-/auth          -->  Login/Cadastro para Restaurantes e Funcionarios (tela atual Auth.tsx)
-/auth/cliente  -->  Login/Cadastro para Clientes (tela atual AuthCliente.tsx, ja existe)
-```
-
-Remover a pagina intermediaria `AuthChoice` completamente.
+Adicionar um mecanismo complementar de deteccao de versao baseado em **build timestamp**. Independente do SW, o componente compara o timestamp do build atual com o armazenado localmente. Se diferir, mostra a barra.
 
 ### Alteracoes
 
 | Arquivo | O que muda |
-|---------|------------|
-| `src/App.tsx` | Rota `/auth` aponta diretamente para `Auth` (login restaurante/funcionario). Remover import de `AuthChoice`. |
-| `src/pages/Index.tsx` | Usuarios nao logados redirecionam para `/auth` (staff) - comportamento ja existente, sem mudanca. |
-| `src/pages/AuthChoice.tsx` | Arquivo removido (nao sera mais usado). |
-| `src/pages/Auth.tsx` | Adicionar um link "Sou cliente? Acesse aqui" no rodape para direcionar clientes perdidos para `/auth/cliente`. |
-| `src/pages/AuthCliente.tsx` | Adicionar um link "Sou restaurante/funcionario? Acesse aqui" no rodape para direcionar para `/auth`. Adicionar opcao "Esqueci minha senha". |
+|---------|-----------|
+| `src/components/UpdateNotification.tsx` | Adicionar verificacao por build version alem do SW. Corrigir bug de closure do `triggerShowWithDelay` usando `useRef`. |
+| `vite.config.ts` | Adicionar `define` com `__BUILD_TIMESTAMP__` para injetar timestamp do build. |
 
 ### Detalhes Tecnicos
 
-**App.tsx - Rotas**
-```text
-ANTES:
-  /auth              -> AuthChoice (pagina de escolha)
-  /auth/cliente      -> AuthCliente
-  /auth/restaurante  -> Auth
-
-DEPOIS:
-  /auth              -> Auth (login direto para restaurante/funcionario)
-  /auth/cliente      -> AuthCliente (login direto para clientes)
-  /auth/restaurante  -> removido (nao precisa mais)
+**vite.config.ts** - Injetar timestamp do build:
+```typescript
+define: {
+  '__BUILD_TIMESTAMP__': JSON.stringify(Date.now().toString()),
+}
 ```
 
-**Auth.tsx - Rodape**
-Adicionar link discreto abaixo do card:
-```text
-"E cliente? Faca seus pedidos aqui" -> navega para /auth/cliente
+**UpdateNotification.tsx** - Adicionar deteccao por versao:
+```typescript
+// Ao montar, verificar se o build mudou
+const currentBuild = (window as any).__BUILD_TIMESTAMP__ || '';
+const lastBuild = localStorage.getItem('app_build_version');
+
+if (lastBuild && lastBuild !== currentBuild) {
+  // Build novo detectado - mostrar notificacao
+  setShowNotification(true);
+  sessionStorage.setItem('update_available', '1');
+}
+
+// Ao clicar em "Atualizar", salvar a versao atual
+localStorage.setItem('app_build_version', currentBuild);
 ```
 
-**AuthCliente.tsx - Rodape e melhorias**
-Adicionar link discreto:
-```text
-"E restaurante ou funcionario? Acesse aqui" -> navega para /auth
+**Correcao do bug de closure** - Usar `useRef` para o timer:
+```typescript
+const showTimerRef = useRef<number | null>(null);
+
+const triggerShowWithDelay = () => {
+  if (showTimerRef.current) return;
+  showTimerRef.current = window.setTimeout(() => {
+    setShowNotification(true);
+    showTimerRef.current = null;
+  }, 10000);
+};
 ```
-Adicionar botao "Esqueci minha senha" (igual ao Auth.tsx) para clientes tambem poderem recuperar senha.
 
 ### Fluxo Resultante
 
 ```text
-Usuario abre o app (/)
+App carrega
   |
-  +-- Staff logado -> /admin (dashboard)
-  +-- Cliente logado -> /delivery ou /menu
-  +-- Nao logado -> /auth (login restaurante/funcionario)
-                      |
-                      +-- Link "Sou cliente" -> /auth/cliente
+  +-- Verifica SW waiting? -> SIM -> mostra barra (10s delay)
+  |
+  +-- Verifica build timestamp mudou? -> SIM -> mostra barra imediatamente
+  |
+  +-- SW detecta updatefound -> mostra barra (10s delay)
+  |
+  +-- Nenhuma mudanca -> nao mostra nada
 ```
 
-Clientes que acessam via delivery (`/delivery/auth`) continuam usando a tela dedicada que ja existe.
+### Resultado Esperado
+
+1. Apos qualquer modificacao de codigo, o build gera um novo timestamp
+2. Na proxima vez que o usuario abre o app, detecta que o timestamp mudou
+3. Barra verde aparece com "Nova atualizacao disponivel!"
+4. Ao clicar "Atualizar", salva o timestamp atual e recarrega
+5. Funciona com ou sem Service Worker ativo
 
