@@ -22,18 +22,12 @@ serve(async (req) => {
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     
-    // IMPORTANTE: Usar banco externo (zlwpxflqtyhdwanmupgy) via secrets
-    const externalSupabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
-    const externalSupabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-    
-    // Fallback para variáveis padrão se externas não estiverem configuradas
-    const supabaseUrl = externalSupabaseUrl || Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = externalSupabaseServiceKey || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     logStep("Environment check", { 
       hasStripeKey: !!stripeKey, 
-      usingExternalDb: !!externalSupabaseUrl,
-      supabaseUrl: supabaseUrl?.substring(0, 40) + "..."
+      hasSupabaseUrl: !!supabaseUrl
     });
 
     if (!stripeKey || !supabaseUrl || !supabaseServiceKey) {
@@ -51,7 +45,7 @@ serve(async (req) => {
       return resp.json();
     };
 
-    // Criar cliente Supabase - usando banco externo
+    // Criar cliente Supabase
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
@@ -103,9 +97,7 @@ serve(async (req) => {
       );
     }
 
-    logStep("Creating new order in database (EXTERNAL DB)", orderData);
-
-    // Criar pedido no banco de dados EXTERNO
+    logStep("Creating new order in database", orderData);
     const { data: pedido, error: pedidoError } = await supabase
       .from("pedidos_delivery")
       .insert({
@@ -137,7 +129,7 @@ serve(async (req) => {
       throw new Error(`Erro ao criar pedido no banco de dados: ${pedidoError.message}`);
     }
 
-    logStep("Order created successfully in EXTERNAL DB", { pedidoId: pedido.id });
+    logStep("Order created successfully", { pedidoId: pedido.id });
 
     // Inserir itens do pedido
     const items = JSON.parse(orderData.items);
@@ -307,7 +299,7 @@ serve(async (req) => {
       }
     }
 
-    logStep("Order completed successfully in EXTERNAL DB", { pedidoId: pedido.id });
+    logStep("Order completed successfully", { pedidoId: pedido.id });
 
     return new Response(
       JSON.stringify({ 

@@ -23,18 +23,12 @@ serve(async (req) => {
     // Verificar variáveis de ambiente
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     
-    // IMPORTANTE: Usar banco externo (zlwpxflqtyhdwanmupgy) via secrets
-    const externalSupabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
-    const externalSupabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-    
-    // Fallback para variáveis padrão se externas não estiverem configuradas
-    const supabaseUrl = externalSupabaseUrl || Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = externalSupabaseServiceKey || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     logStep("Environment check", { 
       hasStripeKey: !!stripeKey, 
-      usingExternalDb: !!externalSupabaseUrl,
-      supabaseUrl: supabaseUrl?.substring(0, 40) + "..."
+      hasSupabaseUrl: !!supabaseUrl
     });
 
     if (!stripeKey) {
@@ -98,7 +92,7 @@ serve(async (req) => {
       return json;
     };
 
-    // Criar cliente Supabase com service role - usando banco externo
+    // Criar cliente Supabase com service role
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
