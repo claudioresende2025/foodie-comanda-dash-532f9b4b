@@ -1,65 +1,74 @@
 
-# Correcao: Erro Foreign Key ao Criar Pedido Delivery
 
-## Problema
+# Reestruturacao do Fluxo de Login
 
-Ao finalizar um pagamento via cartao ou PIX no delivery, aparece o erro:
-```
-insert or update on table "pedidos_delivery" violates foreign key constraint "pedidos_delivery_empresa_id_fkey"
-Key (empresa_id)=(3e3d5937-...) is not present in table "empresas"
-```
+## Problema Atual
 
-## Causa Raiz
-
-O sistema usa **duas bases de dados diferentes** que estao dessincronizadas:
-
-```text
-Frontend (app)          -->  Lovable Cloud DB (jejpufnzaineihemdrgd)
-                              - Contem empresas (ex: Sabor e Arte)
-                              - Cliente navega e monta o pedido aqui
-
-Edge Functions          -->  DB Externo (zlwpxflqtyhdwanmupgy)
-(complete-delivery-order)     - NAO contem as mesmas empresas
-                              - Tenta inserir pedido com empresa_id que nao existe aqui
-                              - ERRO: foreign key violation
-```
-
-O frontend le as empresas do Lovable Cloud DB, mas as edge functions `complete-delivery-order` e `create-delivery-checkout` inserem pedidos no DB externo via `EXTERNAL_SUPABASE_URL`. Como a empresa nao existe no DB externo, a foreign key falha.
+A tela `/auth` (AuthChoice) mostra 3 opcoes: "Sou Cliente", "Sou Restaurante" e "Sou Funcionario". Isso e confuso porque:
+1. Clientes nao deveriam ver opcoes de restaurante/funcionario
+2. "Sou Restaurante" e "Sou Funcionario" levam para a mesma tela (`/auth/restaurante`)
+3. A pagina de escolha adiciona um passo desnecessario
 
 ## Solucao
 
-Remover a logica de banco externo das edge functions. Como o frontend ja usa o Lovable Cloud DB, as edge functions devem usar o **mesmo banco** (variaveis padrao `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`).
+Simplificar para **dois fluxos separados** com acesso direto:
 
-### Arquivos a Modificar
+```text
+/auth          -->  Login/Cadastro para Restaurantes e Funcionarios (tela atual Auth.tsx)
+/auth/cliente  -->  Login/Cadastro para Clientes (tela atual AuthCliente.tsx, ja existe)
+```
 
-| Arquivo | Alteracao |
-|---------|-----------|
-| `supabase/functions/complete-delivery-order/index.ts` | Remover logica de EXTERNAL_SUPABASE_URL/KEY. Usar apenas SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY |
-| `supabase/functions/create-delivery-checkout/index.ts` | Mesma alteracao - remover fallback externo |
-| `supabase/functions/verify-delivery-payment/index.ts` | Verificar e aplicar mesma correcao se necessario |
+Remover a pagina intermediaria `AuthChoice` completamente.
+
+### Alteracoes
+
+| Arquivo | O que muda |
+|---------|------------|
+| `src/App.tsx` | Rota `/auth` aponta diretamente para `Auth` (login restaurante/funcionario). Remover import de `AuthChoice`. |
+| `src/pages/Index.tsx` | Usuarios nao logados redirecionam para `/auth` (staff) - comportamento ja existente, sem mudanca. |
+| `src/pages/AuthChoice.tsx` | Arquivo removido (nao sera mais usado). |
+| `src/pages/Auth.tsx` | Adicionar um link "Sou cliente? Acesse aqui" no rodape para direcionar clientes perdidos para `/auth/cliente`. |
+| `src/pages/AuthCliente.tsx` | Adicionar um link "Sou restaurante/funcionario? Acesse aqui" no rodape para direcionar para `/auth`. Adicionar opcao "Esqueci minha senha". |
 
 ### Detalhes Tecnicos
 
-Nas 3 edge functions, substituir:
-
+**App.tsx - Rotas**
 ```text
 ANTES:
-  const externalSupabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
-  const externalSupabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-  const supabaseUrl = externalSupabaseUrl || Deno.env.get("SUPABASE_URL");
-  const supabaseServiceKey = externalSupabaseServiceKey || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  /auth              -> AuthChoice (pagina de escolha)
+  /auth/cliente      -> AuthCliente
+  /auth/restaurante  -> Auth
 
 DEPOIS:
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  /auth              -> Auth (login direto para restaurante/funcionario)
+  /auth/cliente      -> AuthCliente (login direto para clientes)
+  /auth/restaurante  -> removido (nao precisa mais)
 ```
 
-Tambem remover os logs que mencionam "EXTERNAL DB" e "usingExternalDb".
+**Auth.tsx - Rodape**
+Adicionar link discreto abaixo do card:
+```text
+"E cliente? Faca seus pedidos aqui" -> navega para /auth/cliente
+```
 
-## Resultado Esperado
+**AuthCliente.tsx - Rodape e melhorias**
+Adicionar link discreto:
+```text
+"E restaurante ou funcionario? Acesse aqui" -> navega para /auth
+```
+Adicionar botao "Esqueci minha senha" (igual ao Auth.tsx) para clientes tambem poderem recuperar senha.
 
-1. Cliente faz pedido no delivery
-2. Paga via cartao ou PIX
-3. Edge function insere o pedido no **mesmo banco** que o frontend usa
-4. Empresa existe, foreign key valida, pedido criado com sucesso
-5. Tela de sucesso aparece normalmente
+### Fluxo Resultante
+
+```text
+Usuario abre o app (/)
+  |
+  +-- Staff logado -> /admin (dashboard)
+  +-- Cliente logado -> /delivery ou /menu
+  +-- Nao logado -> /auth (login restaurante/funcionario)
+                      |
+                      +-- Link "Sou cliente" -> /auth/cliente
+```
+
+Clientes que acessam via delivery (`/delivery/auth`) continuam usando a tela dedicada que ja existe.
+
