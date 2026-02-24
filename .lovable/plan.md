@@ -1,58 +1,65 @@
 
-# Correcao: App Travado no "Carregando..."
+# Correcao: Erro Foreign Key ao Criar Pedido Delivery
 
 ## Problema
 
-A correcao anterior adicionou `await fetchProfile()` dentro do callback `onAuthStateChange`. O Supabase nao suporta bem callbacks assincronos longos neste listener -- o evento `INITIAL_SESSION` trava e `setLoading(false)` nunca executa.
+Ao finalizar um pagamento via cartao ou PIX no delivery, aparece o erro:
+```
+insert or update on table "pedidos_delivery" violates foreign key constraint "pedidos_delivery_empresa_id_fkey"
+Key (empresa_id)=(3e3d5937-...) is not present in table "empresas"
+```
 
 ## Causa Raiz
 
-O `onAuthStateChange` dispara o evento `INITIAL_SESSION` sincronamente durante o setup. Quando o callback e `async` com `await` de uma chamada de rede (fetchProfile), o Supabase fica esperando, e o `getSession()` logo abaixo tambem depende do mesmo estado interno, criando um deadlock.
+O sistema usa **duas bases de dados diferentes** que estao dessincronizadas:
+
+```text
+Frontend (app)          -->  Lovable Cloud DB (jejpufnzaineihemdrgd)
+                              - Contem empresas (ex: Sabor e Arte)
+                              - Cliente navega e monta o pedido aqui
+
+Edge Functions          -->  DB Externo (zlwpxflqtyhdwanmupgy)
+(complete-delivery-order)     - NAO contem as mesmas empresas
+                              - Tenta inserir pedido com empresa_id que nao existe aqui
+                              - ERRO: foreign key violation
+```
+
+O frontend le as empresas do Lovable Cloud DB, mas as edge functions `complete-delivery-order` e `create-delivery-checkout` inserem pedidos no DB externo via `EXTERNAL_SUPABASE_URL`. Como a empresa nao existe no DB externo, a foreign key falha.
 
 ## Solucao
 
-Manter o `onAuthStateChange` leve (sem await de rede) e usar apenas o `getSession` para o carregamento inicial com profile. O listener so precisa atualizar estado para mudancas POSTERIORES (login, logout, troca de token).
+Remover a logica de banco externo das edge functions. Como o frontend ja usa o Lovable Cloud DB, as edge functions devem usar o **mesmo banco** (variaveis padrao `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`).
 
-### Alteracao em `src/contexts/AuthContext.tsx`
-
-```
-onAuthStateChange(async (event, session) => {
-  // PASSWORD_RECOVERY continua igual
-  setSession(session);
-  setUser(session?.user ?? null);
-
-  if (session?.user) {
-    // Nao bloquear com await - usar .then() para nao travar o listener
-    fetchProfile(session.user.id);
-  } else {
-    setProfile(null);
-  }
-  // NAO setar loading aqui - deixar o getSession controlar o loading inicial
-});
-
-// getSession continua com await (este sim pode ser async sem problema)
-supabase.auth.getSession().then(async ({ data: { session } }) => {
-  setSession(session);
-  setUser(session?.user ?? null);
-
-  if (session?.user) {
-    await fetchProfile(session.user.id); // await aqui e seguro
-  }
-
-  setLoading(false); // unico ponto que libera o loading
-});
-```
-
-## Arquivo a Modificar
+### Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/contexts/AuthContext.tsx` | Remover `await` do `onAuthStateChange` e remover `setLoading(false)` de dentro dele. Manter `await` apenas no `getSession`. |
+| `supabase/functions/complete-delivery-order/index.ts` | Remover logica de EXTERNAL_SUPABASE_URL/KEY. Usar apenas SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY |
+| `supabase/functions/create-delivery-checkout/index.ts` | Mesma alteracao - remover fallback externo |
+| `supabase/functions/verify-delivery-payment/index.ts` | Verificar e aplicar mesma correcao se necessario |
+
+### Detalhes Tecnicos
+
+Nas 3 edge functions, substituir:
+
+```text
+ANTES:
+  const externalSupabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL");
+  const externalSupabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl = externalSupabaseUrl || Deno.env.get("SUPABASE_URL");
+  const supabaseServiceKey = externalSupabaseServiceKey || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+DEPOIS:
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+```
+
+Tambem remover os logs que mencionam "EXTERNAL DB" e "usingExternalDb".
 
 ## Resultado Esperado
 
-1. App abre -> mostra loading
-2. `getSession` carrega sessao e profile (com await)
-3. `setLoading(false)` executa apos profile estar pronto
-4. Index.tsx redireciona corretamente para `/admin`
-5. Sem travamento, sem flickering
+1. Cliente faz pedido no delivery
+2. Paga via cartao ou PIX
+3. Edge function insere o pedido no **mesmo banco** que o frontend usa
+4. Empresa existe, foreign key valida, pedido criado com sucesso
+5. Tela de sucesso aparece normalmente
