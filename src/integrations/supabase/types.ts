@@ -1813,6 +1813,7 @@ export type Database = {
         | "saiu_entrega"
         | "entregue"
         | "cancelado"
+        | "pago"
       forma_pagamento: "dinheiro" | "pix" | "cartao_credito" | "cartao_debito"
       mesa_status: "disponivel" | "ocupada" | "reservada" | "juncao"
       pedido_status:
@@ -1957,6 +1958,7 @@ export const Constants = {
         "saiu_entrega",
         "entregue",
         "cancelado",
+        "pago",
       ],
       forma_pagamento: ["dinheiro", "pix", "cartao_credito", "cartao_debito"],
       mesa_status: ["disponivel", "ocupada", "reservada", "juncao"],
