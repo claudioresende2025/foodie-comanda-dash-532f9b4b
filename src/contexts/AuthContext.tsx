@@ -84,8 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Use setTimeout to avoid potential race conditions
-          setTimeout(() => fetchProfile(session.user.id), 0);
+          await fetchProfile(session.user.id);
         } else {
           setProfile(null);
         }
@@ -95,12 +94,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchProfile(session.user.id);
+        await fetchProfile(session.user.id);
       }
       
       setLoading(false);
