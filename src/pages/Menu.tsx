@@ -378,7 +378,7 @@ export default function Menu() {
       // Busca empresa diretamente - RLS policy permite acesso público
       const { data: empresaData, error: empresaError } = await supabase
         .from("empresas")
-        .select("id, nome_fantasia, logo_url")
+        .select("id, nome_fantasia, logo_url, chave_pix, endereco_completo")
         .eq("id", empresaId)
         .maybeSingle();
 
