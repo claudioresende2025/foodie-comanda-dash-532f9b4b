@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { User, Loader2, ArrowLeft, Mail, Lock } from 'lucide-react';
 import { z } from 'zod';
@@ -21,6 +22,8 @@ export default function AuthCliente() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
   const [empresaInfo, setEmpresaInfo] = useState<{ id: string; nome: string } | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
   
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -251,7 +254,67 @@ export default function AuthCliente() {
                       'Entrar'
                     )}
                   </Button>
+                  <button
+                    type="button"
+                    className="w-full text-sm text-orange-600 hover:underline mt-2"
+                    onClick={() => {
+                      setForgotEmail(email);
+                      setShowForgotPassword(true);
+                    }}
+                  >
+                    Esqueci minha senha
+                  </button>
                 </form>
+
+                {/* Dialog Esqueci minha senha */}
+                <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Recuperar Senha</DialogTitle>
+                      <DialogDescription>
+                        Digite seu e-mail para receber o link de recuperação
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="forgot-email-cliente">E-mail</Label>
+                        <Input
+                          id="forgot-email-cliente"
+                          type="email"
+                          placeholder="seu@email.com"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => setShowForgotPassword(false)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button 
+                          className="flex-1 bg-orange-500 hover:bg-orange-600"
+                          onClick={async () => {
+                            if (!forgotEmail) { toast.error('Digite seu e-mail'); return; }
+                            try { emailSchema.parse(forgotEmail); } catch { toast.error('E-mail inválido'); return; }
+                            setIsLoading(true);
+                            const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+                              redirectTo: `${window.location.origin}/reset-password`,
+                            });
+                            setIsLoading(false);
+                            if (error) { toast.error('Erro ao enviar e-mail de recuperação'); }
+                            else { toast.success('E-mail de recuperação enviado!'); setShowForgotPassword(false); setForgotEmail(''); }
+                          }}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enviar'}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
 
               <TabsContent value="signup">
@@ -321,8 +384,8 @@ export default function AuthCliente() {
           </CardContent>
         </Card>
 
-        {/* Voltar */}
-        <div className="mt-6 text-center">
+        {/* Links de navegação */}
+        <div className="mt-6 text-center space-y-3">
           <Button 
             variant="ghost" 
             onClick={() => navigate(empresaId ? `/menu/${empresaId}` : '/delivery')}
@@ -331,6 +394,15 @@ export default function AuthCliente() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             {empresaId ? 'Voltar ao Cardápio' : 'Ver Restaurantes'}
           </Button>
+          <div>
+            <button
+              type="button"
+              className="text-sm text-white/80 hover:text-white transition-colors"
+              onClick={() => navigate('/auth')}
+            >
+              É restaurante ou funcionário? <span className="underline">Acesse aqui</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
