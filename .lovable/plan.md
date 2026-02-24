@@ -1,54 +1,58 @@
 
-
-# Correcao: App Sempre Abrir no Dashboard para Administradores
+# Correcao: App Travado no "Carregando..."
 
 ## Problema
 
-Quando o usuario abre o app no celular, ele e redirecionado para o cardapio ou para a pagina de cadastrar empresa, em vez de ir direto para o dashboard.
+A correcao anterior adicionou `await fetchProfile()` dentro do callback `onAuthStateChange`. O Supabase nao suporta bem callbacks assincronos longos neste listener -- o evento `INITIAL_SESSION` trava e `setLoading(false)` nunca executa.
 
-**Causa raiz**: No `AuthContext.tsx`, o estado `loading` muda para `false` ANTES do perfil do usuario ser carregado. Isso acontece porque o `fetchProfile` e chamado via `setTimeout` (linha 88) e o `setLoading(false)` executa imediatamente (linha 93).
+## Causa Raiz
 
-Resultado: quando o `Index.tsx` verifica o estado, `loading=false` mas `profile=null`, entao:
-- `!profile?.empresa_id` e `true` -> redireciona para onboarding (cadastrar empresa)
-- Ou em outro momento, o profile carrega parcialmente e redireciona para o cardapio
+O `onAuthStateChange` dispara o evento `INITIAL_SESSION` sincronamente durante o setup. Quando o callback e `async` com `await` de uma chamada de rede (fetchProfile), o Supabase fica esperando, e o `getSession()` logo abaixo tambem depende do mesmo estado interno, criando um deadlock.
 
 ## Solucao
 
-### 1. Corrigir AuthContext.tsx - Aguardar profile antes de liberar loading
+Manter o `onAuthStateChange` leve (sem await de rede) e usar apenas o `getSession` para o carregamento inicial com profile. O listener so precisa atualizar estado para mudancas POSTERIORES (login, logout, troca de token).
 
-Alterar a logica para que `setLoading(false)` so seja chamado APOS o `fetchProfile` terminar. Remover o `setTimeout` e usar `await` direto.
+### Alteracao em `src/contexts/AuthContext.tsx`
 
 ```
-// ANTES (quebrado):
-setTimeout(() => fetchProfile(session.user.id), 0);
-setLoading(false);
+onAuthStateChange(async (event, session) => {
+  // PASSWORD_RECOVERY continua igual
+  setSession(session);
+  setUser(session?.user ?? null);
 
-// DEPOIS (correto):
-await fetchProfile(session.user.id);
-setLoading(false);
+  if (session?.user) {
+    // Nao bloquear com await - usar .then() para nao travar o listener
+    fetchProfile(session.user.id);
+  } else {
+    setProfile(null);
+  }
+  // NAO setar loading aqui - deixar o getSession controlar o loading inicial
+});
+
+// getSession continua com await (este sim pode ser async sem problema)
+supabase.auth.getSession().then(async ({ data: { session } }) => {
+  setSession(session);
+  setUser(session?.user ?? null);
+
+  if (session?.user) {
+    await fetchProfile(session.user.id); // await aqui e seguro
+  }
+
+  setLoading(false); // unico ponto que libera o loading
+});
 ```
 
-Mesma correcao no bloco `getSession()` (linhas 98-107).
-
-### 2. Verificar Index.tsx - Logica de redirecionamento
-
-A logica atual do Index.tsx esta correta em si:
-- Usuario com role staff -> `/admin`
-- Usuario sem empresa -> `/admin/onboarding`
-- Usuario cliente -> `/menu`
-
-O problema e apenas que o `profile` chega como `null` por causa do timing. Com a correcao do AuthContext, o profile estara disponivel quando o Index verificar.
-
-## Arquivos a Modificar
+## Arquivo a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/contexts/AuthContext.tsx` | Aguardar `fetchProfile` completar antes de `setLoading(false)` em ambos os locais (onAuthStateChange e getSession) |
+| `src/contexts/AuthContext.tsx` | Remover `await` do `onAuthStateChange` e remover `setLoading(false)` de dentro dele. Manter `await` apenas no `getSession`. |
 
 ## Resultado Esperado
 
-1. Usuario abre o app
-2. Tela de loading aparece enquanto autenticacao E profile sao carregados
-3. Profile carrega com `empresa_id` e `role=proprietario`
-4. Index redireciona para `/admin` (dashboard)
-5. Sem flicker, sem redirecionamento errado
+1. App abre -> mostra loading
+2. `getSession` carrega sessao e profile (com await)
+3. `setLoading(false)` executa apos profile estar pronto
+4. Index.tsx redireciona corretamente para `/admin`
+5. Sem travamento, sem flickering
