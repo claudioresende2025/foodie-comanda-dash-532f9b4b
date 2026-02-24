@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { 
   Loader2, ArrowLeft, Clock, CheckCircle2, Truck, Package, 
-  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard 
+  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard,
+  AlertTriangle
 } from 'lucide-react';
 import { Database } from '@/integrations/supabase/types';
 import { DeliveryMap } from '@/components/delivery/DeliveryMap';
 import { useDeliveryTracking } from '@/hooks/useDeliveryTracking';
+import { toast } from 'sonner';
 
 type DeliveryStatus = Database['public']['Enums']['delivery_status'];
 
@@ -27,6 +29,13 @@ const statusConfig: Record<DeliveryStatus, {
     bgColor: 'bg-yellow-100',
     icon: Clock,
     message: 'Seu pedido foi recebido e está aguardando confirmação do restaurante.'
+  },
+  pago: { 
+    label: 'Pagamento Confirmado', 
+    color: 'text-emerald-600', 
+    bgColor: 'bg-emerald-100',
+    icon: CreditCard,
+    message: 'Pagamento confirmado! Aguardando o restaurante aceitar seu pedido.'
   },
   confirmado: { 
     label: 'Confirmado', 
@@ -65,7 +74,7 @@ const statusConfig: Record<DeliveryStatus, {
   },
 };
 
-const statusOrder: DeliveryStatus[] = ['pendente', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
+const statusOrder: DeliveryStatus[] = ['pendente', 'pago', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
 
 export default function DeliveryTracking() {
   const { pedidoId } = useParams<{ pedidoId: string }>();
@@ -74,9 +83,35 @@ export default function DeliveryTracking() {
   const [empresa, setEmpresa] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [customerLocation, setCustomerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<'requesting' | 'granted' | 'denied' | 'unavailable'>('requesting');
   
   // Hook para rastreamento em tempo real
   const { location: deliveryLocation, hasLocation } = useDeliveryTracking(pedidoId);
+
+  // Solicitar GPS do cliente
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setGpsStatus('unavailable');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const loc = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        setCustomerLocation(loc);
+        setGpsStatus('granted');
+      },
+      (err) => {
+        console.error('GPS negado:', err);
+        setGpsStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }, []);
 
   const fetchPedido = useCallback(async () => {
     if (!pedidoId) return;
@@ -99,6 +134,17 @@ export default function DeliveryTracking() {
       }
 
       setPedido(data);
+
+      // Salvar coordenadas GPS do cliente no endereço (se tiver GPS ativo)
+      if (customerLocation && data.endereco?.id) {
+        supabase
+          .from('enderecos_cliente')
+          .update({ latitude: customerLocation.latitude, longitude: customerLocation.longitude } as any)
+          .eq('id', data.endereco.id)
+          .then(({ error: updateErr }) => {
+            if (updateErr) console.error('Erro ao salvar coordenadas:', updateErr);
+          });
+      }
 
       // Fetch empresa
       const { data: empresaData } = await supabase
@@ -195,6 +241,27 @@ export default function DeliveryTracking() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Aviso de GPS desativado */}
+        {(gpsStatus === 'denied' || gpsStatus === 'unavailable') && (
+          <Card className="border-yellow-300 bg-yellow-50">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-yellow-800">
+                    {gpsStatus === 'denied' ? 'GPS desativado' : 'GPS indisponível'}
+                  </p>
+                  <p className="text-sm text-yellow-700 mt-1">
+                    {gpsStatus === 'denied' 
+                      ? 'Ative a localização nas configurações do navegador para ver sua posição no mapa.'
+                      : 'Seu navegador não suporta geolocalização.'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Map Card - Show when status is 'saiu_entrega' */}
         {currentStatus === 'saiu_entrega' && (
           <Card className="overflow-hidden">
@@ -233,14 +300,14 @@ export default function DeliveryTracking() {
                         }
                       : null
                   }
-                  customerLocation={
+                  customerLocation={customerLocation || (
                     pedido.endereco?.latitude && pedido.endereco?.longitude
                       ? {
                           latitude: Number(pedido.endereco.latitude),
                           longitude: Number(pedido.endereco.longitude),
                         }
                       : null
-                  }
+                  )}
                   restaurantLocation={
                     empresa?.latitude && empresa?.longitude
                       ? {
@@ -256,6 +323,7 @@ export default function DeliveryTracking() {
                       : undefined
                   }
                   showRoute={true}
+                  gpsStatus={gpsStatus}
                 />
               </div>
               

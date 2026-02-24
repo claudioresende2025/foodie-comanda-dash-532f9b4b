@@ -710,6 +710,8 @@ export type Database = {
           estado: string
           id: string
           is_default: boolean
+          latitude: number | null
+          longitude: number | null
           nome_cliente: string
           numero: string
           referencia: string | null
@@ -726,6 +728,8 @@ export type Database = {
           estado?: string
           id?: string
           is_default?: boolean
+          latitude?: number | null
+          longitude?: number | null
           nome_cliente: string
           numero: string
           referencia?: string | null
@@ -742,6 +746,8 @@ export type Database = {
           estado?: string
           id?: string
           is_default?: boolean
+          latitude?: number | null
+          longitude?: number | null
           nome_cliente?: string
           numero?: string
           referencia?: string | null
