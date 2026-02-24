@@ -8,7 +8,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Auth from "@/pages/Auth";
 import ResetPassword from "@/pages/ResetPassword";
-import AuthChoice from "@/pages/AuthChoice";
 import AuthCliente from "@/pages/AuthCliente";
 import NotFound from "@/pages/NotFound";
 import Menu from "@/pages/Menu";
@@ -69,10 +68,9 @@ const App = () => (
             <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/para-restaurantes" element={<LandingRestaurantes />} />
-            {/* Auth routes - escolha cliente/restaurante */}
-            <Route path="/auth" element={<AuthChoice />} />
+            {/* Auth routes */}
+            <Route path="/auth" element={<Auth />} />
             <Route path="/auth/cliente" element={<AuthCliente />} />
-            <Route path="/auth/restaurante" element={<Auth />} />
             {/* Public menu routes for customers - accessible without login */}
             <Route path="/menu/:empresaId" element={<Menu />} />
             <Route path="/menu/:empresaId/:mesaId" element={<Menu />} />

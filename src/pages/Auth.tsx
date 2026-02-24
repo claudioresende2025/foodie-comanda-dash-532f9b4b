@@ -372,6 +372,16 @@ export default function Auth() {
             </Tabs>
           </CardContent>
         </Card>
+        {/* Link para clientes */}
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            className="text-sm text-muted-foreground hover:text-primary transition-colors"
+            onClick={() => navigate('/auth/cliente')}
+          >
+            É cliente? <span className="underline">Faça seus pedidos aqui</span>
+          </button>
+        </div>
       </div>
     </div>
   );
