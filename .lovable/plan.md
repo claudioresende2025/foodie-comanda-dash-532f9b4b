@@ -1,50 +1,54 @@
 
-# Correcao do Loop Infinito de Pagamento
 
-## Problema Identificado
+# Correcao: App Sempre Abrir no Dashboard para Administradores
 
-Apos o pagamento no Stripe, o sistema entra em loop porque a assinatura nunca e salva no banco de dados. O fluxo quebrado e:
+## Problema
 
-1. Usuario sem assinatura -> `SubscriptionGuard` bloqueia acesso -> mostra modal de planos
-2. Usuario paga no Stripe -> Stripe redireciona para `/admin/assinatura?subscription=success&planoId=...`
-3. `SubscriptionHandler` (em App.tsx) detecta `?subscription=success` -> **desloga o usuario** e manda para `/auth`
-4. Usuario loga de novo -> continua sem assinatura no banco -> volta ao passo 1
+Quando o usuario abre o app no celular, ele e redirecionado para o cardapio ou para a pagina de cadastrar empresa, em vez de ir direto para o dashboard.
 
-O problema central: ninguem chama a funcao `process-subscription` para gravar a assinatura no banco. A URL de sucesso aponta para uma rota protegida que bloqueia antes de processar.
+**Causa raiz**: No `AuthContext.tsx`, o estado `loading` muda para `false` ANTES do perfil do usuario ser carregado. Isso acontece porque o `fetchProfile` e chamado via `setTimeout` (linha 88) e o `setLoading(false)` executa imediatamente (linha 93).
+
+Resultado: quando o `Index.tsx` verifica o estado, `loading=false` mas `profile=null`, entao:
+- `!profile?.empresa_id` e `true` -> redireciona para onboarding (cadastrar empresa)
+- Ou em outro momento, o profile carrega parcialmente e redireciona para o cardapio
 
 ## Solucao
 
-### 1. Corrigir a URL de sucesso no UpgradeModal (src/components/UpgradeModal.tsx)
+### 1. Corrigir AuthContext.tsx - Aguardar profile antes de liberar loading
 
-Trocar o `successUrl` de `/admin/assinatura?subscription=success&planoId=...` para `/subscription/success?session_id={CHECKOUT_SESSION_ID}&planoId=...&periodo=mensal`.
+Alterar a logica para que `setLoading(false)` so seja chamado APOS o `fetchProfile` terminar. Remover o `setTimeout` e usar `await` direto.
 
-A pagina `/subscription/success` ja existe, nao e protegida pelo SubscriptionGuard, e ja tem toda a logica para chamar `process-subscription` e salvar a assinatura no banco.
+```
+// ANTES (quebrado):
+setTimeout(() => fetchProfile(session.user.id), 0);
+setLoading(false);
 
-### 2. Corrigir o SubscriptionHandler (src/App.tsx)
+// DEPOIS (correto):
+await fetchProfile(session.user.id);
+setLoading(false);
+```
 
-O `SubscriptionHandler` atual intercepta `?subscription=success` em qualquer rota (exceto `/subscription`) e desloga o usuario. Isso interfere com o fluxo. Ajustar para nao deslogar quando o usuario ja tem empresa (caso de upgrade), apenas processar a assinatura e continuar.
+Mesma correcao no bloco `getSession()` (linhas 98-107).
 
-### 3. Corrigir a Edge Function create-subscription-checkout
+### 2. Verificar Index.tsx - Logica de redirecionamento
 
-A URL de sucesso precisa incluir `{CHECKOUT_SESSION_ID}` como placeholder do Stripe para que a pagina Success receba o ID da sessao e possa verificar o pagamento.
+A logica atual do Index.tsx esta correta em si:
+- Usuario com role staff -> `/admin`
+- Usuario sem empresa -> `/admin/onboarding`
+- Usuario cliente -> `/menu`
 
-### 4. Garantir que a pagina Assinatura processe o retorno
+O problema e apenas que o `profile` chega como `null` por causa do timing. Com a correcao do AuthContext, o profile estara disponivel quando o Index verificar.
 
-Ajustar `src/pages/admin/Assinatura.tsx` para que, ao detectar `?subscription=success` na URL, chame `process-subscription` com os parametros corretos antes de qualquer outra logica.
-
-## Resumo das Alteracoes
+## Arquivos a Modificar
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/UpgradeModal.tsx` | Mudar `successUrl` para `/subscription/success?session_id={CHECKOUT_SESSION_ID}&planoId=...&periodo=mensal` |
-| `src/App.tsx` | Ajustar `SubscriptionHandler` para nao deslogar usuarios com empresa existente; em vez disso, chamar `process-subscription` diretamente |
-| `supabase/functions/create-subscription-checkout/index.ts` | Garantir que o `success_url` use o placeholder `{CHECKOUT_SESSION_ID}` do Stripe |
+| `src/contexts/AuthContext.tsx` | Aguardar `fetchProfile` completar antes de `setLoading(false)` em ambos os locais (onAuthStateChange e getSession) |
 
 ## Resultado Esperado
 
-Apos o pagamento no Stripe:
-1. Usuario retorna para `/subscription/success` (rota publica)
-2. A pagina detecta que o usuario ja tem conta e empresa
-3. Chama `process-subscription` para salvar a assinatura no banco
-4. Redireciona para `/admin` (dashboard) com assinatura ativa
-5. `SubscriptionGuard` libera acesso normalmente
+1. Usuario abre o app
+2. Tela de loading aparece enquanto autenticacao E profile sao carregados
+3. Profile carrega com `empresa_id` e `role=proprietario`
+4. Index redireciona para `/admin` (dashboard)
+5. Sem flicker, sem redirecionamento errado
