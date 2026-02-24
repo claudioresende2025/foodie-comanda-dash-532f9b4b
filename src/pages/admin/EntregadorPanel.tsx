@@ -135,16 +135,14 @@ export default function EntregadorPanel() {
   // Função para enviar localização para o servidor
   const sendLocationToServer = useCallback(async (position: GeolocationPosition, pedidoId: string) => {
     try {
-      // Tabela delivery_tracking existe mas não está nos tipos gerados ainda
-      const { error } = await (supabase as any)
-        .from('delivery_tracking')
+      const { error } = await supabase
+        .from('delivery_locations')
         .upsert({
           pedido_delivery_id: pedidoId,
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           precisao: position.coords.accuracy,
-          status: 'em_rota',
-          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         }, {
           onConflict: 'pedido_delivery_id',
         });
@@ -231,12 +229,11 @@ export default function EntregadorPanel() {
       updateIntervalRef.current = null;
     }
 
-    // Atualizar status final da localização
+    // Remover localização final do entregador (entrega concluída)
     if (pedidoEmEntrega) {
-      // Tabela delivery_tracking existe mas não está nos tipos gerados ainda
-      await (supabase as any)
-        .from('delivery_tracking')
-        .update({ status: 'finalizado' })
+      await supabase
+        .from('delivery_locations')
+        .delete()
         .eq('pedido_delivery_id', pedidoEmEntrega);
     }
 
