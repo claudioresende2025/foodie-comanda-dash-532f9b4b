@@ -1,58 +1,68 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+declare const __BUILD_TIMESTAMP__: string;
 
 export const UpdateNotification = () => {
   const [showNotification, setShowNotification] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [showTimer, setShowTimer] = useState<number | null>(null);
+  const showTimerRef = useRef<number | null>(null);
 
   const triggerShowWithDelay = () => {
-    if (showTimer) return;
-    const t = window.setTimeout(() => {
+    if (showTimerRef.current) return;
+    showTimerRef.current = window.setTimeout(() => {
       setShowNotification(true);
-      setShowTimer(null);
+      showTimerRef.current = null;
     }, 10000);
-    setShowTimer(t);
   };
 
   useEffect(() => {
+    // Verificação por build timestamp (funciona sem SW)
+    const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
+    const lastBuild = localStorage.getItem('app_build_version');
+
+    if (currentBuild && lastBuild && lastBuild !== currentBuild) {
+      setShowNotification(true);
+      sessionStorage.setItem('update_available', '1');
+    } else if (currentBuild && !lastBuild) {
+      // Primeira vez: salva sem mostrar notificação
+      localStorage.setItem('app_build_version', currentBuild);
+    }
+
     if (sessionStorage.getItem('update_available') === '1') {
       setShowNotification(true);
     }
-    // Verifica se o navegador suporta service workers
+
     if (!('serviceWorker' in navigator)) {
       return;
     }
 
-    // Função para verificar atualizações
     const checkForUpdates = async () => {
       try {
-        // Tenta obter a registration ativa (se já existir)
         const registration = await navigator.serviceWorker.getRegistration();
-          if (registration) {
-            if (registration.waiting) {
-              setWaitingWorker(registration.waiting);
-              triggerShowWithDelay();
-              sessionStorage.setItem('update_available', '1');
-            }
-
-            registration.addEventListener('updatefound', () => {
-              const newWorker = registration.installing;
-              if (newWorker) {
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    setWaitingWorker(newWorker);
-                    triggerShowWithDelay();
-                    sessionStorage.setItem('update_available', '1');
-                  }
-                });
-              }
-            });
+        if (registration) {
+          if (registration.waiting) {
+            setWaitingWorker(registration.waiting);
+            triggerShowWithDelay();
+            sessionStorage.setItem('update_available', '1');
           }
 
-        // Também aguarda a registration caso ainda esteja sendo registrada
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  setWaitingWorker(newWorker);
+                  triggerShowWithDelay();
+                  sessionStorage.setItem('update_available', '1');
+                }
+              });
+            }
+          });
+        }
+
         navigator.serviceWorker.ready.then((reg) => {
           if (reg) {
             if (reg.waiting) {
@@ -75,7 +85,6 @@ export const UpdateNotification = () => {
           }
         }).catch(() => {});
 
-        // Verifica atualizações periodicamente
         const interval = setInterval(async () => {
           const reg = await navigator.serviceWorker.getRegistration();
           if (reg) {
@@ -89,7 +98,6 @@ export const UpdateNotification = () => {
       }
     };
 
-    // Escuta mensagens do service worker — útil para builds que enviam aviso
     const onMessage = (e: MessageEvent) => {
       if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
         triggerShowWithDelay();
@@ -98,10 +106,8 @@ export const UpdateNotification = () => {
     };
     navigator.serviceWorker.addEventListener('message', onMessage as EventListener);
 
-    // Verifica atualizações quando o componente monta
     checkForUpdates();
 
-    // Verifica atualizações quando a aba fica visível novamente
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         checkForUpdates();
@@ -113,7 +119,7 @@ export const UpdateNotification = () => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
-      if (showTimer) window.clearTimeout(showTimer);
+      if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
     };
   }, []);
 
@@ -122,11 +128,15 @@ export const UpdateNotification = () => {
     setIsUpdating(true);
     sessionStorage.removeItem('update_available');
     setShowNotification(false);
+
+    // Salva o build atual ao atualizar
+    const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
+    if (currentBuild) {
+      localStorage.setItem('app_build_version', currentBuild);
+    }
+
     if (waitingWorker) {
-      // Envia mensagem para o service worker para pular a espera
       waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-      
-      // Aguarda o novo service worker assumir o controle e então recarrega
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         window.location.reload();
       });
