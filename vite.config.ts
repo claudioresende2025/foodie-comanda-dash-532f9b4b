@@ -137,6 +137,9 @@ export default defineConfig(async ({ mode }) => {
       port: 8080,
     },
     plugins,
+    define: {
+      '__BUILD_TIMESTAMP__': JSON.stringify(Date.now().toString()),
+    },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
