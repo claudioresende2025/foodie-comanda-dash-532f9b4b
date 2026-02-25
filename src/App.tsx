@@ -45,6 +45,7 @@ import DiagnosticoStripe from "@/pages/admin/DiagnosticoStripe";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import ErrorBoundary from '@/components/ErrorBoundary';
+import CardapioDigitalDemo from '@/pages/CardapioDigitalDemo';
 
 const queryClient = new QueryClient();
 
@@ -78,6 +79,8 @@ const App = () => (
             <Route path="/cardapio/:empresaId/:mesaId" element={<Menu />} />
             {/* PWA Install page */}
             <Route path="/install" element={<Install />} />
+            {/* Demo - Cardápio Digital para teste UX */}
+            <Route path="/cardapio-demo" element={<CardapioDigitalDemo />} />
             {/* Planos e Assinatura */}
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription/success" element={<SubscriptionSuccess />} />
