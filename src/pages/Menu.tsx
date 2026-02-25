@@ -287,13 +287,36 @@ export default function Menu() {
           // Comanda ainda está aberta, pode usar
           setComandaId(savedComandaId);
           fetchMeusPedidos(savedComandaId);
+          return;
         } else {
           // Comanda foi fechada/cancelada ou não existe mais - limpar localStorage
           localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
-          setComandaId(null);
-          setMeusPedidos([]);
         }
       }
+
+      // Fallback: buscar comanda aberta da mesa no banco (sincronização entre dispositivos)
+      if (mesaId && empresaId) {
+        const { data: existingComanda } = await supabase
+          .from("comandas")
+          .select("id")
+          .eq("mesa_id", mesaId)
+          .eq("empresa_id", empresaId)
+          .eq("status", "aberta")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingComanda) {
+          localStorage.setItem(`comanda_${empresaId}_${mesaId}`, existingComanda.id);
+          setComandaId(existingComanda.id);
+          fetchMeusPedidos(existingComanda.id);
+          return;
+        }
+      }
+
+      // Nenhuma comanda encontrada
+      setComandaId(null);
+      setMeusPedidos([]);
     };
 
     if (empresaId && mesaId) {
@@ -521,17 +544,10 @@ export default function Menu() {
     setIsRequestingFechamento(true);
 
     try {
-      // Criar chamada de garçom com motivo especial para fechamento
-      // Isso evita problemas de permissão RLS já que cliente pode inserir chamadas
-      const { error } = await supabase
-        .from("chamadas_garcom")
-        .insert({
-          empresa_id: empresaId,
-          mesa_id: mesaId,
-          comanda_id: comandaId,
-          status: "pendente",
-          motivo: "fechamento", // Motivo especial para indicar fechamento de conta
-        });
+      // Usa função RPC SECURITY DEFINER para permitir acesso público
+      const { error } = await supabase.rpc("solicitar_fechamento_mesa", {
+        p_mesa_id: mesaId,
+      });
 
       if (error) {
         console.error("[FECHAR CONTA ERROR]", error);

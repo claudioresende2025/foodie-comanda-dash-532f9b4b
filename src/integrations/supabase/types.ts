@@ -1796,6 +1796,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      solicitar_fechamento_mesa: {
+        Args: { p_mesa_id: string }
+        Returns: undefined
+      }
       upsert_empresa_overrides: {
         Args: {
           p_empresa_id: string
@@ -1824,7 +1828,12 @@ export type Database = {
         | "cancelado"
         | "pago"
       forma_pagamento: "dinheiro" | "pix" | "cartao_credito" | "cartao_debito"
-      mesa_status: "disponivel" | "ocupada" | "reservada" | "juncao"
+      mesa_status:
+        | "disponivel"
+        | "ocupada"
+        | "reservada"
+        | "juncao"
+        | "solicitou_fechamento"
       pedido_status:
         | "pendente"
         | "preparando"
@@ -1970,7 +1979,13 @@ export const Constants = {
         "pago",
       ],
       forma_pagamento: ["dinheiro", "pix", "cartao_credito", "cartao_debito"],
-      mesa_status: ["disponivel", "ocupada", "reservada", "juncao"],
+      mesa_status: [
+        "disponivel",
+        "ocupada",
+        "reservada",
+        "juncao",
+        "solicitou_fechamento",
+      ],
       pedido_status: [
         "pendente",
         "preparando",
