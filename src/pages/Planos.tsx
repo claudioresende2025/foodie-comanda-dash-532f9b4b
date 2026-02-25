@@ -154,7 +154,7 @@ export default function Planos() {
             { label: 'Cardápio', included: true },
             { label: 'Mesas (Limite 10)', included: true },
             { label: 'Pedidos (KDS) (1 Tela)', included: true },
-            { label: 'Delivery (WhatsApp)', included: true },
+            { label: 'Delivery', included: true },
             { label: 'Estatísticas Delivery', included: false },
             { label: 'App Garçom (1 usuário)', included: true },
             { label: 'Marketing', included: false },

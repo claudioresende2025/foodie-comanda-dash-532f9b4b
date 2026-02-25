@@ -651,7 +651,7 @@ export default function Assinatura() {
                 'Iniciante': [
                   { label: 'Dashboard: Básico (Vendas do dia)', included: true },
                   { label: 'Mesas: Limitado (até 10 mesas)', included: true },
-                  { label: 'Delivery: Básico (WhatsApp)', included: true },
+                  { label: 'Delivery: Básico', included: true },
                   { label: 'Garçom (App): 1 usuário', included: true },
                   { label: 'Equipe/Empresa: Até 2 colaboradores', included: true },
                   { label: 'Cardápio: Cardápio digital responsivo', included: true },
