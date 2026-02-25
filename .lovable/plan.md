@@ -1,35 +1,33 @@
 
 
-# Correção: Trial de 14 dias em todas as páginas
+# Correção: Variações de tamanho nos produtos do Menu
 
 ## Problema
 
-O trial foi alterado para 14 dias no onboarding, mas os valores antigos (3 e 7 dias) ainda estão hardcoded em vários arquivos.
+A coluna `variacoes` **não existe** na tabela `produtos` no banco de dados. A migration `2026_02_05_add_variacoes_produtos.sql` existe como arquivo mas nunca foi executada. Por isso, todos os produtos aparecem sem as opções de Pequena, Média e Grande.
 
-## Alterações Necessárias
+## Solução
 
-| Arquivo | Linha(s) | De | Para |
-|---------|----------|-----|------|
-| `src/pages/Planos.tsx` | 149 | `trial_days: 3` | `trial_days: 14` |
-| `src/pages/Planos.tsx` | 168 | `trial_days: 3` | `trial_days: 14` |
-| `src/pages/Planos.tsx` | 187 | `trial_days: 7` | `trial_days: 14` |
-| `src/pages/Planos.tsx` | 215 | `p.trial_days ?? 3` | `p.trial_days ?? 14` |
-| `src/pages/Planos.tsx` | 300 | `plano.trial_days ?? 3` | `plano.trial_days ?? 14` |
-| `src/components/UpgradeModal.tsx` | 33 | `trial: 3` (Bronze) | `trial: 14` |
-| `src/components/UpgradeModal.tsx` | 52 | `trial: 3` (Prata) | `trial: 14` |
-| `src/components/UpgradeModal.tsx` | 71 | `trial: 7` (Ouro) | `trial: 14` |
-| `src/pages/admin/Assinatura.tsx` | 399 | `defaultTrialDays = planSlug === 'ouro' ? 7 : 3` | `defaultTrialDays = 14` |
-| `src/pages/subscription/Success.tsx` | 318 | `trialDays: 3` | `trialDays: 14` |
+### 1. Criar a coluna no banco de dados (migration)
 
-## Banco de Dados
-
-Também será necessário atualizar os registros na tabela `planos` para que o campo `trial_days` reflita 14 em todos os planos:
+Executar a seguinte SQL via migration:
 
 ```sql
-UPDATE public.planos SET trial_days = 14 WHERE trial_days IS NOT NULL;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS variacoes JSONB DEFAULT NULL;
+COMMENT ON COLUMN produtos.variacoes IS 'Array de variações: [{"nome": "Pequena", "preco": 29.90}, {"nome": "Grande", "preco": 49.90}]';
 ```
+
+### 2. Popular dados de exemplo (opcional)
+
+Após a coluna existir, os produtos que tinham variações precisarão ser re-cadastrados pelo admin na página Cardápio (que já tem UI para adicionar variações).
+
+## Nenhuma alteração de código necessária
+
+O frontend (`Menu.tsx`, `ProductSizeModal`, `ProductCard`, `useCart`, `Cardapio.tsx`) já está completamente preparado para variações — falta apenas a coluna no banco.
 
 ## Resultado
 
-Todos os planos exibirão "Trial de 14 dias" tanto na página de Planos quanto no modal de Upgrade, e o backend usará 14 dias como padrão.
+- A coluna `variacoes` será criada
+- Produtos cadastrados com variações no painel admin aparecerão com opções de tamanho no menu
+- O modal de seleção de tamanho funcionará corretamente
 
