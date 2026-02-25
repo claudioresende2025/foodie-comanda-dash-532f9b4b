@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,8 +28,9 @@ export default function Auth() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const hasRedirected = useRef(false);
   
-  const { signIn, signUp, user, profile } = useAuth();
+  const { signIn, signUp, user, profile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Função para verificar o role do usuário e redirecionar apropriadamente
@@ -55,27 +56,14 @@ export default function Auth() {
     }
   }, [navigate]);
 
+  // Efeito para redirecionar quando já está logado (apenas uma vez)
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        return;
-      } else if (session) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('empresa_id')
-          .eq('id', session.user.id)
-          .maybeSingle();
-        
-        await redirectBasedOnRole(session.user.id, profileData?.empresa_id || null);
-      }
-    });
-
-    if (user && profile) {
+    // Só redireciona se não estiver carregando, tiver usuário autenticado e não tiver redirecionado ainda
+    if (!authLoading && user && profile && !hasRedirected.current) {
+      hasRedirected.current = true;
       redirectBasedOnRole(user.id, profile.empresa_id);
     }
-
-    return () => subscription.unsubscribe();
-  }, [user, profile, navigate, redirectBasedOnRole]);
+  }, [user, profile, redirectBasedOnRole, authLoading]);
 
   const validateLogin = () => {
     try {
