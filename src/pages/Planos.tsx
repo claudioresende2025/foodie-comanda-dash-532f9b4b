@@ -146,7 +146,7 @@ export default function Planos() {
           nome: 'Plano Iniciante (Bronze)',
           preco_mensal: 149.90,
           preco_anual: Math.round(149.90 * 12 * 0.93 * 100) / 100, // 7% desconto
-          trial_days: 3,
+          trial_days: 14,
           descricao: 'Plano Iniciante - Ideal para lanchonetes e MEI',
           destaque: false,
           recursos: [
@@ -165,7 +165,7 @@ export default function Planos() {
           nome: 'Plano Profissional (Prata)',
           preco_mensal: 299.90,
           preco_anual: Math.round(299.90 * 12 * 0.93 * 100) / 100, // 7% desconto
-          trial_days: 3,
+          trial_days: 14,
           descricao: 'Plano Crescimento - Ideal para restaurantes com mesas',
           destaque: true,
           recursos: [
@@ -184,7 +184,7 @@ export default function Planos() {
           nome: 'Plano Enterprise (Ouro)',
           preco_mensal: 549.90,
           preco_anual: Math.round(549.90 * 12 * 0.93 * 100) / 100, // 7% desconto
-          trial_days: 7,
+          trial_days: 14,
           descricao: 'Plano Profissional - Operações de Alto Volume',
           destaque: false,
           recursos: [
@@ -212,7 +212,7 @@ export default function Planos() {
             descricao: override.descricao ?? p.descricao ?? '',
             preco_mensal: override.preco_mensal ?? p.preco_mensal,
             preco_anual: override.preco_anual ?? p.preco_anual,
-            trial_days: override.trial_days ?? p.trial_days ?? 3,
+            trial_days: override.trial_days ?? p.trial_days ?? 14,
             recursos: override.recursos || (p.recursos && p.recursos.length ? p.recursos : (defaultRecursosByPlan[p.nome] || [])),
             destaque: override.destaque ?? p.destaque ?? false,
           });
@@ -297,7 +297,7 @@ export default function Planos() {
         periodo: isAnual ? 'anual' : 'mensal',
         successUrl,
         cancelUrl: `${window.location.origin}/planos?canceled=true`,
-        trial_days: currentSubscription ? 0 : (plano.trial_days ?? 3), // Sem trial para upgrades
+        trial_days: currentSubscription ? 0 : (plano.trial_days ?? 14), // Sem trial para upgrades
       };
 
       // Enviar empresaId apenas se disponível (fluxo sem login permitido)

@@ -396,7 +396,7 @@ export default function Assinatura() {
   const trialEndDateRaw = resolveDate(assinatura?.trial_end);
   
   const planSlug = assinatura?.plano?.slug?.toLowerCase();
-  const defaultTrialDays = planSlug === 'ouro' ? 7 : 3;
+  const defaultTrialDays = 14;
   
   const computedTrialEnd = (() => {
     if (trialEndDateRaw) return trialEndDateRaw;

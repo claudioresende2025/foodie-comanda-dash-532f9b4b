@@ -25,7 +25,7 @@ const planos = [
     nome: 'Bronze',
     slug: 'bronze',
     preco: 149.90,
-    trial: 3,
+    trial: 14,
     icon: Zap,
     destaque: false,
     recursos: [
@@ -44,7 +44,7 @@ const planos = [
     nome: 'Prata',
     slug: 'prata',
     preco: 299.90,
-    trial: 3,
+    trial: 14,
     icon: Crown,
     destaque: true,
     recursos: [
@@ -63,7 +63,7 @@ const planos = [
     nome: 'Ouro',
     slug: 'ouro',
     preco: 549.90,
-    trial: 7,
+    trial: 14,
     icon: Building2,
     destaque: false,
     recursos: [
