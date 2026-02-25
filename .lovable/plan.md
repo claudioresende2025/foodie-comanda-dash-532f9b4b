@@ -1,21 +1,16 @@
 
 
-# Renomear "Foodie Comanda" para "Food Comanda" em todo o projeto
+# Remover "(WhatsApp)" do recurso Delivery
 
-## Escopo
+Substituir "Delivery (WhatsApp)" por apenas "Delivery" em todos os arquivos onde aparece como label de recurso de plano.
 
-Substituir todas as ocorrências de "Foodie Comanda" (e variações como "Foodie Comanda Pro") por "Food Comanda" / "Food Comanda Pro" nos seguintes arquivos:
+## Alterações
 
-| Arquivo | Ocorrências | Alteração |
-|---------|-------------|-----------|
-| `src/pages/Planos.tsx` | 3 | "Foodie Comanda Pro" → "Food Comanda Pro", "Foodie Comanda" → "Food Comanda" |
-| `src/pages/LandingRestaurantes.tsx` | 3 | "Foodie Comanda" → "Food Comanda" |
-| `supabase/functions/send-email/index.ts` | ~10 | "Foodie Comanda Pro" → "Food Comanda Pro" em todos os templates de email |
-| `supabase/functions/trial-email-sequence/index.ts` | Verificar | Mesma substituição |
+| Arquivo | Linha | De | Para |
+|---------|-------|----|------|
+| `src/pages/Planos.tsx` | 157 | `Delivery (WhatsApp)` | `Delivery` |
+| `src/pages/admin/Assinatura.tsx` | 654 | `Delivery: Básico (WhatsApp)` | `Delivery: Básico` |
+| `src/components/UpgradeModal.tsx` | 36 | `detalhe: 'WhatsApp'` | remover o detalhe ou deixar sem detalhe |
 
-Nota: os emails de contato (`suporte@foodiecomanda.com.br`, `suporte@foodiecomanda.com`) serão mantidos inalterados, pois são endereços reais e não o nome da marca.
-
-## Correção do build error existente
-
-Também será corrigido o erro de build em `src/pages/admin/PedidosDelivery.tsx` onde `troco_para` não existe no tipo `PedidoDelivery`.
+Nota: Os outros usos de "WhatsApp" (campo de telefone no DeliveryRestaurant e role mapping no useUserRole) não são labels de plano e não serão alterados.
 
