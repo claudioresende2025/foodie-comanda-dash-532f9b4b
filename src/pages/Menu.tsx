@@ -267,13 +267,36 @@ export default function Menu() {
           // Comanda ainda está aberta, pode usar
           setComandaId(savedComandaId);
           fetchMeusPedidos(savedComandaId);
+          return;
         } else {
           // Comanda foi fechada/cancelada ou não existe mais - limpar localStorage
           localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
-          setComandaId(null);
-          setMeusPedidos([]);
         }
       }
+
+      // Fallback: buscar comanda aberta da mesa no banco (sincronização entre dispositivos)
+      if (mesaId && empresaId) {
+        const { data: existingComanda } = await supabase
+          .from("comandas")
+          .select("id")
+          .eq("mesa_id", mesaId)
+          .eq("empresa_id", empresaId)
+          .eq("status", "aberta")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingComanda) {
+          localStorage.setItem(`comanda_${empresaId}_${mesaId}`, existingComanda.id);
+          setComandaId(existingComanda.id);
+          fetchMeusPedidos(existingComanda.id);
+          return;
+        }
+      }
+
+      // Nenhuma comanda encontrada
+      setComandaId(null);
+      setMeusPedidos([]);
     };
 
     if (empresaId && mesaId) {
@@ -501,19 +524,14 @@ export default function Menu() {
     setIsRequestingFechamento(true);
 
     try {
-      // Atualiza o status da mesa para 'solicitou_fechamento'
-      const { error } = await supabase
-        .from("mesas")
-        .update({ status: "solicitou_fechamento" })
-        .eq("id", mesaId);
+      // Usa função RPC SECURITY DEFINER para permitir acesso público
+      const { error } = await supabase.rpc("solicitar_fechamento_mesa", {
+        p_mesa_id: mesaId,
+      });
 
       if (error) {
         console.error("[FECHAR CONTA ERROR]", error);
-        if (error.code === "42501" || error.message?.includes("policy")) {
-          toast.error("Permissão negada. Chame o garçom.");
-        } else {
-          toast.error(`Erro ao solicitar fechamento: ${error.message || "Erro desconhecido"}`);
-        }
+        toast.error(`Erro ao solicitar fechamento: ${error.message || "Erro desconhecido"}`);
         return;
       }
 
