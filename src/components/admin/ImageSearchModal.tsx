@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { Loader2, Search, Image as ImageIcon, ExternalLink, AlertCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ImageResult {
@@ -48,6 +48,12 @@ export function ImageSearchModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  // Handler para imagem que falhou ao carregar
+  const handleImageError = (imageId: string) => {
+    setFailedImages(prev => new Set(prev).add(imageId));
+  };
 
   // Função para buscar imagens usando edge function do Supabase
   const searchImages = useCallback(async (query: string) => {
@@ -112,6 +118,7 @@ export function ImageSearchModal({
     if (!isOpen) {
       setSelectedImage(null);
       setError(null);
+      setFailedImages(new Set());
     }
   }, [isOpen]);
 
@@ -207,12 +214,20 @@ export function ImageSearchModal({
                     }`}
                     onClick={() => handleSelectImage(image.urls.regular)}
                   >
-                    <img
-                      src={image.urls.small}
-                      alt={image.alt_description || 'Imagem do produto'}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
+                    {failedImages.has(image.id) ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-muted">
+                        <AlertCircle className="w-8 h-8 text-muted-foreground mb-2" />
+                        <span className="text-xs text-muted-foreground">Erro ao carregar</span>
+                      </div>
+                    ) : (
+                      <img
+                        src={image.urls.small}
+                        alt={image.alt_description || 'Imagem do produto'}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={() => handleImageError(image.id)}
+                      />
+                    )}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                     {selectedImage === image.urls.regular && (
                       <div className="absolute inset-0 flex items-center justify-center bg-primary/20">

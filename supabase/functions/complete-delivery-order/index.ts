@@ -39,8 +39,15 @@ serve(async (req) => {
       const url = `https://api.stripe.com/v1/${path}`;
       const resp = await fetch(url, { method, headers: { Authorization: `Bearer ${stripeSecret}`, Accept: 'application/json' } });
       if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(txt);
+        const errorData = await resp.json();
+        console.error("[COMPLETE-ORDER] Stripe API error:", errorData);
+        
+        // Erro específico para sessão não encontrada
+        if (errorData.error?.code === 'resource_missing') {
+          throw new Error("Sessão de pagamento não encontrada. A chave do Stripe pode estar incorreta ou a sessão expirou.");
+        }
+        
+        throw new Error(errorData.error?.message || JSON.stringify(errorData));
       }
       return resp.json();
     };
