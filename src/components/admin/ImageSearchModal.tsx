@@ -49,7 +49,7 @@ export function ImageSearchModal({
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  // Função para buscar imagens usando API alternativa (Pixabay - gratuita)
+  // Função para buscar imagens usando edge function do Supabase
   const searchImages = useCallback(async (query: string) => {
     if (!query.trim()) {
       setImages([]);
@@ -60,86 +60,31 @@ export function ImageSearchModal({
     setError(null);
 
     try {
-      // Usando Pixabay API (gratuita, sem necessidade de chave para demo)
-      // Para produção, registre em: https://pixabay.com/api/docs/
-      const PIXABAY_KEY = '47530871-8e8e7c2c1a8f0cb8c5a8e4c5a'; // Chave demo
-      
-      // Traduzir termos comuns para inglês para melhores resultados
-      const translations: Record<string, string> = {
-        'água': 'water bottle',
-        'água com gás': 'sparkling water',
-        'água mineral': 'mineral water',
-        'refrigerante': 'soda',
-        'coca': 'coca cola',
-        'suco': 'juice',
-        'cerveja': 'beer',
-        'vinho': 'wine',
-        'café': 'coffee',
-        'chá': 'tea',
-        'pizza': 'pizza',
-        'hamburguer': 'hamburger',
-        'batata frita': 'french fries',
-        'salada': 'salad',
-        'carne': 'meat steak',
-        'frango': 'chicken',
-        'peixe': 'fish',
-        'arroz': 'rice',
-        'feijão': 'beans',
-        'macarrão': 'pasta',
-        'lasanha': 'lasagna',
-        'sorvete': 'ice cream',
-        'bolo': 'cake',
-        'pudim': 'pudding',
-        'açaí': 'acai bowl',
-        'sanduíche': 'sandwich',
-        'hot dog': 'hot dog',
-        'porção': 'appetizer food',
-        'petisco': 'appetizer snack',
-      };
+      // Usar edge function do Supabase para buscar imagens
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zlwpxflqtyhdwanmupgy.supabase.co';
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsd3B4ZmxxdHloZHdhbm11cGd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4MTQxODcsImV4cCI6MjA4MDM5MDE4N30.XbfIkCWxeSOgJ3tECnuXvaXR2zMfJ2YwIGfItG8gQRw';
 
-      // Tentar traduzir o termo
-      const lowerQuery = query.toLowerCase();
-      let searchTerm = query;
-      
-      for (const [pt, en] of Object.entries(translations)) {
-        if (lowerQuery.includes(pt)) {
-          searchTerm = en;
-          break;
-        }
-      }
-
-      // Adicionar "food" ao final se não for um termo comum
-      if (searchTerm === query && !lowerQuery.includes('food')) {
-        searchTerm = `${query} food`;
-      }
-
-      const response = await fetch(
-        `https://pixabay.com/api/?key=${PIXABAY_KEY}&q=${encodeURIComponent(searchTerm)}&image_type=photo&category=food&per_page=20&safesearch=true`
-      );
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/search-product-images`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ query }),
+      });
 
       if (!response.ok) {
-        throw new Error('Erro ao buscar imagens');
+        throw new Error(`Erro na API: ${response.status}`);
       }
 
       const data = await response.json();
       
-      // Converter formato Pixabay para nosso formato
-      const formattedImages: ImageResult[] = data.hits.map((hit: any) => ({
-        id: hit.id.toString(),
-        urls: {
-          small: hit.webformatURL,
-          regular: hit.largeImageURL,
-          thumb: hit.previewURL,
-        },
-        alt_description: hit.tags,
-        user: {
-          name: hit.user,
-          links: {
-            html: hit.pageURL,
-          },
-        },
-      }));
+      if (data.error) {
+        throw new Error(data.error);
+      }
 
+      const formattedImages: ImageResult[] = data.results || [];
       setImages(formattedImages);
       
       if (formattedImages.length === 0) {
@@ -288,7 +233,7 @@ export function ImageSearchModal({
           <div className="flex items-center justify-between pt-4 border-t">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <ExternalLink className="w-3 h-3" />
-              Imagens fornecidas por Pixabay (uso gratuito)
+              Imagens gratuitas para uso comercial
             </p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose}>
