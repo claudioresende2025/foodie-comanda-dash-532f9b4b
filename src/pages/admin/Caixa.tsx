@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
   Search,
@@ -145,7 +146,7 @@ export default function Caixa() {
   // Filtros do histórico (Mesas)
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState('');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState('todas');
 
   // Estados para Monitoramento de Mesas Pendentes
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -240,7 +241,7 @@ export default function Caixa() {
 
       if (filterStartDate) query = query.gte('data_fechamento', filterStartDate);
       if (filterEndDate) query = query.lte('data_fechamento', filterEndDate);
-      if (filterPaymentMethod) query = query.eq('forma_pagamento', filterPaymentMethod as PaymentMethod);
+      if (filterPaymentMethod && filterPaymentMethod !== 'todas') query = query.eq('forma_pagamento', filterPaymentMethod as PaymentMethod);
 
       const { data, error } = await query.order('data_fechamento', { ascending: false });
       if (error) throw error;
@@ -1585,17 +1586,21 @@ export default function Caixa() {
                   value={filterEndDate}
                   onChange={(e) => setFilterEndDate(e.target.value)}
                 />
-                <select
-                  className="border rounded px-2 py-1"
+                <Select
                   value={filterPaymentMethod}
-                  onChange={(e) => setFilterPaymentMethod(e.target.value)}
+                  onValueChange={setFilterPaymentMethod}
                 >
-                  <option value="">Todas</option>
-                  <option value="dinheiro">Dinheiro</option>
-                  <option value="pix">PIX</option>
-                  <option value="cartao_credito">Cartão Crédito</option>
-                  <option value="cartao_debito">Cartão Débito</option>
-                </select>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas</SelectItem>
+                    <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                    <SelectItem value="pix">PIX</SelectItem>
+                    <SelectItem value="cartao_credito">Cartão Crédito</SelectItem>
+                    <SelectItem value="cartao_debito">Cartão Débito</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button onClick={handleApplyFilters}>Aplicar Filtros</Button>
               </div>
             </CardHeader>
