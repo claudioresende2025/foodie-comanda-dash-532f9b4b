@@ -41,12 +41,12 @@ type ChamadaGarcom = {
 
 // Cores de status para mesas
 const mesaStatusColors = {
-  disponivel: 'bg-white border-green-500 text-foreground',
-  ocupada: 'bg-white border-orange-500 text-foreground',
-  reservada: 'bg-white border-yellow-500 text-foreground',
-  juncao: 'bg-white border-blue-500 text-foreground',
-  solicitou_fechamento: 'bg-red-100 border-red-500 text-red-800 animate-pulse',
-  aguardando_pagamento: 'bg-purple-100 border-purple-500 text-purple-800 animate-pulse',
+  disponivel: 'bg-card border-green-500 text-card-foreground',
+  ocupada: 'bg-card border-orange-500 text-card-foreground',
+  reservada: 'bg-card border-yellow-500 text-card-foreground',
+  juncao: 'bg-card border-blue-500 text-card-foreground',
+  solicitou_fechamento: 'bg-red-500/20 border-red-500 text-red-400 dark:text-red-300 animate-pulse',
+  aguardando_pagamento: 'bg-purple-500/20 border-purple-500 text-purple-400 dark:text-purple-300 animate-pulse',
 };
 
 const mesaStatusLabels = {
@@ -608,10 +608,10 @@ export default function Garcom() {
                 return (
                   <div
                     key={`chamada-${chamada.id}`}
-                    className="p-3 bg-white border-2 border-red-400 rounded-lg space-y-2"
+                    className="p-3 bg-card border-2 border-red-400 rounded-lg space-y-2"
                   >
                     <div className="text-center">
-                      <span className="text-lg font-bold text-red-700">{displayName}</span>
+                      <span className="text-lg font-bold text-red-600 dark:text-red-400">{displayName}</span>
                       <Badge variant="outline" className="ml-2 text-xs">Via App</Badge>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -646,10 +646,10 @@ export default function Garcom() {
                 return (
                   <div
                     key={mesa.id}
-                    className="p-3 bg-white border-2 border-red-400 rounded-lg space-y-2"
+                    className="p-3 bg-card border-2 border-red-400 rounded-lg space-y-2"
                   >
                     <div className="text-center">
-                      <span className="text-lg font-bold text-red-700">{displayName}</span>
+                      <span className="text-lg font-bold text-red-600 dark:text-red-400">{displayName}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Button

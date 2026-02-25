@@ -128,6 +128,18 @@ export default function Caixa() {
     trocoPara?: number;
     total: number;
     mesaId?: string;
+    printData?: {
+      empresaNome: string;
+      empresaEndereco?: string;
+      empresaCnpj?: string;
+      mesaNumero: number;
+      nomeCliente?: string;
+      itens: { nome: string; quantidade: number; precoUnitario: number; subtotal: number }[];
+      subtotal: number;
+      desconto?: { percentual: number; valor: number };
+      taxaServico?: { percentual: number; valor: number };
+      couver?: { quantidade: number; valorUnitario: number; total: number };
+    };
   } | null>(null);
 
   // Filtros do histórico (Mesas)
@@ -313,6 +325,8 @@ export default function Caixa() {
       trocoPara,
       total,
       mesaId,
+      // Dados para impressão automática
+      printData,
     }: {
       comandaId: string;
       formaPagamento: PaymentMethod | 'multiplo';
@@ -320,6 +334,18 @@ export default function Caixa() {
       trocoPara?: number;
       total: number;
       mesaId?: string;
+      printData?: {
+        empresaNome: string;
+        empresaEndereco?: string;
+        empresaCnpj?: string;
+        mesaNumero: number;
+        nomeCliente?: string;
+        itens: { nome: string; quantidade: number; precoUnitario: number; subtotal: number }[];
+        subtotal: number;
+        desconto?: { percentual: number; valor: number };
+        taxaServico?: { percentual: number; valor: number };
+        couver?: { quantidade: number; valorUnitario: number; total: number };
+      };
     }) => {
       // Formata as formas de pagamento para salvar no banco
       const formasPagamentoStr = formasPagamento 
@@ -372,7 +398,7 @@ export default function Caixa() {
         }
       }
       
-      return { formaPagamento, formasPagamento, total, mesaId };
+      return { formaPagamento, formasPagamento, total, mesaId, trocoPara, printData };
     },
     onSuccess: (result) => {
       // invalida com as mesmas chaves (incluindo empresa_id)
@@ -381,6 +407,24 @@ export default function Caixa() {
       queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
 
+      // 🖨️ Impressão automática do cupom
+      if (result.printData) {
+        const formaPgtoLabel = result.formaPagamento === 'multiplo' 
+          ? result.formasPagamento?.map(p => `${p.metodo}: R$ ${p.valor.toFixed(2)}`).join(', ')
+          : result.formaPagamento;
+        
+        printCaixaReceipt({
+          ...result.printData,
+          total: result.total,
+          formaPagamento: formaPgtoLabel || undefined,
+          troco: result.trocoPara,
+          timestamp: new Date(),
+        });
+        toast.success('Comanda fechada e cupom enviado para impressão!');
+      } else {
+        toast.success('Comanda fechada com sucesso!');
+      }
+
       // Limpa os estados da comanda
       setSelectedComanda(null);
       setFormaPagamento('');
@@ -388,10 +432,6 @@ export default function Caixa() {
       setPagamentoMultiplo(false);
       setPagamentos([]);
       setMetodosAtivos([]);
-      
-      // Quando for PIX, o modal já foi exibido ANTES de fechar a comanda,
-      // então só mostramos a mensagem de sucesso
-      toast.success('Comanda fechada com sucesso!');
     },
     onError: (error: any) => {
       console.error('Erro ao fechar comanda:', error);
@@ -522,6 +562,37 @@ export default function Caixa() {
     return calcularTotal(selectedComanda) - getTotalPagamentos();
   };
 
+  // Gera os dados necessários para impressão automática do cupom
+  const gerarPrintData = (comanda: any) => {
+    const subtotal = calcularSubtotal(comanda);
+    const descontoValor = subtotal * (discountPercent / 100);
+    const subtotalComDesconto = subtotal - descontoValor;
+    const taxaServicoValor = includeService ? subtotalComDesconto * (serviceCharge / 100) : 0;
+    const couverTotal = includeCouver && couverAtivo ? calcularCouverTotal() : 0;
+
+    const items = comanda.pedidos?.map((p: any) => ({
+      nome: p.produto?.nome || 'Item',
+      quantidade: p.quantidade || 1,
+      precoUnitario: p.preco_unitario || 0,
+      subtotal: p.subtotal || 0,
+    })) || [];
+
+    return {
+      empresaNome: empresa?.nome_fantasia || 'Restaurante',
+      empresaEndereco: empresa?.endereco_completo || undefined,
+      empresaCnpj: empresa?.cnpj || undefined,
+      mesaNumero: comanda.mesa?.numero_mesa || 0,
+      nomeCliente: comanda.nome_cliente || undefined,
+      itens: items,
+      subtotal,
+      desconto: discountPercent > 0 ? { percentual: discountPercent, valor: descontoValor } : undefined,
+      taxaServico: includeService ? { percentual: serviceCharge, valor: taxaServicoValor } : undefined,
+      couver: includeCouver && couverAtivo && couverTotal > 0 
+        ? { quantidade: couverQuantidade, valorUnitario: couverValorConfig, total: couverTotal } 
+        : undefined,
+    };
+  };
+
   const handleFinalizarPagamento = () => {
     if (!selectedComanda) return;
     
@@ -557,11 +628,12 @@ export default function Caixa() {
           trocoPara: trocoParaNum,
           total,
           mesaId: selectedComanda.mesa_id,
+          printData: gerarPrintData(selectedComanda),
         });
         toast.info('Exibindo QR Code PIX. Após pagamento, clique em "Entendido/Fechar".');
         setShowPixModal(true);
       } else {
-        // Sem PIX, fecha a comanda normalmente
+        // Sem PIX, fecha a comanda normalmente com impressão automática
         closeComandaMutation.mutate({
           comandaId: selectedComanda.id,
           formaPagamento: 'multiplo',
@@ -569,6 +641,7 @@ export default function Caixa() {
           trocoPara: trocoParaNum,
           total,
           mesaId: selectedComanda.mesa_id,
+          printData: gerarPrintData(selectedComanda),
         });
       }
     } else {
@@ -588,17 +661,19 @@ export default function Caixa() {
           trocoPara: trocoParaNum,
           total,
           mesaId: selectedComanda.mesa_id,
+          printData: gerarPrintData(selectedComanda),
         });
         toast.info('Exibindo QR Code PIX. Após pagamento, clique em "Entendido/Fechar".');
         setShowPixModal(true);
       } else {
-        // Não é PIX, fecha a comanda normalmente
+        // Não é PIX, fecha a comanda normalmente com impressão automática
         closeComandaMutation.mutate({
           comandaId: selectedComanda.id,
           formaPagamento: formaPagamento as PaymentMethod,
           trocoPara: trocoParaNum,
           total,
           mesaId: selectedComanda.mesa_id,
+          printData: gerarPrintData(selectedComanda),
         });
       }
     }
@@ -835,7 +910,7 @@ export default function Caixa() {
               cidade={empresa?.endereco_completo?.split(',').pop()?.trim() || 'SAO PAULO'}
             />
           ) : (
-            <div className="text-center p-4 border rounded-lg bg-amber-50 text-amber-700">
+            <div className="text-center p-4 border rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
               <p className="font-medium">Chave PIX não configurada</p>
               <p className="text-sm mt-1">Configure a chave PIX nas configurações da empresa.</p>
             </div>
@@ -881,10 +956,10 @@ export default function Caixa() {
             </div>
 
             {/* Valor Total */}
-            <div className="p-4 bg-green-50 rounded-lg">
+            <div className="p-4 bg-green-500/10 dark:bg-green-500/20 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="text-lg font-medium">Total</span>
-                <span className="text-2xl font-bold text-green-600">
+                <span className="text-2xl font-bold text-green-600 dark:text-green-400">
                   R$ {liquidacaoTotal.toFixed(2).replace('.', ',')}
                 </span>
               </div>
@@ -953,7 +1028,7 @@ export default function Caixa() {
                     expiracaoMinutos={5}
                   />
                 ) : (
-                  <div className="text-center p-4 border rounded-lg bg-amber-50 text-amber-700">
+                  <div className="text-center p-4 border rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
                     <p className="font-medium">Chave PIX não configurada</p>
                     <p className="text-sm mt-1">Configure a chave PIX nas configurações da empresa.</p>
                   </div>
@@ -993,7 +1068,7 @@ export default function Caixa() {
 
       {/* Alerta de Mesas Pendentes */}
       {mesasPendentes.length > 0 && (
-        <Card className="border-2 border-red-500 bg-red-50 animate-pulse">
+        <Card className="border-2 border-red-500 bg-red-500/10 dark:bg-red-500/20 animate-pulse">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-red-600">
@@ -1307,7 +1382,7 @@ export default function Caixa() {
                           )}
 
                           {formaPagamento === 'pix' && !empresa?.chave_pix && (
-                            <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                            <p className="text-sm text-amber-600 dark:text-amber-400 bg-amber-500/10 p-2 rounded">
                               ⚠️ Chave PIX não cadastrada. Configure em Configurações {'>'} Empresa.
                             </p>
                           )}
@@ -1412,7 +1487,7 @@ export default function Caixa() {
                           )}
                           
                           {metodosAtivos.includes('pix') && !empresa?.chave_pix && (
-                            <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                            <p className="text-sm text-amber-600 dark:text-amber-400 bg-amber-500/10 p-2 rounded">
                               ⚠️ Chave PIX não cadastrada. Configure em Configurações {'>'} Empresa.
                             </p>
                           )}
