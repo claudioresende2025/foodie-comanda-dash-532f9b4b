@@ -154,7 +154,8 @@ serve(async (req) => {
       cancel_url: `${origin}/delivery?canceled=true`,
     };
 
-    // metadata
+    // metadata - NÃO incluir items aqui para evitar limite de 500 chars
+    // Os items serão buscados do carrinho no momento da confirmação via verify-delivery-payment
     const meta: Record<string, string> = {
       empresaId: orderData.empresaId,
       enderecoId: orderData.enderecoId,
@@ -169,8 +170,10 @@ serve(async (req) => {
       fidelidadeId: orderData.fidelidadeId || '',
       pontosUsados: orderData.pontosUsados?.toString?.() || '',
       valorRecompensa: orderData.valorRecompensa?.toString?.() || '',
-      notas: orderData.notas || '',
-      items: JSON.stringify(orderData.items || []),
+      notas: (orderData.notas || '').substring(0, 450), // Limitar notas
+      itemCount: (orderData.items?.length || 0).toString(),
+      // Resumo simplificado dos items (só IDs e quantidades)
+      itemsSummary: orderData.items?.slice(0, 10).map((i: any) => `${i.produto_id}:${i.quantidade}`).join(',').substring(0, 450) || '',
     };
     for (const k of Object.keys(meta)) {
       sessionPayload[`metadata[${k}]`] = meta[k];

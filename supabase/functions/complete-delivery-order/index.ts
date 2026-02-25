@@ -51,7 +51,7 @@ serve(async (req) => {
     const body = await req.json();
     logStep("Request body received", body);
 
-    const { sessionId } = body;
+    const { sessionId, items: bodyItems, marcaCartao: bodyMarcaCartao } = body;
 
     if (!sessionId) {
       throw new Error("sessionId é obrigatório.");
@@ -98,6 +98,13 @@ serve(async (req) => {
     }
 
     logStep("Creating new order in database", orderData);
+    
+    // Montar notas incluindo marca do cartão de fidelidade se houver
+    let notasFinal = orderData.notas || '';
+    if (bodyMarcaCartao) {
+      notasFinal = `${notasFinal}${notasFinal ? '\n' : ''}Marca cartão fidelidade: ${bodyMarcaCartao}`;
+    }
+    
     const { data: pedido, error: pedidoError } = await supabase
       .from("pedidos_delivery")
       .insert({
@@ -110,7 +117,7 @@ serve(async (req) => {
         total: parseFloat(orderData.total),
         forma_pagamento: "cartao_credito",
         cupom_id: orderData.cupomId || null,
-        notas: orderData.notas || null,
+        notas: notasFinal || null,
         user_id: orderData.userId,
         stripe_payment_id: sessionId,
         stripe_payment_status: "paid",
@@ -131,8 +138,28 @@ serve(async (req) => {
 
     logStep("Order created successfully", { pedidoId: pedido.id });
 
-    // Inserir itens do pedido
-    const items = JSON.parse(orderData.items);
+    // Inserir itens do pedido - usar items do body (prioridade) ou do metadata (fallback)
+    let items: any[] = [];
+    
+    if (bodyItems && Array.isArray(bodyItems) && bodyItems.length > 0) {
+      // Items enviados pelo frontend (método preferido - evita limite de 500 chars do metadata)
+      items = bodyItems;
+      logStep("Using items from request body", { itemCount: items.length });
+    } else if (orderData.items) {
+      // Fallback para metadata (compatibilidade)
+      try {
+        items = typeof orderData.items === 'string' ? JSON.parse(orderData.items) : orderData.items;
+        logStep("Using items from metadata", { itemCount: items.length });
+      } catch (e) {
+        logStep("WARNING: Could not parse items from metadata", { error: String(e) });
+      }
+    }
+    
+    if (items.length === 0) {
+      logStep("ERROR: No items found for order");
+      throw new Error("Itens do pedido não encontrados.");
+    }
+    
     const { error: itemsError } = await supabase
       .from("itens_delivery")
       .insert(

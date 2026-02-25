@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin } from "lucide-react";
+import { Loader2, Check, CreditCard, QrCode, Star, Ticket, MapPin, Banknote } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -57,6 +57,7 @@ export default function DeliveryRestaurant() {
   const [metodoPagamento, setMetodoPagamento] = useState("pix");
   const [notasGerais, setNotasGerais] = useState("");
   const [marcaCartao, setMarcaCartao] = useState("");
+  const [trocoParaInput, setTrocoParaInput] = useState("");
   const [endereco, setEndereco] = useState({
     nome_cliente: "",
     telefone: "",
@@ -508,20 +509,31 @@ export default function DeliveryRestaurant() {
         })),
       };
 
-      if (metodoPagamento === "pix") {
-        // Para PIX, criar pedido direto (não precisa esperar confirmação)
+      if (metodoPagamento === "pix" || metodoPagamento === "debit" || metodoPagamento === "dinheiro") {
+        // Para PIX, Débito ou Dinheiro: criar pedido direto (pagamento na entrega ou PIX)
+        const formaPagamentoMap: Record<string, string> = {
+          pix: "pix",
+          debit: "cartao_debito",
+          dinheiro: "dinheiro",
+        };
+        
+        const trocoParaValor = metodoPagamento === "dinheiro" && trocoParaInput 
+          ? parseFloat(trocoParaInput) 
+          : null;
+        
         const { data: ped, error: pedErr } = await supabase
           .from("pedidos_delivery")
           .insert({
             empresa_id: empresaId,
             endereco_id: enderecoId,
-            status: "pendente",
+            status: metodoPagamento === "pix" ? "pendente" : "pendente", // pendente até entrega
             subtotal: subtotal,
             taxa_entrega: config?.taxa_entrega || 0,
             desconto: desconto || null,
             total: totalComDesconto,
-            forma_pagamento: "pix",
+            forma_pagamento: formaPagamentoMap[metodoPagamento],
             cupom_id: cupomAplicado?.id || null,
+            troco_para: trocoParaValor,
             // Anexa marca do cartão de fidelidade nas notas para não depender de alteração do schema
             notas: `${notasGerais || ''}${marcaCartao ? `\nMarca cartão fidelidade: ${marcaCartao}` : ''}` || null,
             user_id: user.id,
@@ -656,26 +668,36 @@ export default function DeliveryRestaurant() {
         }
 
         setPedidoId(ped.id);
-        setValorPix(totalComDesconto);
-        setShowPixModal(true);
         setIsCheckoutOpen(false);
         clearCart();
+        
+        if (metodoPagamento === "pix") {
+          // PIX: mostrar QR code para pagamento
+          setValorPix(totalComDesconto);
+          setShowPixModal(true);
+        } else {
+          // Débito ou Dinheiro: pedido criado para pagamento na entrega
+          const trocoMsg = trocoParaValor && trocoParaValor > totalComDesconto 
+            ? ` Troco para R$ ${trocoParaValor.toFixed(2)}.` 
+            : '';
+          toast.success(`Pedido #${ped.id.slice(0, 8).toUpperCase()} criado! Pagamento na entrega.${trocoMsg}`);
+          navigate('/delivery/pedidos');
+        }
       } else {
         // Para cartão: enviar dados para criar checkout do Stripe via Lovable Cloud
         // O pedido só será criado APÓS o pagamento ser confirmado
         console.log('[DeliveryRestaurant] Criando checkout session com orderData:', orderData);
         
-        // IMPORTANTE: Chamar edge function via fetch direto para Lovable Cloud
-        // As edge functions estão deployadas lá e configuradas para gravar no banco externo
-        const LOVABLE_CLOUD_URL = "https://jejpufnzaineihemdrgd.supabase.co/functions/v1";
-        const LOVABLE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplanB1Zm56YWluZWloZW1kcmdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3ODgxMDAsImV4cCI6MjA4MDM2NDEwMH0.b0sXHLsReI8DOSN-IKz1PxSF9pQ3zjkkK1PKsCQkHMg";
+        // Usar URL do Supabase configurado (zlwpxflqtyhdwanmupgy)
+        const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL || 'https://zlwpxflqtyhdwanmupgy.supabase.co'}/functions/v1`;
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsd3B4ZmxxdHloZHdhbm11cGd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4MTQxODcsImV4cCI6MjA4MDM5MDE4N30.XbfIkCWxeSOgJ3tECnuXvaXR2zMfJ2YwIGfItG8gQRw";
         
-        const response = await fetch(`${LOVABLE_CLOUD_URL}/create-delivery-checkout`, {
+        const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-delivery-checkout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': LOVABLE_ANON_KEY,
-            'Authorization': `Bearer ${LOVABLE_ANON_KEY}`,
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             orderData: orderData,
@@ -708,6 +730,11 @@ export default function DeliveryRestaurant() {
         }
 
         console.log('[DeliveryRestaurant] Checkout session criado, redirecionando para:', data.url);
+        
+        // IMPORTANTE: Salvar items no sessionStorage para recuperar após o pagamento
+        // Isso é necessário porque o metadata do Stripe tem limite de 500 chars
+        sessionStorage.setItem('delivery_checkout_items', JSON.stringify(orderData.items));
+        sessionStorage.setItem('delivery_checkout_marca_cartao', marcaCartao || '');
         
         // Limpar carrinho antes de redirecionar
         clearCart();
@@ -1138,7 +1165,33 @@ export default function DeliveryRestaurant() {
                   >
                     <CreditCard className="h-5 w-5" /> Cartão
                   </Button>
+                  <Button
+                    variant={metodoPagamento === "debit" ? "default" : "outline"}
+                    className="h-16 flex-col gap-1 rounded-xl border-2"
+                    onClick={() => setMetodoPagamento("debit")}
+                  >
+                    <CreditCard className="h-5 w-5" /> Débito
+                  </Button>
+                  <Button
+                    variant={metodoPagamento === "dinheiro" ? "default" : "outline"}
+                    className="h-16 flex-col gap-1 rounded-xl border-2"
+                    onClick={() => setMetodoPagamento("dinheiro")}
+                  >
+                    <Banknote className="h-5 w-5" /> Dinheiro
+                  </Button>
                 </div>
+                {metodoPagamento === "dinheiro" && (
+                  <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
+                    <p className="text-sm text-muted-foreground mb-2">Precisa de troco? Informe o valor:</p>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 100.00"
+                      value={trocoParaInput}
+                      onChange={(e) => setTrocoParaInput(e.target.value)}
+                      className="max-w-[150px]"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="bg-muted/50 p-4 rounded-xl border space-y-2">

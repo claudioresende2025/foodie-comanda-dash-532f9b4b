@@ -27,23 +27,45 @@ export default function DeliverySuccess() {
     try {
       console.log('[DeliverySuccess] Completando pedido com sessionId:', sessionId);
       
-      // IMPORTANTE: Chamar edge function via fetch direto para Lovable Cloud
-      // As edge functions estão deployadas lá e configuradas para gravar no banco externo
-      const LOVABLE_CLOUD_URL = "https://jejpufnzaineihemdrgd.supabase.co/functions/v1";
-      const LOVABLE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplanB1Zm56YWluZWloZW1kcmdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3ODgxMDAsImV4cCI6MjA4MDM2NDEwMH0.b0sXHLsReI8DOSN-IKz1PxSF9pQ3zjkkK1PKsCQkHMg";
+      // Recuperar items salvos do sessionStorage (evita limite de 500 chars do metadata)
+      let items: any[] = [];
+      let marcaCartao = '';
       
-      const response = await fetch(`${LOVABLE_CLOUD_URL}/complete-delivery-order`, {
+      try {
+        const itemsStr = sessionStorage.getItem('delivery_checkout_items');
+        if (itemsStr) {
+          items = JSON.parse(itemsStr);
+          console.log('[DeliverySuccess] Items recuperados do sessionStorage:', items.length);
+        }
+        marcaCartao = sessionStorage.getItem('delivery_checkout_marca_cartao') || '';
+      } catch (e) {
+        console.warn('[DeliverySuccess] Erro ao recuperar items do sessionStorage:', e);
+      }
+      
+      // Usar URL do Supabase configurado (zlwpxflqtyhdwanmupgy)
+      const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL || 'https://zlwpxflqtyhdwanmupgy.supabase.co'}/functions/v1`;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsd3B4ZmxxdHloZHdhbm11cGd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4MTQxODcsImV4cCI6MjA4MDM5MDE4N30.XbfIkCWxeSOgJ3tECnuXvaXR2zMfJ2YwIGfItG8gQRw";
+      
+      const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/complete-delivery-order`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': LOVABLE_ANON_KEY,
-          'Authorization': `Bearer ${LOVABLE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ 
+          sessionId,
+          items, // Enviar items do sessionStorage
+          marcaCartao, // Marca do cartão de fidelidade
+        }),
       });
 
       const data = await response.json();
       console.log('[DeliverySuccess] Resposta:', data);
+      
+      // Limpar sessionStorage após uso
+      sessionStorage.removeItem('delivery_checkout_items');
+      sessionStorage.removeItem('delivery_checkout_marca_cartao');
 
       if (!response.ok) {
         console.error('[DeliverySuccess] Erro ao completar pedido:', data);

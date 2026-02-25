@@ -25,7 +25,8 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Loader2, Upload, Pencil, Trash2, ChefHat, FolderOpen, RefreshCw, X } from 'lucide-react';
+import { Plus, Loader2, Upload, Pencil, Trash2, ChefHat, FolderOpen, RefreshCw, X, Search } from 'lucide-react';
+import { ImageSearchModal } from '@/components/admin/ImageSearchModal';
 
 // Tipo para variações de tamanho
 export interface VariacaoTamanho {
@@ -77,6 +78,8 @@ export default function Cardapio() {
   });
   const [prodImage, setProdImage] = useState<File | null>(null);
   const [prodImagePreview, setProdImagePreview] = useState<string | null>(null);
+  const [prodImageUrl, setProdImageUrl] = useState<string | null>(null); // URL da imagem buscada
+  const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
   // Estados para variações de tamanho
@@ -230,6 +233,7 @@ export default function Cardapio() {
     try {
       let imagem_url = editingProd?.imagem_url || null;
 
+      // Prioridade: 1) Arquivo uploadado, 2) URL de imagem buscada online
       if (prodImage) {
         const fileExt = prodImage.name.split('.').pop();
         const fileName = `${empresaId}/${Date.now()}.${fileExt}`;
@@ -245,6 +249,9 @@ export default function Cardapio() {
           .getPublicUrl(fileName);
 
         imagem_url = publicUrl;
+      } else if (prodImageUrl) {
+        // Usar URL da imagem buscada online
+        imagem_url = prodImageUrl;
       }
 
       const produtoData = {
@@ -282,6 +289,7 @@ export default function Cardapio() {
       setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
       setProdImage(null);
       setProdImagePreview(null);
+      setProdImageUrl(null);
       setPossuiVariacoes(false);
       setVariacoes([]);
       queryClient.invalidateQueries({ queryKey: ['produtos'] });
@@ -374,6 +382,7 @@ export default function Cardapio() {
                   setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
                   setProdImage(null);
                   setProdImagePreview(null);
+                  setProdImageUrl(null);
                   setPossuiVariacoes(false);
                   setVariacoes([]);
                 }
@@ -396,20 +405,58 @@ export default function Cardapio() {
                     <div className="flex items-center gap-4">
                       <div className="relative w-24 h-24 rounded-xl border-2 border-dashed border-border bg-muted/50 flex items-center justify-center overflow-hidden">
                         {prodImagePreview ? (
-                          <img src={prodImagePreview} alt="Preview" className="w-full h-full object-cover" />
+                          <>
+                            <img src={prodImagePreview} alt="Preview" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProdImagePreview(null);
+                                setProdImage(null);
+                                setProdImageUrl(null);
+                              }}
+                              className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 hover:bg-destructive/90"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </>
                         ) : (
                           <Upload className="w-6 h-6 text-muted-foreground" />
                         )}
                       </div>
-                      <div className="flex-1">
-                        <Input type="file" accept="image/*" onChange={handleImageChange} />
-                        <p className="text-xs text-muted-foreground mt-1">PNG, JPG. Máximo 2MB.</p>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex gap-2">
+                          <Input type="file" accept="image/*" onChange={handleImageChange} className="flex-1" />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setIsImageSearchOpen(true)}
+                            title="Buscar imagem online"
+                          >
+                            <Search className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">PNG, JPG (máx 2MB) ou busque uma imagem online</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Nome *</Label>
+                    <div className="flex items-center justify-between">
+                      <Label>Nome *</Label>
+                      {prodForm.nome.length >= 3 && !prodImagePreview && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setIsImageSearchOpen(true)}
+                          className="text-primary hover:text-primary/80 h-6 text-xs"
+                        >
+                          <Search className="w-3 h-3 mr-1" />
+                          Buscar imagem
+                        </Button>
+                      )}
+                    </div>
                     <Input
                       placeholder="Ex: X-Burguer Especial"
                       value={prodForm.nome}
@@ -565,6 +612,18 @@ export default function Cardapio() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* Modal de Busca de Imagem */}
+            <ImageSearchModal
+              isOpen={isImageSearchOpen}
+              onClose={() => setIsImageSearchOpen(false)}
+              initialQuery={prodForm.nome}
+              onSelectImage={(imageUrl) => {
+                setProdImageUrl(imageUrl);
+                setProdImagePreview(imageUrl);
+                setProdImage(null); // Limpar arquivo se tiver
+              }}
+            />
           </div>
           )}
 

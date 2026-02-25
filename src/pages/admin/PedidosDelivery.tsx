@@ -476,7 +476,16 @@ export default function PedidosDelivery() {
                   </div>
                   {selectedPedido.forma_pagamento && (
                     <p className="text-sm text-muted-foreground">
-                      Pagamento: {selectedPedido.forma_pagamento === 'pix' ? 'PIX' : 'Cartão'}
+                      Pagamento: {
+                        selectedPedido.forma_pagamento === 'pix' ? 'PIX' : 
+                        selectedPedido.forma_pagamento === 'cartao_credito' ? 'Cartão de Crédito' :
+                        selectedPedido.forma_pagamento === 'cartao_debito' ? 'Cartão de Débito' :
+                        selectedPedido.forma_pagamento === 'dinheiro' ? 'Dinheiro' :
+                        selectedPedido.forma_pagamento
+                      }
+                      {selectedPedido.troco_para && selectedPedido.forma_pagamento === 'dinheiro' && (
+                        <span className="ml-2 text-orange-600">(Troco para R$ {selectedPedido.troco_para.toFixed(2)})</span>
+                      )}
                     </p>
                   )}
                 </div>
