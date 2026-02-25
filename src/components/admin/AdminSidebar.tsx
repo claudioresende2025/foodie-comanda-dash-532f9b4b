@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { NotificationToggle } from '@/components/notifications/NotificationToggle';
+import { ThemeToggle } from './ThemeToggle';
 import { Badge } from '@/components/ui/badge';
 
 type MenuItemKey = 
@@ -282,7 +283,10 @@ export function AdminSidebar() {
             </div>
           </div>
           <div className="flex items-center justify-between pt-2 border-t border-sidebar-border">
-            <NotificationToggle type="admin" />
+            <div className="flex items-center gap-1">
+              <NotificationToggle type="admin" />
+              <ThemeToggle />
+            </div>
             <Button
               variant="ghost"
               size="sm"

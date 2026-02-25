@@ -73,14 +73,27 @@ export default function Configuracoes() {
     }
   }, []);
 
+  // Sincronizar quando ThemeToggle ou outros componentes alterarem as configurações
+  useEffect(() => {
+    const handleSettingsChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setSettings(prev => ({ ...prev, ...customEvent.detail }));
+      }
+    };
+
+    window.addEventListener('fcd-settings-changed', handleSettingsChange);
+    return () => window.removeEventListener('fcd-settings-changed', handleSettingsChange);
+  }, []);
+
   // Save settings to localStorage
   const updateSetting = (key: keyof ConfigSettings, value: boolean) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     localStorage.setItem("fcd-settings", JSON.stringify(newSettings));
     
-    // Disparar evento para atualizar sidebar em tempo real
-    if (key === 'compactMenu') {
+    // Disparar evento para atualizar componentes em tempo real
+    if (key === 'compactMenu' || key === 'darkTheme') {
       window.dispatchEvent(new CustomEvent('fcd-settings-changed', { detail: newSettings }));
     }
     
