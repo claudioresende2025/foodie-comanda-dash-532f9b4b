@@ -15,7 +15,7 @@ interface DeliveryMapProps {
   restaurantName?: string;
   customerAddress?: string;
   showRoute?: boolean;
-  gpsStatus?: 'requesting' | 'granted' | 'denied' | 'unavailable';
+  gpsStatus?: 'requesting' | 'granted' | 'denied' | 'unavailable' | 'blocked';
 }
 
 // Função auxiliar para ajustar cor

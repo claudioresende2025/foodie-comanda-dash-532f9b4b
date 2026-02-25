@@ -84,7 +84,7 @@ export default function DeliveryTracking() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customerLocation, setCustomerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<'requesting' | 'granted' | 'denied' | 'unavailable'>('requesting');
+  const [gpsStatus, setGpsStatus] = useState<'requesting' | 'granted' | 'denied' | 'unavailable' | 'blocked'>('requesting');
   
   // Hook para rastreamento em tempo real
   const { location: deliveryLocation, hasLocation } = useDeliveryTracking(pedidoId);
@@ -96,8 +96,14 @@ export default function DeliveryTracking() {
       return;
     }
 
+    // Timeout para detectar quando a permissão não é concedida (possível bloqueio por overlay)
+    const timeoutId = setTimeout(() => {
+      setGpsStatus((current) => current === 'requesting' ? 'blocked' : current);
+    }, 15000);
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        clearTimeout(timeoutId);
         const loc = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -106,11 +112,19 @@ export default function DeliveryTracking() {
         setGpsStatus('granted');
       },
       (err) => {
+        clearTimeout(timeoutId);
         console.error('GPS negado:', err);
-        setGpsStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable');
+        // TIMEOUT pode indicar bloqueio por overlay de apps
+        if (err.code === err.TIMEOUT) {
+          setGpsStatus('blocked');
+        } else {
+          setGpsStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable');
+        }
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   const fetchPedido = useCallback(async () => {
@@ -242,19 +256,25 @@ export default function DeliveryTracking() {
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Aviso de GPS desativado */}
-        {(gpsStatus === 'denied' || gpsStatus === 'unavailable') && (
+        {(gpsStatus === 'denied' || gpsStatus === 'unavailable' || gpsStatus === 'blocked') && (
           <Card className="border-yellow-300 bg-yellow-50">
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-medium text-yellow-800">
-                    {gpsStatus === 'denied' ? 'GPS desativado' : 'GPS indisponível'}
+                    {gpsStatus === 'blocked' 
+                      ? 'Permissão bloqueada' 
+                      : gpsStatus === 'denied' 
+                        ? 'GPS desativado' 
+                        : 'GPS indisponível'}
                   </p>
                   <p className="text-sm text-yellow-700 mt-1">
-                    {gpsStatus === 'denied' 
-                      ? 'Ative a localização nas configurações do navegador para ver sua posição no mapa.'
-                      : 'Seu navegador não suporta geolocalização.'}
+                    {gpsStatus === 'blocked'
+                      ? 'Feche apps com sobreposição de tela (bolhas, assistentes flutuantes) e recarregue a página.'
+                      : gpsStatus === 'denied' 
+                        ? 'Ative a localização nas configurações do navegador para ver sua posição no mapa.'
+                        : 'Seu navegador não suporta geolocalização.'}
                   </p>
                 </div>
               </div>
