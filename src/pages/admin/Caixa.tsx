@@ -366,36 +366,17 @@ export default function Caixa() {
         .eq('id', comandaId);
       if (error) throw error;
       
-      // 2. Atualiza o status da mesa para disponível e desfaz junção se necessário
-      // NOTA: O trigger 'update_mesa_status_on_comanda' também libera a mesa quando o status muda para 'fechada',
-      // mas mantemos este código para garantir que junções sejam desfeitas corretamente
+      // 2. Atualiza o status da mesa para disponível usando RPC (contorna RLS)
+      // NOTA: O trigger também tenta liberar, mas usamos RPC para garantir
       if (mesaId) {
-        // Busca informações da mesa
-        const { data: mesaData } = await supabase
-          .from('mesas')
-          .select('id, mesa_juncao_id')
-          .eq('id', mesaId)
-          .single();
-
-        if (mesaData?.mesa_juncao_id) {
-          // Mesa filha: libera só ela
+        const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: mesaId });
+        if (mesaError) {
+          console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
+          // Fallback: tenta update direto (pode falhar por RLS)
           await supabase
             .from('mesas')
             .update({ status: 'disponivel', mesa_juncao_id: null })
             .eq('id', mesaId);
-        } else {
-          // Mesa principal: libera todas as mesas da junção (inclusive ela) e desfaz junção
-          const { data: mesasJuncao } = await supabase
-            .from('mesas')
-            .select('id')
-            .or(`id.eq.${mesaId},mesa_juncao_id.eq.${mesaId}`);
-
-          if (mesasJuncao && mesasJuncao.length > 0) {
-            await supabase
-              .from('mesas')
-              .update({ status: 'disponivel', mesa_juncao_id: null })
-              .in('id', mesasJuncao.map(m => m.id));
-          }
         }
       }
       
@@ -450,33 +431,11 @@ export default function Caixa() {
         .eq('id', comandaId);
       if (error) throw error;
       
-      // 2. Liberar mesa (e mesas juntas, se houver)
+      // 2. Liberar mesa usando RPC (contorna RLS)
       if (mesaId) {
-        const { data: mesaData } = await supabase
-          .from('mesas')
-          .select('id, mesa_juncao_id')
-          .eq('id', mesaId)
-          .single();
-
-        if (mesaData?.mesa_juncao_id) {
-          // Mesa filha: libera só ela
-          await supabase
-            .from('mesas')
-            .update({ status: 'disponivel', mesa_juncao_id: null })
-            .eq('id', mesaId);
-        } else {
-          // Mesa principal: libera todas as mesas da junção
-          const { data: mesasJuncao } = await supabase
-            .from('mesas')
-            .select('id')
-            .or(`id.eq.${mesaId},mesa_juncao_id.eq.${mesaId}`);
-
-          if (mesasJuncao && mesasJuncao.length > 0) {
-            await supabase
-              .from('mesas')
-              .update({ status: 'disponivel', mesa_juncao_id: null })
-              .in('id', mesasJuncao.map(m => m.id));
-          }
+        const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: mesaId });
+        if (mesaError) {
+          console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
         }
       }
     },
@@ -781,11 +740,16 @@ export default function Caixa() {
         .update({ status_cozinha: 'entregue' })
         .in('comanda_id', liquidacaoComandaIds);
 
-      // 5. Liberar mesa
-      await supabase
-        .from('mesas')
-        .update({ status: 'disponivel' })
-        .eq('id', selectedMesaLiquidacao.id);
+      // 5. Liberar mesa usando RPC (contorna RLS)
+      const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaLiquidacao.id });
+      if (mesaError) {
+        console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
+        // Fallback
+        await supabase
+          .from('mesas')
+          .update({ status: 'disponivel' })
+          .eq('id', selectedMesaLiquidacao.id);
+      }
 
       toast.success(`Mesa ${selectedMesaLiquidacao.numero_mesa} liberada com sucesso!`);
       setLiquidacaoDialogOpen(false);

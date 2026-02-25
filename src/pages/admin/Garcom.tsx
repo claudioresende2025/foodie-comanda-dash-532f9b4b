@@ -507,11 +507,16 @@ export default function Garcom() {
           .in('comanda_id', comandaIds);
       }
 
-      // 6. Liberar mesa
-      await supabase
-        .from('mesas')
-        .update({ status: 'disponivel' })
-        .eq('id', selectedMesaForBaixa.id);
+      // 6. Liberar mesa usando RPC (contorna RLS)
+      const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaForBaixa.id });
+      if (mesaError) {
+        console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
+        // Fallback
+        await supabase
+          .from('mesas')
+          .update({ status: 'disponivel' })
+          .eq('id', selectedMesaForBaixa.id);
+      }
 
       toast.success('Baixa realizada com sucesso! Mesa liberada.');
       setDarBaixaDialogOpen(false);
