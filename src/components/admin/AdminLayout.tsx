@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
@@ -14,6 +14,64 @@ export function AdminLayout() {
   const { user, loading, profile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Ler configuração de menu compacto do localStorage
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem("fcd-settings");
+      if (saved) {
+        const settings = JSON.parse(saved);
+        // compactMenu = true significa sidebar colapsada (defaultOpen = false)
+        return !settings.compactMenu;
+      }
+    } catch (e) {
+      console.warn('Erro ao ler configurações:', e);
+    }
+    return true; // expandido por padrão
+  });
+  
+  // Handler que também persiste no localStorage
+  const handleSidebarOpenChange = (open: boolean) => {
+    setSidebarOpen(open);
+    try {
+      const saved = localStorage.getItem("fcd-settings");
+      const settings = saved ? JSON.parse(saved) : {};
+      settings.compactMenu = !open;
+      localStorage.setItem("fcd-settings", JSON.stringify(settings));
+    } catch (e) {
+      console.warn('Erro ao salvar configurações:', e);
+    }
+  };
+  
+  // Atualizar quando a configuração mudar (mesmo na mesma aba)
+  useEffect(() => {
+    const handleSettingsChange = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && typeof customEvent.detail.compactMenu === 'boolean') {
+        setSidebarOpen(!customEvent.detail.compactMenu);
+      }
+    };
+    
+    const handleStorage = () => {
+      try {
+        const saved = localStorage.getItem("fcd-settings");
+        if (saved) {
+          const settings = JSON.parse(saved);
+          setSidebarOpen(!settings.compactMenu);
+        }
+      } catch (e) {
+        console.warn('Erro ao ler configurações:', e);
+      }
+    };
+    
+    window.addEventListener('fcd-settings-changed', handleSettingsChange);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('fcd-settings-changed', handleSettingsChange);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+  
   const {
     role,
     isLoading: roleLoading,
@@ -128,7 +186,7 @@ export function AdminLayout() {
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={sidebarOpen} onOpenChange={handleSidebarOpenChange}>
       <div className="min-h-screen flex w-full">
         <AdminSidebar />
         <SidebarInset>

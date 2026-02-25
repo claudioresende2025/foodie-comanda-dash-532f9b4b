@@ -618,7 +618,7 @@ export default function Mesas() {
                 return (
                   <Card 
                     key={mesa.id} 
-                    className={`relative overflow-hidden cursor-pointer transition-all hover:scale-105 border-2 bg-white ${config.borderColor}`}
+                    className={`relative overflow-hidden cursor-pointer transition-all hover:scale-105 border-2 bg-card ${config.borderColor}`}
                     onClick={() => handleMesaClick(mesa)}
                   >
                     {/* Barra colorida no topo */}

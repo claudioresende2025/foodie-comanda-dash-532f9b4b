@@ -78,6 +78,12 @@ export default function Configuracoes() {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     localStorage.setItem("fcd-settings", JSON.stringify(newSettings));
+    
+    // Disparar evento para atualizar sidebar em tempo real
+    if (key === 'compactMenu') {
+      window.dispatchEvent(new CustomEvent('fcd-settings-changed', { detail: newSettings }));
+    }
+    
     toast.success("Configuração atualizada!");
   };
 
