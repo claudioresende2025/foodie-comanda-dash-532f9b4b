@@ -483,8 +483,8 @@ export default function PedidosDelivery() {
                         selectedPedido.forma_pagamento === 'dinheiro' ? 'Dinheiro' :
                         selectedPedido.forma_pagamento
                       }
-                      {selectedPedido.troco_para && selectedPedido.forma_pagamento === 'dinheiro' && (
-                        <span className="ml-2 text-orange-600">(Troco para R$ {selectedPedido.troco_para.toFixed(2)})</span>
+                      {(selectedPedido as any).troco_para && selectedPedido.forma_pagamento === 'dinheiro' && (
+                        <span className="ml-2 text-orange-600">(Troco para R$ {(selectedPedido as any).troco_para.toFixed(2)})</span>
                       )}
                     </p>
                   )}

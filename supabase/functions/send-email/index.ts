@@ -19,7 +19,7 @@ const logStep = (step: string, details?: any) => {
 // Templates de e-mail em HTML
 const templates: Record<string, (data: any) => { subject: string; html: string }> = {
   welcome: (data) => ({
-    subject: `Bem-vindo ao Foodie Comanda Pro, ${data.nome}!`,
+    subject: `Bem-vindo ao Food Comanda Pro, ${data.nome}!`,
     html: `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -31,7 +31,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
       <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
         <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Bem-vindo ao Foodie Comanda Pro!</h1>
+            <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Bem-vindo ao Food Comanda Pro!</h1>
           </div>
           
           <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
@@ -64,7 +64,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
           </div>
           
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">
-            © ${new Date().getFullYear()} Foodie Comanda Pro. Todos os direitos reservados.
+            © ${new Date().getFullYear()} Food Comanda Pro. Todos os direitos reservados.
           </p>
         </div>
       </body>
@@ -148,7 +148,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
           <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="font-size: 16px;">Olá <strong>${data.nome || 'Cliente'}</strong>,</p>
             
-            <p style="font-size: 16px;">Seu período de teste do Foodie Comanda Pro termina em <strong>${data.dataFim}</strong>.</p>
+            <p style="font-size: 16px;">Seu período de teste do Food Comanda Pro termina em <strong>${data.dataFim}</strong>.</p>
             
             <div style="background: #fffbeb; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #f59e0b; text-align: center;">
               <p style="font-size: 24px; font-weight: bold; color: #b45309; margin: 0;">
@@ -172,7 +172,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
   }),
   
   password_reset: (data) => ({
-    subject: '🔐 Redefinição de Senha - Foodie Comanda Pro',
+    subject: '🔐 Redefinição de Senha - Food Comanda Pro',
     html: `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -252,7 +252,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
           </div>
           <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="font-size: 16px;">Olá <strong>${data.nome || 'Cliente'}</strong>,</p>
-            <p style="font-size: 16px;">Bem-vindo ao Foodie Comanda Pro! Aqui estão 3 passos para começar agora:</p>
+            <p style="font-size: 16px;">Bem-vindo ao Food Comanda Pro! Aqui estão 3 passos para começar agora:</p>
             <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #16a34a;">
               <p style="margin: 0 0 12px 0;"><strong>1️⃣</strong> Cadastre seus produtos no cardápio digital</p>
               <p style="margin: 0 0 12px 0;"><strong>2️⃣</strong> Crie suas mesas e gere os QR Codes</p>
@@ -263,7 +263,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             <p style="color: #6b7280; font-size: 14px; text-align: center;">Precisa de ajuda? Responda este e-mail!</p>
           </div>
-          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Foodie Comanda Pro</p>
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
         </div>
       </body></html>
     `
@@ -293,7 +293,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin/cardapio'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Criar Cardápio Agora</a>
             </div>
           </div>
-          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Foodie Comanda Pro</p>
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
         </div>
       </body></html>
     `
@@ -321,7 +321,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Continuar Configurando</a>
             </div>
           </div>
-          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Foodie Comanda Pro</p>
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
         </div>
       </body></html>
     `
@@ -347,7 +347,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <a href="${data.planosUrl || 'https://foodie-comanda-dash.lovable.app/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Ver Planos e Assinar</a>
             </div>
           </div>
-          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Foodie Comanda Pro</p>
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
         </div>
       </body></html>
     `
@@ -373,7 +373,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <a href="${data.planosUrl || 'https://foodie-comanda-dash.lovable.app/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Assinar com 20% OFF</a>
             </div>
           </div>
-          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Foodie Comanda Pro</p>
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
         </div>
       </body></html>
     `
@@ -390,7 +390,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
           </div>
           <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="font-size: 16px;">Olá <strong>${data.nome || 'Cliente'}</strong>,</p>
-            <p style="font-size: 16px;">Faz um tempo que você não acessa o Foodie Comanda Pro. Preparamos algo especial:</p>
+            <p style="font-size: 16px;">Faz um tempo que você não acessa o Food Comanda Pro. Preparamos algo especial:</p>
             <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #16a34a; text-align: center;">
               <p style="font-size: 20px; font-weight: bold; color: #166534; margin: 0;">🎉 30 dias grátis para você voltar!</p>
               <p style="color: #6b7280; margin: 8px 0 0 0;">Sem compromisso. Cancele quando quiser.</p>
@@ -399,7 +399,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Voltar Agora — 30 Dias Grátis</a>
             </div>
           </div>
-          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Foodie Comanda Pro</p>
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
         </div>
       </body></html>
     `
@@ -458,7 +458,7 @@ serve(async (req) => {
     
     // Usar domínio padrão do Resend para testes (onboarding@resend.dev)
     // Em produção, substituir por domínio verificado
-    const fromEmail = Deno.env.get("EMAIL_FROM") || "Foodie Comanda <onboarding@resend.dev>";
+    const fromEmail = Deno.env.get("EMAIL_FROM") || "Food Comanda <onboarding@resend.dev>";
     
     // Enviar via Resend API
     const response = await fetch("https://api.resend.com/emails", {

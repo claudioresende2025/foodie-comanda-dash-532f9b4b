@@ -1800,10 +1800,6 @@ export type Database = {
         Args: { p_mesa_id: string }
         Returns: undefined
       }
-      liberar_mesa: {
-        Args: { p_mesa_id: string }
-        Returns: undefined
-      }
       upsert_empresa_overrides: {
         Args: {
           p_empresa_id: string
