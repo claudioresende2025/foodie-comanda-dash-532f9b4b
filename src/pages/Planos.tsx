@@ -361,7 +361,7 @@ export default function Planos() {
                   return (
                     <div className="text-center py-2">
                       <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                        Foodie Comanda Pro
+                        Food Comanda Pro
                       </h1>
                       <p className="text-muted-foreground text-sm">
                         A plataforma completa para seu restaurante

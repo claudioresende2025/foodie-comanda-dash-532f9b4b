@@ -72,7 +72,7 @@ export default function LandingRestaurantes() {
       {/* Navbar */}
       <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-primary">Foodie Comanda</h1>
+          <h1 className="text-xl font-bold text-primary">Food Comanda</h1>
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate('/planos')}>Preços</Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/auth')}>Entrar</Button>
@@ -272,7 +272,7 @@ export default function LandingRestaurantes() {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-8">
             <div>
-              <h3 className="font-bold text-lg mb-3 text-primary">Foodie Comanda</h3>
+              <h3 className="font-bold text-lg mb-3 text-primary">Food Comanda</h3>
               <p className="text-sm text-muted-foreground">A plataforma completa para gestão de restaurantes.</p>
             </div>
             <div>
@@ -292,7 +292,7 @@ export default function LandingRestaurantes() {
             </div>
           </div>
           <div className="mt-8 pt-8 border-t text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Foodie Comanda. Todos os direitos reservados.
+            © {new Date().getFullYear()} Food Comanda. Todos os direitos reservados.
           </div>
         </div>
       </footer>
