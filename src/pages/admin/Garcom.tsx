@@ -34,6 +34,7 @@ type ChamadaGarcom = {
   id: string;
   mesa_id: string;
   status: string;
+  motivo?: string | null; // 'atendimento' | 'fechamento'
   created_at: string;
   mesa?: { id?: string; numero_mesa: number; nome?: string | null };
 };
@@ -133,7 +134,7 @@ export default function Garcom() {
   });
 
   // Chamadas de garçom
-  const { data: chamadas = [], refetch: refetchChamadas } = useQuery({
+  const { data: chamadasRaw = [], refetch: refetchChamadas } = useQuery({
     queryKey: ['chamadas-garcom', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
@@ -150,6 +151,10 @@ export default function Garcom() {
     staleTime: 5000,
     refetchInterval: 10000,
   });
+
+  // Separar chamadas de atendimento das chamadas de fechamento
+  const chamadas = useMemo(() => chamadasRaw.filter(c => c.motivo !== 'fechamento'), [chamadasRaw]);
+  const chamadasFechamento = useMemo(() => chamadasRaw.filter(c => c.motivo === 'fechamento'), [chamadasRaw]);
 
   // Pedidos (para ver status de todos os pedidos)
   const { data: pedidos = [], refetch: refetchPedidos } = useQuery({
@@ -256,10 +261,13 @@ export default function Garcom() {
   // Mesas visíveis (oculta as marcadas como 'juncao')
   const visibleMesas = mesas.filter(mesa => mesa.status !== 'juncao');
 
-  // Mesas que solicitaram fechamento de conta
+  // Mesas que solicitaram fechamento de conta (via status da mesa OU via chamada com motivo 'fechamento')
   const mesasFechamento = useMemo(() => {
     return mesas.filter(mesa => mesa.status === 'solicitou_fechamento');
   }, [mesas]);
+
+  // Total de alertas de fechamento (mesas + chamadas)
+  const totalFechamento = mesasFechamento.length + chamadasFechamento.length;
 
   // ========== EFFECTS ==========
 
@@ -270,8 +278,8 @@ export default function Garcom() {
       setSoundIntervalRef(null);
     }
 
-    // Tocar som quando houver chamadas pendentes OU mesas solicitando fechamento
-    const hasAlerts = chamadas.length > 0 || mesasFechamento.length > 0;
+    // Tocar som quando houver chamadas pendentes OU mesas/chamadas solicitando fechamento
+    const hasAlerts = chamadas.length > 0 || totalFechamento > 0;
     
     if (hasAlerts && soundEnabled) {
       playNotificationSound();
@@ -285,7 +293,7 @@ export default function Garcom() {
     return () => {
       if (soundIntervalRef) clearInterval(soundIntervalRef);
     };
-  }, [chamadas.length, mesasFechamento.length, soundEnabled]);
+  }, [chamadas.length, totalFechamento, soundEnabled]);
 
   // Realtime subscriptions
   useEffect(() => {
@@ -583,17 +591,56 @@ export default function Garcom() {
         </Card>
       )}
 
-      {/* Mesas Solicitando Fechamento de Conta */}
-      {mesasFechamento.length > 0 && (
+      {/* Mesas/Chamadas Solicitando Fechamento de Conta */}
+      {totalFechamento > 0 && (
         <Card className="border-2 border-red-500 bg-red-50 animate-pulse">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-red-600">
               <Receipt className="w-5 h-5" />
-              Fechamento de Conta ({mesasFechamento.length})
+              Fechamento de Conta ({totalFechamento})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {/* Chamadas de fechamento (clientes que usaram o botão) */}
+              {chamadasFechamento.map((chamada) => {
+                const displayName = getMesaDisplayNameById(chamada.mesa_id);
+                return (
+                  <div
+                    key={`chamada-${chamada.id}`}
+                    className="p-3 bg-white border-2 border-red-400 rounded-lg space-y-2"
+                  >
+                    <div className="text-center">
+                      <span className="text-lg font-bold text-red-700">{displayName}</span>
+                      <Badge variant="outline" className="ml-2 text-xs">Via App</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAtenderChamada(chamada.id)}
+                        title="Atender solicitação"
+                      >
+                        <Check className="w-3 h-3 mr-1" />
+                        Atender
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => {
+                          const mesa = mesas.find(m => m.id === chamada.mesa_id);
+                          if (mesa) handleOpenDarBaixa(mesa);
+                        }}
+                        title="Registrar pagamento"
+                      >
+                        <DollarSign className="w-3 h-3 mr-1" />
+                        Dar Baixa
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Mesas com status solicitou_fechamento (legado) */}
               {mesasFechamento.map((mesa) => {
                 const displayName = getMesaDisplayName(mesa);
                 return (

@@ -251,9 +251,29 @@ export default function Menu() {
     markMesaOcupada();
   }, [mesaId]);
 
-  // Check for existing comanda in localStorage - VERIFICAR SE AINDA ESTÁ ABERTA
+  // Check for existing comanda - BUSCAR DO BANCO para sincronizar entre dispositivos
   useEffect(() => {
     const validateAndLoadComanda = async () => {
+      // 1. Primeiro, buscar comanda ativa da MESA no banco (sincroniza entre dispositivos)
+      const { data: comandaMesa } = await supabase
+        .from("comandas")
+        .select("id, status")
+        .eq("empresa_id", empresaId)
+        .eq("mesa_id", mesaId)
+        .eq("status", "aberta")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (comandaMesa) {
+        // Existe uma comanda ativa nesta mesa - usar ela
+        setComandaId(comandaMesa.id);
+        localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaMesa.id);
+        fetchMeusPedidos(comandaMesa.id);
+        return;
+      }
+
+      // 2. Fallback: verificar localStorage (caso ainda não exista comanda)
       const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
       if (savedComandaId) {
         // Verifica se a comanda ainda está aberta no banco de dados
@@ -491,9 +511,9 @@ export default function Menu() {
     }
   };
 
-  // Solicita fechamento da conta - atualiza status da mesa
+  // Solicita fechamento da conta - cria chamada_garcom especial com motivo "fechamento"
   const handleSolicitarFechamento = async () => {
-    if (!mesaId) {
+    if (!mesaId || !empresaId) {
       toast.error("Erro ao identificar mesa");
       return;
     }
@@ -501,19 +521,21 @@ export default function Menu() {
     setIsRequestingFechamento(true);
 
     try {
-      // Atualiza o status da mesa para 'solicitou_fechamento'
+      // Criar chamada de garçom com motivo especial para fechamento
+      // Isso evita problemas de permissão RLS já que cliente pode inserir chamadas
       const { error } = await supabase
-        .from("mesas")
-        .update({ status: "solicitou_fechamento" })
-        .eq("id", mesaId);
+        .from("chamadas_garcom")
+        .insert({
+          empresa_id: empresaId,
+          mesa_id: mesaId,
+          comanda_id: comandaId,
+          status: "pendente",
+          motivo: "fechamento", // Motivo especial para indicar fechamento de conta
+        });
 
       if (error) {
         console.error("[FECHAR CONTA ERROR]", error);
-        if (error.code === "42501" || error.message?.includes("policy")) {
-          toast.error("Permissão negada. Chame o garçom.");
-        } else {
-          toast.error(`Erro ao solicitar fechamento: ${error.message || "Erro desconhecido"}`);
-        }
+        toast.error(`Erro ao solicitar fechamento: ${error.message || "Erro desconhecido"}`);
         return;
       }
 
