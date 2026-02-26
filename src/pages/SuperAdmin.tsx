@@ -415,6 +415,15 @@ export default function SuperAdmin() {
     }
   };
 
+  const getPlanDisplayName = (plano: any) => {
+    if (!plano) return 'Sem plano';
+    const slug = plano.slug?.toLowerCase();
+    if (slug === 'bronze') return 'Bronze (Iniciante)';
+    if (slug === 'prata') return 'Prata (Intermediário)';
+    if (slug === 'ouro') return 'Ouro (Enterprise)';
+    return plano.nome || 'Sem plano';
+  };
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -594,6 +603,91 @@ export default function SuperAdmin() {
               </Card>
             </div>
 
+            {/* Grid com 2 colunas */}
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Empresas Recentes */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Building2 className="w-5 h-5 text-blue-500" />
+                    Empresas Recentes
+                  </CardTitle>
+                  <CardDescription>Últimas empresas cadastradas</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {empresas.slice(0, 5).map((empresa) => (
+                      <div key={empresa.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                            <Building2 className="w-4 h-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{empresa.nome_fantasia}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {getPlanDisplayName(empresa.assinatura?.plano)} • {format(new Date(empresa.created_at), 'dd/MM', { locale: ptBR })}
+                            </p>
+                          </div>
+                        </div>
+                        {getStatusBadge(empresa)}
+                      </div>
+                    ))}
+                    {empresas.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhuma empresa cadastrada</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Distribuição por Plano */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BarChart3 className="w-5 h-5 text-emerald-500" />
+                    Distribuição por Plano
+                  </CardTitle>
+                  <CardDescription>Quantidade de empresas por plano</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {(() => {
+                      const planoStats = empresas.reduce((acc, emp) => {
+                        const plano = getPlanDisplayName(emp.assinatura?.plano);
+                        acc[plano] = (acc[plano] || 0) + 1;
+                        return acc;
+                      }, {} as Record<string, number>);
+                      
+                      const total = Object.values(planoStats).reduce((a, b) => a + b, 0) || 1;
+                      const colors: Record<string, string> = {
+                        'Bronze': 'bg-orange-500',
+                        'Prata': 'bg-slate-400',
+                        'Ouro': 'bg-amber-500',
+                        'Sem plano': 'bg-gray-300',
+                      };
+                      
+                      return Object.entries(planoStats).map(([plano, count]) => (
+                        <div key={plano} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium">{plano}</span>
+                            <span className="text-muted-foreground">{count} ({Math.round((count / total) * 100)}%)</span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full ${colors[plano] || 'bg-primary'} transition-all`} 
+                              style={{ width: `${(count / total) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                    {empresas.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum dado disponível</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             {/* Reembolsos Pendentes */}
             {stats.reembolsosPendentes > 0 && (
               <Card>
@@ -648,11 +742,54 @@ export default function SuperAdmin() {
 
           {/* Empresas Tab */}
           <TabsContent value="empresas" className="space-y-6">
+            {/* Stats resumidas */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Building2 className="w-8 h-8 text-blue-600" />
+                  <div>
+                    <p className="text-2xl font-bold text-blue-700">{stats.totalEmpresas}</p>
+                    <p className="text-xs text-blue-600">Total Empresas</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+                  <div>
+                    <p className="text-2xl font-bold text-green-700">{stats.empresasAtivas}</p>
+                    <p className="text-xs text-green-600">Ativas</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Clock className="w-8 h-8 text-purple-600" />
+                  <div>
+                    <p className="text-2xl font-bold text-purple-700">{stats.empresasTrial}</p>
+                    <p className="text-xs text-purple-600">Em Trial</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Ban className="w-8 h-8 text-red-600" />
+                  <div>
+                    <p className="text-2xl font-bold text-red-700">{stats.empresasBloqueadas}</p>
+                    <p className="text-xs text-red-600">Bloqueadas</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Empresas Cadastradas</CardTitle>
-                  <div className="flex items-center gap-4">
+              <CardHeader className="pb-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <CardTitle>Empresas Cadastradas</CardTitle>
+                    <CardDescription>{filteredEmpresas.length} empresas encontradas</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-3">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
@@ -663,7 +800,7 @@ export default function SuperAdmin() {
                       />
                     </div>
                     <Select value={filterStatus} onValueChange={setFilterStatus}>
-                      <SelectTrigger className="w-40">
+                      <SelectTrigger className="w-36">
                         <SelectValue placeholder="Filtrar" />
                       </SelectTrigger>
                       <SelectContent>
@@ -678,47 +815,86 @@ export default function SuperAdmin() {
                 </div>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[500px]">
+                <ScrollArea className="h-[450px]">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Empresa</TableHead>
+                        <TableHead className="w-[250px]">Empresa</TableHead>
                         <TableHead>Plano</TableHead>
+                        <TableHead>Período</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Trial Termina</TableHead>
                         <TableHead>Criado em</TableHead>
-                        <TableHead>Ações</TableHead>
+                        <TableHead className="text-center">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredEmpresas.map((empresa) => (
-                        <TableRow key={empresa.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{empresa.nome_fantasia}</p>
-                              <p className="text-xs text-muted-foreground">{empresa.cnpj || '-'}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {empresa.assinatura?.plano?.nome || 'Sem plano'}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(empresa)}</TableCell>
-                          <TableCell>
-                            {format(new Date(empresa.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                          </TableCell>
-                          <TableCell>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedEmpresa(empresa);
-                                setEmpresaDialogOpen(true);
-                              }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
+                      {filteredEmpresas.map((empresa) => {
+                        const trialEnd = empresa.assinatura?.trial_end ? new Date(empresa.assinatura.trial_end) : null;
+                        const isTrialExpired = trialEnd && trialEnd < new Date();
+                        
+                        return (
+                          <TableRow key={empresa.id} className="hover:bg-muted/50">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                {empresa.logo_url ? (
+                                  <img src={empresa.logo_url} alt="" className="w-8 h-8 rounded object-cover" />
+                                ) : (
+                                  <div className="w-8 h-8 bg-primary/10 rounded flex items-center justify-center">
+                                    <Building2 className="w-4 h-4 text-primary" />
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="font-medium">{empresa.nome_fantasia}</p>
+                                  <p className="text-xs text-muted-foreground">{empresa.cnpj || 'CNPJ não informado'}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="font-normal">
+                                {getPlanDisplayName(empresa.assinatura?.plano)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {empresa.assinatura?.periodo === 'anual' ? 'Anual' : 'Mensal'}
+                            </TableCell>
+                            <TableCell>{getStatusBadge(empresa)}</TableCell>
+                            <TableCell className="text-sm">
+                              {trialEnd ? (
+                                <span className={isTrialExpired ? 'text-destructive' : ''}>
+                                  {format(trialEnd, 'dd/MM/yyyy', { locale: ptBR })}
+                                </span>
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {format(new Date(empresa.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-1">
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    setSelectedEmpresa(empresa);
+                                    setEmpresaDialogOpen(true);
+                                  }}
+                                  title="Ver detalhes"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {filteredEmpresas.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            Nenhuma empresa encontrada
                           </TableCell>
                         </TableRow>
-                      ))}
+                      )}
                     </TableBody>
                   </Table>
                 </ScrollArea>
@@ -901,178 +1077,215 @@ export default function SuperAdmin() {
         </Tabs>
       </main>
 
-      {/* Dialog Detalhes Empresa */}
+      {/* Dialog Detalhes Empresa - Compacto */}
       <Dialog open={empresaDialogOpen} onOpenChange={setEmpresaDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{selectedEmpresa?.nome_fantasia}</DialogTitle>
-            <DialogDescription>Detalhes e ações da empresa</DialogDescription>
+        <DialogContent className="max-w-md max-h-[85vh] flex flex-col p-0">
+          <DialogHeader className="px-4 pt-4 pb-2 border-b">
+            <div className="flex items-center gap-3">
+              {selectedEmpresa?.logo_url ? (
+                <img src={selectedEmpresa.logo_url} alt="" className="w-10 h-10 rounded-lg object-cover" />
+              ) : (
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-primary" />
+                </div>
+              )}
+              <div>
+                <DialogTitle className="text-base">{selectedEmpresa?.nome_fantasia}</DialogTitle>
+                <p className="text-xs text-muted-foreground">{selectedEmpresa?.cnpj || 'CNPJ não informado'}</p>
+              </div>
+            </div>
           </DialogHeader>
           
           {selectedEmpresa && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">CNPJ</p>
-                  <p className="font-medium">{selectedEmpresa.cnpj || '-'}</p>
+            <ScrollArea className="flex-1 px-4">
+              <div className="py-3 space-y-4">
+                {/* Info Básica */}
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-muted/50 rounded-lg p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Plano</p>
+                    <p className="font-medium text-sm">{getPlanDisplayName(selectedEmpresa.assinatura?.plano)}</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Status</p>
+                    <div className="mt-0.5">{getStatusBadge(selectedEmpresa)}</div>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Criado em</p>
+                    <p className="font-medium text-sm">
+                      {format(new Date(selectedEmpresa.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Chave PIX</p>
+                    <p className="font-medium text-sm truncate">{selectedEmpresa.chave_pix || '-'}</p>
+                  </div>
                 </div>
+
+                {selectedEmpresa.endereco_completo && (
+                  <div className="bg-muted/50 rounded-lg p-2">
+                    <p className="text-[10px] uppercase text-muted-foreground font-medium">Endereço</p>
+                    <p className="text-sm">{selectedEmpresa.endereco_completo}</p>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Overrides Compacto */}
                 <div>
-                  <p className="text-muted-foreground">Endereço</p>
-                  <p className="font-medium">{selectedEmpresa.endereco_completo || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Plano</p>
-                  <p className="font-medium">{selectedEmpresa.assinatura?.plano?.nome || 'Sem plano'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Status</p>
-                  {getStatusBadge(selectedEmpresa)}
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Criado em</p>
-                  <p className="font-medium">
-                    {format(new Date(selectedEmpresa.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Chave PIX</p>
-                  <p className="font-medium">{selectedEmpresa.chave_pix || '-'}</p>
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
+                    <Settings className="w-4 h-4" />
+                    Overrides / Controles
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1">Sobrescreve configurações do plano para esta empresa.</p>
+
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+                    {[
+                      { key: 'mesas', label: 'Mesas' },
+                      { key: 'delivery', label: 'Delivery' },
+                      { key: 'kds', label: 'KDS' },
+                      { key: 'marketing', label: 'Marketing' },
+                      { key: 'cardapio', label: 'Cardápio' },
+                      { key: 'dashboard', label: 'Dashboard' },
+                      { key: 'garcom', label: 'Garçom (App)' },
+                      { key: 'equipe', label: 'Equipe' },
+                      { key: 'estatisticas', label: 'Estatísticas' },
+                      { key: 'caixa', label: 'Caixa' },
+                    ].map(item => (
+                      <div key={item.key} className="flex items-center justify-between py-1">
+                        <Label className="text-sm font-normal">{item.label}</Label>
+                        <Switch 
+                          checked={empresaOverrides?.[item.key] || false} 
+                          onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, [item.key]: v })} 
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <div>
+                      <Label className="text-xs">Limite Mesas</Label>
+                      <Input 
+                        type="number"
+                        placeholder="Ilimitado"
+                        className="h-8 text-sm"
+                        value={empresaOverrides?.mesas_limit ?? ''} 
+                        onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, mesas_limit: e.target.value ? parseInt(e.target.value) : null })} 
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Limite Garçom</Label>
+                      <Input 
+                        type="number"
+                        placeholder="Ilimitado"
+                        className="h-8 text-sm"
+                        value={empresaOverrides?.garcom_limit ?? ''} 
+                        onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, garcom_limit: e.target.value ? parseInt(e.target.value) : null })} 
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Limite Telas KDS</Label>
+                      <Input 
+                        type="number"
+                        placeholder="Ilimitado"
+                        className="h-8 text-sm"
+                        value={empresaOverrides?.kds_screens_limit ?? ''} 
+                        onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, kds_screens_limit: e.target.value ? parseInt(e.target.value) : null })} 
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Limite Funcionários</Label>
+                      <Input 
+                        type="number"
+                        placeholder="Ilimitado"
+                        className="h-8 text-sm"
+                        value={empresaOverrides?.staff_limit ?? ''} 
+                        onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, staff_limit: e.target.value ? parseInt(e.target.value) : null })} 
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              <Separator />
-
-              <div>
-                <h3 className="font-semibold">Overrides / Controles</h3>
-                <p className="text-sm text-muted-foreground">Ative ou desative recursos manualmente para esta empresa. Isso tem prioridade sobre o plano contratado.</p>
-
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div className="space-y-2">
-                    <Label>Mesas</Label>
-                    <Switch checked={empresaOverrides?.mesas || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, mesas: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Delivery</Label>
-                    <Switch checked={empresaOverrides?.delivery || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, delivery: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>KDS</Label>
-                    <Switch checked={empresaOverrides?.kds || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, kds: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Marketing</Label>
-                    <Switch checked={empresaOverrides?.marketing || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, marketing: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Cardápio</Label>
-                    <Switch checked={empresaOverrides?.cardapio || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, cardapio: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Dashboard</Label>
-                    <Switch checked={empresaOverrides?.dashboard || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, dashboard: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Garçom (App)</Label>
-                    <Switch checked={empresaOverrides?.garcom || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, garcom: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Equipe</Label>
-                    <Switch checked={empresaOverrides?.equipe || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, equipe: v })} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <Label>Limite telas KDS</Label>
-                    <Input value={empresaOverrides?.kds_screens_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, kds_screens_limit: e.target.value ? parseInt(e.target.value) : null })} />
-                  </div>
-                  <div>
-                    <Label>Limite funcionários</Label>
-                    <Input value={empresaOverrides?.staff_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, staff_limit: e.target.value ? parseInt(e.target.value) : null })} />
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" onClick={() => { setEmpresaDialogOpen(false); }}>
-                    Fechar
-                  </Button>
-                  <Button onClick={async () => {
-                    setSavingOverrides(true);
-                    try {
-                      const overridesPayload = empresaOverrides || {};
-
-                      // Prefer calling RPC upsert_empresa_overrides (runs as security definer)
-                      try {
-                        const { error: rpcError } = await supabase.rpc('upsert_empresa_overrides', {
-                          p_empresa_id: selectedEmpresa.id,
-                          p_overrides: overridesPayload,
-                          p_kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
-                          p_staff_limit: empresaOverrides?.staff_limit ?? null,
-                          p_mesas_limit: empresaOverrides?.mesas_limit ?? null,
-                          p_garcom_limit: empresaOverrides?.garcom_limit ?? null,
-                        } as any);
-
-                        if (rpcError) throw rpcError;
-
-                        toast.success('Overrides salvos');
-                        setEmpresaDialogOpen(false);
-                        await loadEmpresas();
-                        return;
-                      } catch (rpcErr) {
-                        console.warn('RPC upsert_empresa_overrides failed, falling back to direct write:', rpcErr);
-                        // continue to fallback below
-                      }
-
-                      // Fallback: attempt select -> insert/update (may fail if RLS blocks)
-                      const payload = {
-                        empresa_id: selectedEmpresa.id,
-                        overrides: overridesPayload,
-                        kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
-                        staff_limit: empresaOverrides?.staff_limit ?? null,
-                        mesas_limit: empresaOverrides?.mesas_limit ?? null,
-                        garcom_limit: empresaOverrides?.garcom_limit ?? null,
-                      };
-
-                      const { data: existing, error: selError } = await (supabase as any)
-                        .from('empresa_overrides')
-                        .select('id')
-                        .eq('empresa_id', selectedEmpresa.id)
-                        .maybeSingle();
-
-                      if (selError) throw selError;
-
-                      let res;
-                      if (existing && existing.id) {
-                        res = await (supabase as any).from('empresa_overrides').update(payload).eq('empresa_id', selectedEmpresa.id);
-                      } else {
-                        res = await (supabase as any).from('empresa_overrides').insert(payload);
-                      }
-
-                      if (res.error) throw res.error;
-
-                      toast.success('Overrides salvos');
-                      setEmpresaDialogOpen(false);
-                      await loadEmpresas();
-                    } catch (err: any) {
-                      console.error('Erro salvando overrides', err);
-                      // Detect common RLS error and show actionable hint
-                      const msg = String(err?.message || err);
-                      if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('violates row-level security') || msg.includes('403')) {
-                        toast.error('Erro ao salvar overrides: privilégios insuficientes. Execute a função RPC `upsert_empresa_overrides` com a service role ou ajuste as policies no Supabase.');
-                      } else {
-                        toast.error('Erro ao salvar overrides');
-                      }
-                    } finally {
-                      setSavingOverrides(false);
-                    }
-                  }} disabled={savingOverrides}>
-                    {savingOverrides ? 'Salvando...' : 'Salvar Overrides'}
-                  </Button>
-                </div>
-              </div>
-            </div>
+            </ScrollArea>
           )}
+          
+          <div className="px-4 py-3 border-t flex gap-2 bg-muted/30">
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => setEmpresaDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" className="flex-1" onClick={async () => {
+              setSavingOverrides(true);
+              try {
+                const overridesPayload = empresaOverrides || {};
+
+                // Prefer calling RPC upsert_empresa_overrides (runs as security definer)
+                try {
+                  const { error: rpcError } = await supabase.rpc('upsert_empresa_overrides', {
+                    p_empresa_id: selectedEmpresa!.id,
+                    p_overrides: overridesPayload,
+                    p_kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
+                    p_staff_limit: empresaOverrides?.staff_limit ?? null,
+                    p_mesas_limit: empresaOverrides?.mesas_limit ?? null,
+                    p_garcom_limit: empresaOverrides?.garcom_limit ?? null,
+                  } as any);
+
+                  if (rpcError) throw rpcError;
+
+                  toast.success('Overrides salvos');
+                  setEmpresaDialogOpen(false);
+                  await loadEmpresas();
+                  return;
+                } catch (rpcErr) {
+                  console.warn('RPC upsert_empresa_overrides failed, falling back to direct write:', rpcErr);
+                }
+
+                // Fallback: attempt select -> insert/update (may fail if RLS blocks)
+                const payload = {
+                  empresa_id: selectedEmpresa!.id,
+                  overrides: overridesPayload,
+                  kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
+                  staff_limit: empresaOverrides?.staff_limit ?? null,
+                  mesas_limit: empresaOverrides?.mesas_limit ?? null,
+                  garcom_limit: empresaOverrides?.garcom_limit ?? null,
+                };
+
+                const { data: existing, error: selError } = await (supabase as any)
+                  .from('empresa_overrides')
+                  .select('id')
+                  .eq('empresa_id', selectedEmpresa!.id)
+                  .maybeSingle();
+
+                if (selError) throw selError;
+
+                let res;
+                if (existing && existing.id) {
+                  res = await (supabase as any).from('empresa_overrides').update(payload).eq('empresa_id', selectedEmpresa!.id);
+                } else {
+                  res = await (supabase as any).from('empresa_overrides').insert(payload);
+                }
+
+                if (res.error) throw res.error;
+
+                toast.success('Overrides salvos');
+                setEmpresaDialogOpen(false);
+                await loadEmpresas();
+              } catch (err: any) {
+                console.error('Erro salvando overrides', err);
+                const msg = String(err?.message || err);
+                if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('violates row-level security') || msg.includes('403')) {
+                  toast.error('Erro ao salvar overrides: privilégios insuficientes.');
+                } else {
+                  toast.error('Erro ao salvar overrides');
+                }
+              } finally {
+                setSavingOverrides(false);
+              }
+            }} disabled={savingOverrides}>
+              {savingOverrides ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+              {savingOverrides ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
         </DialogContent>
+      </Dialog>
       </Dialog>
 
       {/* Dialog Detalhes Reembolso */}
