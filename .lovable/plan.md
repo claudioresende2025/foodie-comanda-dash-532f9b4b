@@ -1,11 +1,4 @@
 
-# Sync Force - 2026-02-25 23:45
-
-## Mudanças aplicadas nesta versão:
-1. SuperAdmin: popup reduzido, dashboard com estatísticas
-2. AdminSidebar: link "Administração" para super admin
-3. Assinatura/Planos: nomes corretos (Bronze/Prata/Ouro)
-4. Mesas: botões editar/excluir ocultos para Bronze
 
 # Remover "(WhatsApp)" do recurso Delivery
 

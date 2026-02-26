@@ -143,7 +143,7 @@ export default function Planos() {
       // Desconto de ~7% no plano anual (paga 11.16 meses pelo preço de 12)
       const displayOverrides: Record<string, any> = {
         'Básico': {
-          nome: 'Plano Bronze (Iniciante)',
+          nome: 'Plano Iniciante (Bronze)',
           preco_mensal: 149.90,
           preco_anual: Math.round(149.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 14,
@@ -162,7 +162,7 @@ export default function Planos() {
           ],
         },
         'Profissional': {
-          nome: 'Plano Prata (Intermediário)',
+          nome: 'Plano Profissional (Prata)',
           preco_mensal: 299.90,
           preco_anual: Math.round(299.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 14,

@@ -16,17 +16,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt, DollarSign, Trash2, Pencil } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt, DollarSign } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MesaQRCodeDialog } from '@/components/admin/MesaQRCodeDialog';
@@ -54,7 +44,7 @@ const statusConfig: Record<MesaStatus, { label: string; color: string; borderCol
 
 export default function Mesas() {
   const { profile } = useAuth();
-  const { mesasLimit, planoSlug } = useUserRole();
+  const { mesasLimit } = useUserRole();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<MesaStatus | 'todas'>('todas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -70,15 +60,6 @@ export default function Mesas() {
   // QR Code Dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedMesaForQR, setSelectedMesaForQR] = useState<Mesa | null>(null);
-  
-  // Delete Dialog
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [mesaToDelete, setMesaToDelete] = useState<Mesa | null>(null);
-  
-  // Edit Dialog
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [mesaToEdit, setMesaToEdit] = useState<Mesa | null>(null);
-  const [editCapacidade, setEditCapacidade] = useState('');
 
   const empresaId = profile?.empresa_id;
 
@@ -302,78 +283,6 @@ export default function Mesas() {
     if (mesa.status !== 'juncao') {
       setSelectedMesaForQR(mesa);
       setQrDialogOpen(true);
-    }
-  };
-
-  const handleOpenDeleteDialog = (mesa: Mesa, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMesaToDelete(mesa);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteMesa = async () => {
-    if (!mesaToDelete) return;
-    
-    try {
-      // Verificar se a mesa está ocupada ou tem comandas abertas
-      if (mesaToDelete.status === 'ocupada') {
-        toast.error('Não é possível excluir uma mesa ocupada');
-        setDeleteDialogOpen(false);
-        setMesaToDelete(null);
-        return;
-      }
-      
-      const { error } = await supabase
-        .from('mesas')
-        .delete()
-        .eq('id', mesaToDelete.id);
-      
-      if (error) throw error;
-      
-      toast.success(`Mesa ${mesaToDelete.numero_mesa} excluída com sucesso!`);
-      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
-    } catch (error: any) {
-      console.error('Error deleting mesa:', error);
-      toast.error('Erro ao excluir mesa');
-    } finally {
-      setDeleteDialogOpen(false);
-      setMesaToDelete(null);
-    }
-  };
-
-  const handleOpenEditDialog = (mesa: Mesa, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMesaToEdit(mesa);
-    setEditCapacidade(String(mesa.capacidade));
-    setEditDialogOpen(true);
-  };
-
-  const handleEditMesa = async () => {
-    if (!mesaToEdit) return;
-    
-    const capacidade = parseInt(editCapacidade);
-    if (isNaN(capacidade) || capacidade <= 0) {
-      toast.error('Capacidade deve ser maior que zero');
-      return;
-    }
-    
-    try {
-      const { error } = await supabase
-        .from('mesas')
-        .update({ capacidade })
-        .eq('id', mesaToEdit.id);
-      
-      if (error) throw error;
-      
-      toast.success(`Mesa ${mesaToEdit.numero_mesa} atualizada!`);
-      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
-    } catch (error: any) {
-      console.error('Error updating mesa:', error);
-      toast.error('Erro ao atualizar mesa');
-    } finally {
-      setEditDialogOpen(false);
-      setMesaToEdit(null);
-      setEditCapacidade('');
     }
   };
 
@@ -728,24 +637,6 @@ export default function Mesas() {
                           >
                             <QrCode className="w-5 h-5" />
                           </button>
-                          {planoSlug && planoSlug !== 'bronze' && (
-                            <>
-                              <button 
-                                onClick={(e) => handleOpenEditDialog(mesa, e)}
-                                className="p-1 rounded hover:bg-primary/20 transition-colors text-muted-foreground hover:text-primary"
-                                title="Editar mesa"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={(e) => handleOpenDeleteDialog(mesa, e)}
-                                className="p-1 rounded hover:bg-destructive/20 transition-colors text-muted-foreground hover:text-destructive"
-                                title="Excluir mesa"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
                           {mesa.status === 'juncao' && (
                             <button 
                               onClick={(e) => {
@@ -810,64 +701,6 @@ export default function Mesas() {
           mesaStatus={selectedMesaForQR.status}
         />
       )}
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir Mesa {mesaToDelete?.numero_mesa}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja excluir a mesa {mesaToDelete?.numero_mesa}? Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setMesaToDelete(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteMesa}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Edit Mesa Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Mesa {mesaToEdit?.numero_mesa}</DialogTitle>
-            <DialogDescription>
-              Altere a capacidade (número de lugares) da mesa
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-capacidade">Capacidade (lugares)</Label>
-              <Input
-                id="edit-capacidade"
-                type="number"
-                min="1"
-                placeholder="Ex: 4"
-                value={editCapacidade}
-                onChange={(e) => setEditCapacidade(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => {
-                setEditDialogOpen(false);
-                setMesaToEdit(null);
-                setEditCapacidade('');
-              }}>
-                Cancelar
-              </Button>
-              <Button onClick={handleEditMesa}>
-                Salvar
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
     </div>
   );
