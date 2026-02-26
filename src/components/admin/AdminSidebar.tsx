@@ -55,7 +55,8 @@ type MenuItemKey =
   | 'equipe' 
   | 'empresa' 
   | 'configuracoes'
-  | 'assinatura';
+  | 'assinatura'
+  | 'administracao';
 
 interface MenuItem {
   key: MenuItemKey;
@@ -77,6 +78,7 @@ const allMenuItems: MenuItem[] = [
   { key: 'equipe', title: 'Equipe', url: '/admin/equipe', icon: Users },
   { key: 'empresa', title: 'Empresa', url: '/admin/empresa', icon: Building2 },
   { key: 'assinatura', title: 'Assinatura', url: '/admin/assinatura', icon: CreditCard },
+  { key: 'administracao', title: 'Administração', url: '/super-admin', icon: Shield },
   { key: 'configuracoes', title: 'Configurações', url: '/admin/configuracoes', icon: Settings },
 ];
 
@@ -159,6 +161,7 @@ export function AdminSidebar() {
     equipe: canAccessEquipe,
     empresa: canAccessEmpresa,
     assinatura: canAccessAssinatura,
+    administracao: isSuperAdmin,
     configuracoes: canAccessConfiguracoes,
   };
 
@@ -261,28 +264,6 @@ export function AdminSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Link Administração - apenas para Super Admin */}
-        {isSuperAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Sistema</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === '/super-admin'}>
-                    <NavLink 
-                      to="/super-admin" 
-                      onClick={handleMenuClick}
-                      className="flex items-center gap-3"
-                    >
-                      <Shield className="w-5 h-5" />
-                      <span>Administração</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
       </SidebarContent>
 
       <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} feature={upgradeFeature} />
@@ -299,11 +280,15 @@ export function AdminSidebar() {
               <p className="text-sm font-medium text-sidebar-foreground truncate">
                 {user?.email}
               </p>
-              {role && (
+              {isSuperAdmin ? (
+                <Badge variant="destructive" className="text-xs mt-1">
+                  Super Admin
+                </Badge>
+              ) : role ? (
                 <Badge variant="secondary" className="text-xs mt-1">
                   {roleLabels[role] || role}
                 </Badge>
-              )}
+              ) : null}
             </div>
           </div>
           <div className="flex items-center justify-between pt-2 border-t border-sidebar-border">
