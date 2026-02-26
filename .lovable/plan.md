@@ -1,25 +1,27 @@
 
 
-# Ocultar "Administração" para não-super-admins
+# Fix: Super Admin bloqueado pela tela de assinatura
 
 ## Problema
-Atualmente, proprietários e gerentes veem o item "Administração" com cadeado. Ele deve ser completamente invisível para qualquer usuário que não seja super admin.
+A tabela `super_admins` está vazia. O usuário `claudinhoresendemoura@gmail.com` (id: `fa73ea31-66f8-4e98-a5ec-0385526833a4`) não está registrado como super admin. Como resultado:
+1. O `SubscriptionGuard` não o reconhece como super admin
+2. A empresa não tem assinatura ativa
+3. O sistema bloqueia o acesso com a tela "Escolha um Plano"
 
-## Alteração
+## Solução
 
-**`src/components/admin/AdminSidebar.tsx` — linha 170-173**
-
-Alterar o filtro `visibleMenuItems` para sempre excluir "Administração" quando o usuário não é super admin:
-
-```typescript
-const visibleMenuItems = useMemo(() => {
-  if (isProprietario || isGerente || isSuperAdmin) {
-    // Filtrar 'administracao' se não for super admin
-    return allMenuItems.filter(item => item.key !== 'administracao' || isSuperAdmin);
-  }
-  return allMenuItems.filter(item => permissionMap[item.key]);
-}, [/* deps existentes */]);
+### 1. Inserir o usuário na tabela `super_admins` (migration SQL)
+```sql
+INSERT INTO super_admins (user_id, ativo)
+VALUES ('fa73ea31-66f8-4e98-a5ec-0385526833a4', true)
+ON CONFLICT DO NOTHING;
 ```
 
-Resultado: apenas super admins verão a opção "Administração" no menu.
+Isso resolverá o problema porque o `SubscriptionGuard` já tem a lógica para liberar super admins (linhas 162-178), e o `useUserRole` também já verifica `super_admins` para definir `isSuperAdmin = true`.
+
+### Resultado esperado
+- Login como super admin → acesso liberado sem precisar de assinatura
+- Menu lateral mostra "Administração" acima de "Configurações"
+- Footer do sidebar exibe badge "Super Admin"
+- Nenhuma alteração de código necessária — apenas o registro no banco
 
