@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt, DollarSign, Trash2 } from 'lucide-react';
+import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt, DollarSign, Trash2, Pencil } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,6 +74,11 @@ export default function Mesas() {
   // Delete Dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [mesaToDelete, setMesaToDelete] = useState<Mesa | null>(null);
+  
+  // Edit Dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [mesaToEdit, setMesaToEdit] = useState<Mesa | null>(null);
+  const [editCapacidade, setEditCapacidade] = useState('');
 
   const empresaId = profile?.empresa_id;
 
@@ -333,6 +338,42 @@ export default function Mesas() {
     } finally {
       setDeleteDialogOpen(false);
       setMesaToDelete(null);
+    }
+  };
+
+  const handleOpenEditDialog = (mesa: Mesa, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMesaToEdit(mesa);
+    setEditCapacidade(String(mesa.capacidade));
+    setEditDialogOpen(true);
+  };
+
+  const handleEditMesa = async () => {
+    if (!mesaToEdit) return;
+    
+    const capacidade = parseInt(editCapacidade);
+    if (isNaN(capacidade) || capacidade <= 0) {
+      toast.error('Capacidade deve ser maior que zero');
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('mesas')
+        .update({ capacidade })
+        .eq('id', mesaToEdit.id);
+      
+      if (error) throw error;
+      
+      toast.success(`Mesa ${mesaToEdit.numero_mesa} atualizada!`);
+      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+    } catch (error: any) {
+      console.error('Error updating mesa:', error);
+      toast.error('Erro ao atualizar mesa');
+    } finally {
+      setEditDialogOpen(false);
+      setMesaToEdit(null);
+      setEditCapacidade('');
     }
   };
 
@@ -688,6 +729,13 @@ export default function Mesas() {
                             <QrCode className="w-5 h-5" />
                           </button>
                           <button 
+                            onClick={(e) => handleOpenEditDialog(mesa, e)}
+                            className="p-1 rounded hover:bg-primary/20 transition-colors text-muted-foreground hover:text-primary"
+                            title="Editar mesa"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button 
                             onClick={(e) => handleOpenDeleteDialog(mesa, e)}
                             className="p-1 rounded hover:bg-destructive/20 transition-colors text-muted-foreground hover:text-destructive"
                             title="Excluir mesa"
@@ -779,6 +827,43 @@ export default function Mesas() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Mesa Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Mesa {mesaToEdit?.numero_mesa}</DialogTitle>
+            <DialogDescription>
+              Altere a capacidade (número de lugares) da mesa
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-capacidade">Capacidade (lugares)</Label>
+              <Input
+                id="edit-capacidade"
+                type="number"
+                min="1"
+                placeholder="Ex: 4"
+                value={editCapacidade}
+                onChange={(e) => setEditCapacidade(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setEditDialogOpen(false);
+                setMesaToEdit(null);
+                setEditCapacidade('');
+              }}>
+                Cancelar
+              </Button>
+              <Button onClick={handleEditMesa}>
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
