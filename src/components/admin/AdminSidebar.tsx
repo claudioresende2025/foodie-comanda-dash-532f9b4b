@@ -32,6 +32,7 @@ import {
   Loader2,
   Megaphone,
   CreditCard,
+  Shield,
 } from 'lucide-react';
 import UpgradeModal from '@/components/UpgradeModal';
 import { Button } from '@/components/ui/button';
@@ -259,6 +260,29 @@ export function AdminSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Link Administração - apenas para Super Admin */}
+        {isSuperAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Sistema</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === '/super-admin'}>
+                    <NavLink 
+                      to="/super-admin" 
+                      onClick={handleMenuClick}
+                      className="flex items-center gap-3"
+                    >
+                      <Shield className="w-5 h-5" />
+                      <span>Administração</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} feature={upgradeFeature} />

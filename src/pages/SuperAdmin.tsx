@@ -144,6 +144,16 @@ export default function SuperAdmin() {
   const [empresaOverrides, setEmpresaOverrides] = useState<any>(null);
   const [savingOverrides, setSavingOverrides] = useState(false);
 
+  // Função para exibir nome correto do plano
+  const getPlanDisplayName = (planoNome: string | null | undefined, planoSlug?: string | null) => {
+    const slug = planoSlug?.toLowerCase();
+    if (slug === 'bronze') return 'Plano Bronze (Iniciante)';
+    if (slug === 'prata') return 'Plano Prata (Intermediário)';
+    if (slug === 'ouro') return 'Plano Ouro (Enterprise)';
+    if (planoNome) return planoNome;
+    return 'Sem plano';
+  };
+
   useEffect(() => {
     if (!selectedEmpresa) return;
     (async () => {
@@ -699,7 +709,7 @@ export default function SuperAdmin() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {empresa.assinatura?.plano?.nome || 'Sem plano'}
+                            {getPlanDisplayName(empresa.assinatura?.plano?.nome, empresa.assinatura?.plano?.slug)}
                           </TableCell>
                           <TableCell>{getStatusBadge(empresa)}</TableCell>
                           <TableCell>
@@ -922,7 +932,7 @@ export default function SuperAdmin() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Plano</p>
-                  <p className="font-medium">{selectedEmpresa.assinatura?.plano?.nome || 'Sem plano'}</p>
+                  <p className="font-medium">{getPlanDisplayName(selectedEmpresa.assinatura?.plano?.nome, selectedEmpresa.assinatura?.plano?.slug)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Status</p>

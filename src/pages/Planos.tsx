@@ -143,11 +143,11 @@ export default function Planos() {
       // Desconto de ~7% no plano anual (paga 11.16 meses pelo preço de 12)
       const displayOverrides: Record<string, any> = {
         'Básico': {
-          nome: 'Plano Iniciante (Bronze)',
+          nome: 'Plano Bronze (Iniciante)',
           preco_mensal: 149.90,
           preco_anual: Math.round(149.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 14,
-          descricao: 'Plano Iniciante - Ideal para lanchonetes e MEI',
+          descricao: 'Plano Bronze - Ideal para lanchonetes e MEI',
           destaque: false,
           recursos: [
             { label: 'Dashboard (Básico)', included: true },
@@ -162,11 +162,11 @@ export default function Planos() {
           ],
         },
         'Profissional': {
-          nome: 'Plano Profissional (Prata)',
+          nome: 'Plano Prata (Intermediário)',
           preco_mensal: 299.90,
           preco_anual: Math.round(299.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 14,
-          descricao: 'Plano Crescimento - Ideal para restaurantes com mesas',
+          descricao: 'Plano Prata - Ideal para restaurantes com mesas',
           destaque: true,
           recursos: [
             { label: 'Dashboard (Completo)', included: true },
@@ -181,11 +181,11 @@ export default function Planos() {
           ],
         },
         'Enterprise': {
-          nome: 'Plano Enterprise (Ouro)',
+          nome: 'Plano Ouro (Enterprise)',
           preco_mensal: 549.90,
           preco_anual: Math.round(549.90 * 12 * 0.93 * 100) / 100, // 7% desconto
           trial_days: 14,
-          descricao: 'Plano Profissional - Operações de Alto Volume',
+          descricao: 'Plano Ouro - Operações de Alto Volume',
           destaque: false,
           recursos: [
             { label: 'Dashboard (Avançado + Comparativos)', included: true },
