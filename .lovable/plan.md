@@ -1,16 +1,21 @@
 
 
-# Remover "(WhatsApp)" do recurso Delivery
-
-Substituir "Delivery (WhatsApp)" por apenas "Delivery" em todos os arquivos onde aparece como label de recurso de plano.
+# Ajustar Sidebar: Administração no menu principal + Badge Super Admin
 
 ## Alterações
 
-| Arquivo | Linha | De | Para |
-|---------|-------|----|------|
-| `src/pages/Planos.tsx` | 157 | `Delivery (WhatsApp)` | `Delivery` |
-| `src/pages/admin/Assinatura.tsx` | 654 | `Delivery: Básico (WhatsApp)` | `Delivery: Básico` |
-| `src/components/UpgradeModal.tsx` | 36 | `detalhe: 'WhatsApp'` | remover o detalhe ou deixar sem detalhe |
+### 1. `src/components/admin/AdminSidebar.tsx`
 
-Nota: Os outros usos de "WhatsApp" (campo de telefone no DeliveryRestaurant e role mapping no useUserRole) não são labels de plano e não serão alterados.
+**Menu "Administração" acima de "Configurações":**
+- Remover a seção separada "Sistema" (linhas 264-285) que hoje renderiza o link Administração
+- Inserir o item "Administração" diretamente no array `allMenuItems`, antes de "Configurações" (entre "assinatura" e "configuracoes")
+- Adicionar `'administracao'` ao tipo `MenuItemKey` e ao `permissionMap` (vinculado a `isSuperAdmin`)
+- No `visibleMenuItems`, o item só aparecerá para super admins pois staff/proprietário/gerente sem permissão serão filtrados
+
+**Badge "Super Admin" no footer:**
+- Na área do footer onde exibe a role do usuário (linhas 302-306), adicionar condição: se `isSuperAdmin`, mostrar badge "Super Admin" em vez da role normal
+
+### Resultado
+- "Administração" aparece no menu principal logo acima de "Configurações", apenas para super admins
+- O footer do sidebar mostra "Super Admin" como badge quando o usuário é super admin
 
