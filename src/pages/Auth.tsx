@@ -110,6 +110,8 @@ export default function Auth() {
       }
     } else {
       toast.success('Login realizado com sucesso!');
+      // Redirecionar imediatamente para /admin após login
+      navigate('/admin');
     }
   };
 
