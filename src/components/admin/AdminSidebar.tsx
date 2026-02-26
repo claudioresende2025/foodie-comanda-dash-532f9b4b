@@ -169,7 +169,7 @@ export function AdminSidebar() {
   // Para Proprietário/Gerente/SuperAdmin: mostrar todos os itens
   const visibleMenuItems = useMemo(() => {
     if (isProprietario || isGerente || isSuperAdmin) {
-      return allMenuItems;
+      return allMenuItems.filter(item => item.key !== 'administracao' || isSuperAdmin);
     }
     // Staff: mostrar apenas itens permitidos (sem cadeados)
     return allMenuItems.filter(item => permissionMap[item.key]);
