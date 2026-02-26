@@ -281,8 +281,8 @@ export function AdminSidebar() {
                 {user?.email}
               </p>
               {isSuperAdmin ? (
-                <Badge variant="destructive" className="text-xs mt-1">
-                  Super Admin
+                <Badge variant="default" className="text-xs mt-1 bg-purple-600 hover:bg-purple-700">
+                  Administrador
                 </Badge>
               ) : role ? (
                 <Badge variant="secondary" className="text-xs mt-1">
