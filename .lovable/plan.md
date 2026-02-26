@@ -1,21 +1,25 @@
 
 
-# Ajustar Sidebar: Administração no menu principal + Badge Super Admin
+# Ocultar "Administração" para não-super-admins
 
-## Alterações
+## Problema
+Atualmente, proprietários e gerentes veem o item "Administração" com cadeado. Ele deve ser completamente invisível para qualquer usuário que não seja super admin.
 
-### 1. `src/components/admin/AdminSidebar.tsx`
+## Alteração
 
-**Menu "Administração" acima de "Configurações":**
-- Remover a seção separada "Sistema" (linhas 264-285) que hoje renderiza o link Administração
-- Inserir o item "Administração" diretamente no array `allMenuItems`, antes de "Configurações" (entre "assinatura" e "configuracoes")
-- Adicionar `'administracao'` ao tipo `MenuItemKey` e ao `permissionMap` (vinculado a `isSuperAdmin`)
-- No `visibleMenuItems`, o item só aparecerá para super admins pois staff/proprietário/gerente sem permissão serão filtrados
+**`src/components/admin/AdminSidebar.tsx` — linha 170-173**
 
-**Badge "Super Admin" no footer:**
-- Na área do footer onde exibe a role do usuário (linhas 302-306), adicionar condição: se `isSuperAdmin`, mostrar badge "Super Admin" em vez da role normal
+Alterar o filtro `visibleMenuItems` para sempre excluir "Administração" quando o usuário não é super admin:
 
-### Resultado
-- "Administração" aparece no menu principal logo acima de "Configurações", apenas para super admins
-- O footer do sidebar mostra "Super Admin" como badge quando o usuário é super admin
+```typescript
+const visibleMenuItems = useMemo(() => {
+  if (isProprietario || isGerente || isSuperAdmin) {
+    // Filtrar 'administracao' se não for super admin
+    return allMenuItems.filter(item => item.key !== 'administracao' || isSuperAdmin);
+  }
+  return allMenuItems.filter(item => permissionMap[item.key]);
+}, [/* deps existentes */]);
+```
+
+Resultado: apenas super admins verão a opção "Administração" no menu.
 
