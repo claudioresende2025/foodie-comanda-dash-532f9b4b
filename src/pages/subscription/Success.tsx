@@ -150,6 +150,9 @@ export default function SubscriptionSuccess() {
     if (!empresaForm.nome_fantasia) {
       return toast.error("Informe o nome fantasia da empresa.");
     }
+    if (!empresaForm.cnpj || empresaForm.cnpj.trim().length < 14) {
+      return toast.error("Informe um CNPJ válido.");
+    }
 
     setIsLoading(true);
     let userId: string | null = null;
@@ -410,11 +413,12 @@ export default function SubscriptionSuccess() {
                   />
                 </div>
                 <div>
-                  <Label>CNPJ (opcional)</Label>
+                  <Label>CNPJ</Label>
                   <Input
                     value={empresaForm.cnpj}
                     onChange={(e) => setEmpresaForm({ ...empresaForm, cnpj: e.target.value })}
                     placeholder="00.000.000/0000-00"
+                    required
                   />
                 </div>
               </CardContent>

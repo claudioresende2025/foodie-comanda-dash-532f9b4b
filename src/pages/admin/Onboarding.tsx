@@ -46,6 +46,11 @@ export default function Onboarding() {
       return;
     }
 
+    if (!formData.cnpj || formData.cnpj.trim().length < 14) {
+      toast.error('CNPJ é obrigatório');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -289,6 +294,7 @@ export default function Onboarding() {
                   placeholder="00.000.000/0000-00"
                   value={formData.cnpj}
                   onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
+                  required
                 />
               </div>
 

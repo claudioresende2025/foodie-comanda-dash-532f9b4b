@@ -121,7 +121,12 @@ export function AdminLayout() {
   }, [user, loading, navigate]);
 
   useEffect(() => {
+    // Não redirecionar enquanto estiver carregando ou se não tiver user
     if (loading || roleLoading || !user) return;
+    
+    // Proprietário sempre tem acesso completo - não redirecionar
+    if (role === 'proprietario') return;
+    
     const path = location.pathname;
     
     // Lista de rotas com suas permissões e URLs
@@ -155,6 +160,7 @@ export function AdminLayout() {
     loading,
     roleLoading,
     user,
+    role,
     location.pathname,
     canAccessDashboard,
     canAccessMesas,
