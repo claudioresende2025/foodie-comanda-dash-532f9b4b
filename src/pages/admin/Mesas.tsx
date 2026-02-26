@@ -16,7 +16,17 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt, DollarSign } from 'lucide-react';
+import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt, DollarSign, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MesaQRCodeDialog } from '@/components/admin/MesaQRCodeDialog';
@@ -60,6 +70,10 @@ export default function Mesas() {
   // QR Code Dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedMesaForQR, setSelectedMesaForQR] = useState<Mesa | null>(null);
+  
+  // Delete Dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [mesaToDelete, setMesaToDelete] = useState<Mesa | null>(null);
 
   const empresaId = profile?.empresa_id;
 
@@ -283,6 +297,42 @@ export default function Mesas() {
     if (mesa.status !== 'juncao') {
       setSelectedMesaForQR(mesa);
       setQrDialogOpen(true);
+    }
+  };
+
+  const handleOpenDeleteDialog = (mesa: Mesa, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMesaToDelete(mesa);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteMesa = async () => {
+    if (!mesaToDelete) return;
+    
+    try {
+      // Verificar se a mesa está ocupada ou tem comandas abertas
+      if (mesaToDelete.status === 'ocupada') {
+        toast.error('Não é possível excluir uma mesa ocupada');
+        setDeleteDialogOpen(false);
+        setMesaToDelete(null);
+        return;
+      }
+      
+      const { error } = await supabase
+        .from('mesas')
+        .delete()
+        .eq('id', mesaToDelete.id);
+      
+      if (error) throw error;
+      
+      toast.success(`Mesa ${mesaToDelete.numero_mesa} excluída com sucesso!`);
+      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+    } catch (error: any) {
+      console.error('Error deleting mesa:', error);
+      toast.error('Erro ao excluir mesa');
+    } finally {
+      setDeleteDialogOpen(false);
+      setMesaToDelete(null);
     }
   };
 
@@ -637,6 +687,13 @@ export default function Mesas() {
                           >
                             <QrCode className="w-5 h-5" />
                           </button>
+                          <button 
+                            onClick={(e) => handleOpenDeleteDialog(mesa, e)}
+                            className="p-1 rounded hover:bg-destructive/20 transition-colors text-muted-foreground hover:text-destructive"
+                            title="Excluir mesa"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           {mesa.status === 'juncao' && (
                             <button 
                               onClick={(e) => {
@@ -701,6 +758,27 @@ export default function Mesas() {
           mesaStatus={selectedMesaForQR.status}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Mesa {mesaToDelete?.numero_mesa}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a mesa {mesaToDelete?.numero_mesa}? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setMesaToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteMesa}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
