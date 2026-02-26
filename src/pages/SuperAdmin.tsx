@@ -1,3 +1,4 @@
+// SuperAdmin Panel - Updated 2026-02-25
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
