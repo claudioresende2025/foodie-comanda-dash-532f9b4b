@@ -105,6 +105,9 @@ interface DashboardStats {
   empresasBloqueadas: number;
   receitaMensal: number;
   reembolsosPendentes: number;
+  empresasBronze: number;
+  empresasPrata: number;
+  empresasOuro: number;
 }
 
 export default function SuperAdmin() {
@@ -121,6 +124,9 @@ export default function SuperAdmin() {
     empresasBloqueadas: 0,
     receitaMensal: 0,
     reembolsosPendentes: 0,
+    empresasBronze: 0,
+    empresasPrata: 0,
+    empresasOuro: 0,
   });
   
   // Empresas
@@ -262,6 +268,23 @@ export default function SuperAdmin() {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
+      // Contagem por plano
+      const { data: assinaturasPorPlano } = await (supabase as any)
+        .from('assinaturas')
+        .select('plano:planos(slug)')
+        .in('status', ['active', 'trialing']);
+
+      let empresasBronze = 0;
+      let empresasPrata = 0;
+      let empresasOuro = 0;
+
+      (assinaturasPorPlano || []).forEach((a: any) => {
+        const slug = a.plano?.slug?.toLowerCase();
+        if (slug === 'bronze') empresasBronze++;
+        else if (slug === 'prata') empresasPrata++;
+        else if (slug === 'ouro') empresasOuro++;
+      });
+
       setStats({
         totalEmpresas: totalEmpresas || 0,
         empresasAtivas: empresasAtivas || 0,
@@ -269,6 +292,9 @@ export default function SuperAdmin() {
         empresasBloqueadas: empresasBloqueadas || 0,
         receitaMensal,
         reembolsosPendentes: reembolsosPendentes || 0,
+        empresasBronze,
+        empresasPrata,
+        empresasOuro,
       });
     } catch (err) {
       console.error('Erro ao carregar estatísticas:', err);
@@ -604,6 +630,72 @@ export default function SuperAdmin() {
               </Card>
             </div>
 
+            {/* Distribuição por Plano */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="border-l-4 border-l-amber-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Plano Bronze</p>
+                      <p className="text-2xl font-bold">{stats.empresasBronze}</p>
+                    </div>
+                    <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200">Bronze</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-slate-400">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Plano Prata</p>
+                      <p className="text-2xl font-bold">{stats.empresasPrata}</p>
+                    </div>
+                    <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-200">Prata</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-yellow-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Plano Ouro</p>
+                      <p className="text-2xl font-bold">{stats.empresasOuro}</p>
+                    </div>
+                    <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200">Ouro</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Empresas Recentes */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-blue-500" />
+                  Empresas Recentes
+                </CardTitle>
+                <CardDescription>Últimas 5 empresas cadastradas</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  {empresas.slice(0, 5).map((empresa) => (
+                    <div key={empresa.id} className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => {
+                      setSelectedEmpresa(empresa);
+                      setEmpresaDialogOpen(true);
+                    }}>
+                      <p className="font-medium text-sm truncate">{empresa.nome_fantasia}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(empresa.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                      </p>
+                      <Badge variant="outline" className="mt-2 text-xs">
+                        {getPlanDisplayName(empresa.assinatura?.plano?.nome, empresa.assinatura?.plano?.slug)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Reembolsos Pendentes */}
             {stats.reembolsosPendentes > 0 && (
               <Card>
@@ -913,13 +1005,14 @@ export default function SuperAdmin() {
 
       {/* Dialog Detalhes Empresa */}
       <Dialog open={empresaDialogOpen} onOpenChange={setEmpresaDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedEmpresa?.nome_fantasia}</DialogTitle>
             <DialogDescription>Detalhes e ações da empresa</DialogDescription>
           </DialogHeader>
           
           {selectedEmpresa && (
+            <ScrollArea className="flex-1 pr-4">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -989,16 +1082,32 @@ export default function SuperAdmin() {
                     <Label>Equipe</Label>
                     <Switch checked={empresaOverrides?.equipe || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, equipe: v })} />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Estatísticas</Label>
+                    <Switch checked={empresaOverrides?.estatisticas || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, estatisticas: v })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Caixa</Label>
+                    <Switch checked={empresaOverrides?.caixa || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, caixa: v })} />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mt-4">
                   <div>
                     <Label>Limite telas KDS</Label>
-                    <Input value={empresaOverrides?.kds_screens_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, kds_screens_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                    <Input type="number" value={empresaOverrides?.kds_screens_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, kds_screens_limit: e.target.value ? parseInt(e.target.value) : null })} />
                   </div>
                   <div>
                     <Label>Limite funcionários</Label>
-                    <Input value={empresaOverrides?.staff_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, staff_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                    <Input type="number" value={empresaOverrides?.staff_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, staff_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                  </div>
+                  <div>
+                    <Label>Limite mesas</Label>
+                    <Input type="number" value={empresaOverrides?.mesas_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, mesas_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                  </div>
+                  <div>
+                    <Label>Limite garçons</Label>
+                    <Input type="number" value={empresaOverrides?.garcom_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, garcom_limit: e.target.value ? parseInt(e.target.value) : null })} />
                   </div>
                 </div>
 
@@ -1081,6 +1190,7 @@ export default function SuperAdmin() {
                 </div>
               </div>
             </div>
+            </ScrollArea>
           )}
         </DialogContent>
       </Dialog>
