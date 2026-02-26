@@ -54,7 +54,7 @@ const statusConfig: Record<MesaStatus, { label: string; color: string; borderCol
 
 export default function Mesas() {
   const { profile } = useAuth();
-  const { mesasLimit } = useUserRole();
+  const { mesasLimit, planoSlug } = useUserRole();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<MesaStatus | 'todas'>('todas');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -728,20 +728,24 @@ export default function Mesas() {
                           >
                             <QrCode className="w-5 h-5" />
                           </button>
-                          <button 
-                            onClick={(e) => handleOpenEditDialog(mesa, e)}
-                            className="p-1 rounded hover:bg-primary/20 transition-colors text-muted-foreground hover:text-primary"
-                            title="Editar mesa"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={(e) => handleOpenDeleteDialog(mesa, e)}
-                            className="p-1 rounded hover:bg-destructive/20 transition-colors text-muted-foreground hover:text-destructive"
-                            title="Excluir mesa"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {planoSlug && planoSlug !== 'bronze' && (
+                            <>
+                              <button 
+                                onClick={(e) => handleOpenEditDialog(mesa, e)}
+                                className="p-1 rounded hover:bg-primary/20 transition-colors text-muted-foreground hover:text-primary"
+                                title="Editar mesa"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={(e) => handleOpenDeleteDialog(mesa, e)}
+                                className="p-1 rounded hover:bg-destructive/20 transition-colors text-muted-foreground hover:text-destructive"
+                                title="Excluir mesa"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                           {mesa.status === 'juncao' && (
                             <button 
                               onClick={(e) => {

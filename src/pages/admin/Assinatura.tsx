@@ -516,8 +516,8 @@ export default function Assinatura() {
                       <CardTitle className="flex items-center gap-2">
                         {(() => {
                           const slug = assinatura.plano?.slug?.toLowerCase();
-                          if (slug === 'bronze') return 'Plano Iniciante';
-                          if (slug === 'prata') return 'Plano Profissional';
+                          if (slug === 'bronze') return 'Plano Bronze (Iniciante)';
+                          if (slug === 'prata') return 'Plano Prata (Intermediário)';
                           if (slug === 'ouro') return 'Plano Ouro (Enterprise)';
                           return assinatura.plano?.nome || 'Período de Teste';
                         })()}
@@ -668,8 +668,8 @@ export default function Assinatura() {
                   { label: 'Equipe/Empresa: Até 5 colaboradores', included: true },
                   { label: 'Cardápio: Cardápio digital responsivo', included: true },
                   { label: 'Pedidos (KDS): 1 tela', included: true },
-                  { label: 'Estatísticas Delivery: Não incluso', included: false },
-                  { label: 'Marketing: Não incluso', included: false },
+                  { label: 'Estatísticas Delivery: Incluso', included: true },
+                  { label: 'Marketing: Cupons + Fidelidade', included: true },
                   { label: 'Caixa / Gestão: Fluxo de Caixa + Estoque', included: true },
                 ],
                 'Enterprise': [
@@ -705,8 +705,8 @@ export default function Assinatura() {
 
               const getPlanDisplayTitle = () => {
                 const slug = assinatura.plano?.slug?.toLowerCase();
-                if (slug === 'bronze') return 'Plano Iniciante';
-                if (slug === 'prata') return 'Plano Profissional';
+                if (slug === 'bronze') return 'Plano Bronze (Iniciante)';
+                if (slug === 'prata') return 'Plano Prata (Intermediário)';
                 if (slug === 'ouro') return 'Plano Ouro (Enterprise)';
                 return assinatura.plano?.nome || 'trial';
               };
