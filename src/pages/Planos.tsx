@@ -154,7 +154,7 @@ export default function Planos() {
             { label: 'Cardápio', included: true },
             { label: 'Mesas (Limite 10)', included: true },
             { label: 'Pedidos (KDS) (1 Tela)', included: true },
-            { label: 'Delivery (WhatsApp)', included: true },
+            { label: 'Delivery', included: true },
             { label: 'Estatísticas Delivery', included: false },
             { label: 'App Garçom (1 usuário)', included: true },
             { label: 'Marketing', included: false },
@@ -361,7 +361,7 @@ export default function Planos() {
                   return (
                     <div className="text-center py-2">
                       <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                        Foodie Comanda Pro
+                        Food Comanda Pro
                       </h1>
                       <p className="text-muted-foreground text-sm">
                         A plataforma completa para seu restaurante

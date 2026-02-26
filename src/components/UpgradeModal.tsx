@@ -33,7 +33,7 @@ const planos = [
       { nome: 'Cardápio', incluso: true },
       { nome: 'Mesas', incluso: true, detalhe: 'Limite 10' },
       { nome: 'Pedidos (KDS)', incluso: true, detalhe: '1 tela' },
-      { nome: 'Delivery', incluso: true, detalhe: 'WhatsApp' },
+      { nome: 'Delivery', incluso: true },
       { nome: 'Estatísticas Delivery', incluso: false },
       { nome: 'App Garçom', incluso: true, detalhe: '1 usuário' },
       { nome: 'Marketing', incluso: false },
