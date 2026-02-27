@@ -307,6 +307,22 @@ export default function DeliveryAuth() {
       });
       if (error) throw error;
       
+      // Envia e-mail de boas-vindas para o cliente delivery
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'welcome',
+            to: email,
+            data: {
+              nomeCliente: nome
+            }
+          }
+        });
+      } catch (emailErr) {
+        console.warn('Falha ao enviar e-mail de boas-vindas:', emailErr);
+        // Não bloqueia o cadastro se o e-mail falhar
+      }
+      
       toast.success('Cadastro realizado com sucesso!');
       const redirectTo = location.state?.from || '/delivery';
       navigate(redirectTo, { replace: true });

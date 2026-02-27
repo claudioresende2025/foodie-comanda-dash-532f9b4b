@@ -182,6 +182,33 @@ export default function Onboarding() {
         console.warn('Não foi possível criar assinatura automaticamente:', e);
       }
 
+      // Enviar e-mail de boas-vindas (não bloqueia o fluxo)
+      try {
+        const userName = user.user_metadata?.nome || formData.nome_fantasia || 'Proprietário';
+        console.log('[Onboarding] Enviando e-mail de boas-vindas para:', user.email);
+        
+        const { error: emailError } = await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'trial_welcome',
+            to: user.email,
+            data: {
+              nome: userName,
+              restaurante: formData.nome_fantasia,
+              trialDays: 3,
+              loginUrl: window.location.origin + '/admin',
+            },
+          },
+        });
+        
+        if (emailError) {
+          console.warn('[Onboarding] Falha ao enviar e-mail de boas-vindas:', emailError);
+        } else {
+          console.log('[Onboarding] E-mail de boas-vindas enviado com sucesso!');
+        }
+      } catch (emailErr) {
+        console.warn('[Onboarding] Erro ao enviar e-mail (não fatal):', emailErr);
+      }
+
       if (roleError) throw roleError;
 
       toast.success('Empresa cadastrada com sucesso!');
