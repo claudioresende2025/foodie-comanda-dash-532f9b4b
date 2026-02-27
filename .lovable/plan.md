@@ -1,27 +1,16 @@
 
 
-# Fix: Super Admin bloqueado pela tela de assinatura
+# Alterar "3 Dias" para "14 Dias" no trial
 
-## Problema
-A tabela `super_admins` está vazia. O usuário `claudinhoresendemoura@gmail.com` (id: `fa73ea31-66f8-4e98-a5ec-0385526833a4`) não está registrado como super admin. Como resultado:
-1. O `SubscriptionGuard` não o reconhece como super admin
-2. A empresa não tem assinatura ativa
-3. O sistema bloqueia o acesso com a tela "Escolha um Plano"
+## Arquivos a alterar
 
-## Solução
+### 1. `src/pages/Planos.tsx` (linha 569)
+- `"3 Dias Grátis"` → `"14 Dias Grátis"`
 
-### 1. Inserir o usuário na tabela `super_admins` (migration SQL)
-```sql
-INSERT INTO super_admins (user_id, ativo)
-VALUES ('fa73ea31-66f8-4e98-a5ec-0385526833a4', true)
-ON CONFLICT DO NOTHING;
-```
+### 2. `supabase/functions/send-email/index.ts`
+- Linha 283: `"primeiros 3 dias"` → `"primeiros 14 dias"`
+- Linha 331: `"Faltam 3 dias para seu trial expirar!"` → `"Faltam 3 dias para seu trial expirar!"` (manter — este é o e-mail de urgência enviado 3 dias antes do fim do trial de 14 dias, não o período total)
+- Linhas 337, 341, 343: idem — manter, pois referem-se aos 3 dias **restantes** do trial, não ao período total
 
-Isso resolverá o problema porque o `SubscriptionGuard` já tem a lógica para liberar super admins (linhas 162-178), e o `useUserRole` também já verifica `super_admins` para definir `isSuperAdmin = true`.
-
-### Resultado esperado
-- Login como super admin → acesso liberado sem precisar de assinatura
-- Menu lateral mostra "Administração" acima de "Configurações"
-- Footer do sidebar exibe badge "Super Admin"
-- Nenhuma alteração de código necessária — apenas o registro no banco
+**Resumo:** Apenas 2 alterações reais — a página de Planos e o e-mail de onboarding. Os e-mails de urgência referem-se corretamente aos "3 dias restantes" do trial.
 
