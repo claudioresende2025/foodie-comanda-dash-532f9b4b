@@ -14,6 +14,7 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   feature?: string | null;
   currentPlan?: string | null;
+  currentPlanSlug?: string | null;
   showExitButton?: boolean;
   onExit?: () => void;
   blockingReason?: string;
@@ -92,6 +93,7 @@ export function UpgradeModal({
   onOpenChange, 
   feature, 
   currentPlan,
+  currentPlanSlug,
   showExitButton = false,
   onExit,
   blockingReason,
@@ -104,7 +106,6 @@ export function UpgradeModal({
   const handleUpgrade = async (planoSlug: string) => {
     setProcessingPlan(planoSlug);
     try {
-      // Buscar plano real do banco
       const { data: plano, error: planoError } = await supabase
         .from('planos')
         .select('id')
@@ -123,6 +124,7 @@ export function UpgradeModal({
           empresaId,
           periodo: 'mensal',
           isUpgrade: !!empresaId,
+          trial_days: 0,
           successUrl: `${window.location.origin}/subscription/success?session_id={CHECKOUT_SESSION_ID}&planoId=${plano.id}&periodo=mensal`,
           cancelUrl: `${window.location.origin}/planos?canceled=true`,
         },
@@ -142,11 +144,6 @@ export function UpgradeModal({
     } finally {
       setProcessingPlan(null);
     }
-  };
-
-  const handleDowngrade = () => {
-    onOpenChange(false);
-    navigate('/planos?mode=downgrade');
   };
 
   const getTitle = () => {
@@ -177,6 +174,7 @@ export function UpgradeModal({
           <div className="grid md:grid-cols-3 gap-4">
             {planos.map((plano) => {
               const Icon = plano.icon;
+              const isCurrentTrialPlan = currentPlanSlug?.toLowerCase() === plano.slug;
               const isCurrentPlan = currentPlan?.toLowerCase() === plano.slug;
               const isProcessing = processingPlan === plano.slug;
               
@@ -187,7 +185,7 @@ export function UpgradeModal({
                     plano.destaque 
                       ? 'border-primary shadow-lg ring-2 ring-primary/20' 
                       : ''
-                  } ${isCurrentPlan ? 'bg-primary/5 border-primary' : ''}`}
+                  } ${(isCurrentTrialPlan || isCurrentPlan) ? 'bg-primary/5 border-primary' : ''}`}
                 >
                   {plano.destaque && (
                     <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary">
@@ -195,7 +193,7 @@ export function UpgradeModal({
                     </Badge>
                   )}
                   
-                  {isCurrentPlan && (
+                  {isCurrentTrialPlan && (
                     <Badge variant="outline" className="absolute -top-2 right-2 border-primary text-primary">
                       Seu Plano
                     </Badge>
@@ -241,11 +239,11 @@ export function UpgradeModal({
                     className="w-full" 
                     variant={plano.destaque ? 'default' : 'outline'}
                     onClick={() => handleUpgrade(plano.slug)}
-                    disabled={isCurrentPlan || !!processingPlan}
+                    disabled={!!processingPlan}
                   >
                     {isProcessing ? (
                       <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processando...</>
-                    ) : isCurrentPlan ? 'Plano Atual' : 'Selecionar'}
+                    ) : isCurrentTrialPlan ? 'Continuar' : 'Selecionar'}
                   </Button>
                 </Card>
               );
@@ -253,7 +251,7 @@ export function UpgradeModal({
           </div>
 
           <div className="flex justify-center gap-4 pt-4 border-t">
-            {showExitButton && onExit ? (
+            {(showExitButton && onExit) || isBlocking ? (
               <Button variant="outline" onClick={onExit} className="gap-2">
                 <LogOut className="w-4 h-4" />
                 Sair da Conta
@@ -263,7 +261,7 @@ export function UpgradeModal({
                 <Button variant="ghost" onClick={() => onOpenChange(false)}>
                   Fechar
                 </Button>
-                <Button variant="outline" onClick={handleDowngrade}>
+                <Button variant="outline" onClick={() => { onOpenChange(false); navigate('/planos?mode=downgrade'); }}>
                   Fazer Downgrade
                 </Button>
               </>

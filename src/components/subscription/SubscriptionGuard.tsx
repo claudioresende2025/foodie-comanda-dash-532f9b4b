@@ -11,6 +11,7 @@ interface SubscriptionStatus {
   reason?: string;
   trial_ends_at?: string;
   days_remaining?: number;
+  currentPlanSlug?: string;
 }
 
 interface SubscriptionGuardProps {
@@ -42,6 +43,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
       <BlockedAccessContent 
         reason={reason || 'Sua assinatura não está ativa'} 
         status={status.status}
+        currentPlanSlug={status.currentPlanSlug}
         onRenew={() => navigate('/planos')}
         onExit={() => signOut()}
       />
@@ -55,11 +57,13 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
 function BlockedAccessContent({ 
   reason, 
   status, 
+  currentPlanSlug,
   onRenew,
   onExit
 }: { 
   reason: string; 
   status: string;
+  currentPlanSlug?: string;
   onRenew: () => void;
   onExit: () => void;
 }) {
@@ -101,9 +105,10 @@ function BlockedAccessContent({
       {/* Modal de planos com opção de sair */}
       <UpgradeModal 
         open={showModal}
-        onOpenChange={() => {}} // Não permite fechar sem ação
+        onOpenChange={() => {}}
         feature={null}
         currentPlan={null}
+        currentPlanSlug={currentPlanSlug}
         showExitButton={true}
         onExit={onExit}
         blockingReason={getBlockingMessage()}
@@ -188,11 +193,22 @@ export function useSubscription() {
       // Busca assinatura da empresa
       const { data: assinatura, error } = await supabase
         .from('assinaturas')
-        .select('status, data_fim, trial_fim, canceled_at')
+        .select('status, data_fim, trial_fim, canceled_at, plano_id')
         .eq('empresa_id', profile.empresa_id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      // Fetch the plan slug if we have a subscription
+      let planSlug: string | undefined;
+      if (assinatura?.plano_id) {
+        const { data: planoData } = await supabase
+          .from('planos')
+          .select('slug')
+          .eq('id', assinatura.plano_id)
+          .single();
+        planSlug = planoData?.slug;
+      }
 
       if (error) {
         console.error('Erro ao buscar assinatura:', error);
@@ -220,7 +236,8 @@ export function useSubscription() {
         setStatus({ 
           blocked: true, 
           status: 'canceled', 
-          reason: 'Sua assinatura foi cancelada.' 
+          reason: 'Sua assinatura foi cancelada.',
+          currentPlanSlug: planSlug,
         });
         setIsLoading(false);
         return;
@@ -233,7 +250,8 @@ export function useSubscription() {
           setStatus({ 
             blocked: true, 
             status: 'expired', 
-            reason: 'Sua assinatura expirou.' 
+            reason: 'Sua assinatura expirou.',
+            currentPlanSlug: planSlug,
           });
           setIsLoading(false);
           return;
@@ -248,7 +266,8 @@ export function useSubscription() {
           setStatus({ 
             blocked: true, 
             status: 'expired', 
-            reason: 'Seu período de teste expirou.' 
+            reason: 'Seu período de teste expirou.',
+            currentPlanSlug: planSlug,
           });
           setIsLoading(false);
           return;
@@ -290,7 +309,8 @@ export function useSubscription() {
           setStatus({ 
             blocked: true, 
             status: 'refunded', 
-            reason: 'Um reembolso foi processado. Escolha um novo plano para continuar.' 
+            reason: 'Um reembolso foi processado. Escolha um novo plano para continuar.',
+            currentPlanSlug: planSlug,
           });
           setIsLoading(false);
           return;

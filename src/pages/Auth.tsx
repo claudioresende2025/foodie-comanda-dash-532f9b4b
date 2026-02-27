@@ -131,6 +131,19 @@ export default function Auth() {
       }
     } else {
       toast.success('Conta criada com sucesso!');
+      // Se tem plano pendente no localStorage, redirecionar para onboarding com params
+      try {
+        const pending = localStorage.getItem('post_subscribe_plan');
+        if (pending) {
+          const parsed = JSON.parse(pending);
+          if (parsed?.planoId) {
+            navigate(`/admin/onboarding?planoId=${parsed.planoId}&periodo=${parsed.periodo || 'mensal'}`);
+            return;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
       navigate('/admin/onboarding');
     }
   };
