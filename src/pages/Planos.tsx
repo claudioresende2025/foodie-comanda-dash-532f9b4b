@@ -266,7 +266,24 @@ export default function Planos() {
     setProcessingPlan(plano.id);
 
     try {
-      // Verificar se é upgrade de plano existente
+      // Se NÃO tem empresaId (novo usuário), salvar plano no localStorage e ir para /auth
+      if (!empresaId) {
+        try {
+          localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
+            planoId: plano.id, 
+            periodo: isAnual ? 'anual' : 'mensal', 
+            empresaId: null,
+            isUpgrade: false 
+          }));
+        } catch (e) {
+          // ignore localStorage errors
+        }
+        toast.success('Plano selecionado! Crie sua conta para começar o período de teste gratuito.');
+        navigate('/auth?tab=signup');
+        return;
+      }
+
+      // Usuário logado com empresa — fluxo de checkout Stripe (upgrade/renovação)
       if (currentSubscription && currentSubscription.plano_id !== plano.id) {
         console.log('[Planos] Detectado upgrade/mudança de plano:', {
           planoAtual: currentSubscription.plano_id,
@@ -274,7 +291,7 @@ export default function Planos() {
         });
       }
 
-      // Salvar plano pendente para aplicar ao registrar/login
+      // Salvar plano pendente
       try {
         localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
           planoId: plano.id, 
@@ -286,24 +303,17 @@ export default function Planos() {
         // ignore localStorage errors
       }
       
-      // Se já tem empresaId (usuário logado), redireciona para /admin/assinatura após o checkout
-      // Caso contrário, usa /subscription/success para criar conta
-      const successUrl = empresaId
-        ? `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`
-        : `${window.location.origin}/subscription/success?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
+      const successUrl = `${window.location.origin}/admin/assinatura?subscription=success&planoId=${plano.id}&periodo=${isAnual ? 'anual' : 'mensal'}&session_id={CHECKOUT_SESSION_ID}`;
 
       const body: any = {
         planoId: plano.id,
         periodo: isAnual ? 'anual' : 'mensal',
         successUrl,
         cancelUrl: `${window.location.origin}/planos?canceled=true`,
-        trial_days: currentSubscription ? 0 : (plano.trial_days ?? 14), // Sem trial para upgrades
+        trial_days: 0, // Sem trial no Stripe — trial já foi concedido localmente
       };
 
-      // Enviar empresaId apenas se disponível (fluxo sem login permitido)
       if (empresaId) body.empresaId = empresaId;
-      
-      // Enviar email do usuário para pré-preencher no Stripe
       if (userEmail) body.customerEmail = userEmail;
 
       console.log('[Planos] Chamando create-subscription-checkout:', body);
