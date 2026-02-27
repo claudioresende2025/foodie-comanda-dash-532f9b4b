@@ -37,7 +37,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
           <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="font-size: 16px;">Olá <strong>${data.nome}</strong>,</p>
             
-            <p style="font-size: 16px;">Seu cadastro foi realizado com sucesso! Você tem <strong>${data.trialDays || 3} dias de teste gratuito</strong> para explorar todas as funcionalidades.</p>
+            <p style="font-size: 16px;">Seu cadastro foi realizado com sucesso! Você tem <strong>${data.trialDays || 14} dias de teste gratuito</strong> para explorar todas as funcionalidades.</p>
             
             <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #16a34a;">
               <h3 style="margin-top: 0; color: #166534;">🚀 Próximos passos:</h3>

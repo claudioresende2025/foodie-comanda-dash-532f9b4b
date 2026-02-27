@@ -201,7 +201,7 @@ serve(async (req: Request) => {
 
     // IMPORTANTE: Apenas aplicar trial para novos usuários (sem empresaId ou sem assinatura existente)
     const shouldApplyTrial = !isActualUpgrade && !empresaId;
-    const trialDays = trial_days ?? plano.trial_days ?? 3;
+    const trialDays = trial_days ?? plano.trial_days ?? 14;
     
     if (shouldApplyTrial && trialDays > 0) {
       sessionPayload['subscription_data[trial_period_days]'] = String(trialDays);
