@@ -280,7 +280,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
           </div>
           <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="font-size: 16px;">Olá <strong>${data.nome || 'Cliente'}</strong>,</p>
-            <p style="font-size: 16px;">Restaurantes que criam o cardápio digital nos primeiros 3 dias <strong>triplicam o engajamento</strong> com os clientes!</p>
+            <p style="font-size: 16px;">Restaurantes que criam o cardápio digital nos primeiros 14 dias <strong>triplicam o engajamento</strong> com os clientes!</p>
             <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #16a34a;">
               <h3 style="margin-top: 0; color: #166534;">✨ Como criar seu cardápio:</h3>
               <ul style="margin: 0; padding-left: 20px;">
