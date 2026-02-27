@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Building2, Upload, Save, Loader2 } from 'lucide-react';
 import { maskCNPJ } from '@/utils/masks';
+import { ConfigFiscalSection } from '@/components/admin/ConfigFiscalSection';
 
 export default function Empresa() {
   const { profile } = useAuth();
@@ -392,6 +393,9 @@ export default function Empresa() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Configurações Fiscais / NFC-e */}
+      <ConfigFiscalSection />
     </div>
   );
 }

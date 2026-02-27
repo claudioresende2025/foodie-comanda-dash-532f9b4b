@@ -481,6 +481,74 @@ export type Database = {
           },
         ]
       }
+      config_fiscal: {
+        Row: {
+          api_token_nfe: string | null
+          bairro: string | null
+          cep: string | null
+          certificado_path: string | null
+          certificado_senha: string | null
+          codigo_ibge_cidade: string | null
+          created_at: string | null
+          csc: string | null
+          csc_id: string | null
+          empresa_id: string
+          id: string
+          logradouro: string | null
+          modo_producao: boolean | null
+          numero: string | null
+          regime_tributario: string | null
+          uf: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          api_token_nfe?: string | null
+          bairro?: string | null
+          cep?: string | null
+          certificado_path?: string | null
+          certificado_senha?: string | null
+          codigo_ibge_cidade?: string | null
+          created_at?: string | null
+          csc?: string | null
+          csc_id?: string | null
+          empresa_id: string
+          id?: string
+          logradouro?: string | null
+          modo_producao?: boolean | null
+          numero?: string | null
+          regime_tributario?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          api_token_nfe?: string | null
+          bairro?: string | null
+          cep?: string | null
+          certificado_path?: string | null
+          certificado_senha?: string | null
+          codigo_ibge_cidade?: string | null
+          created_at?: string | null
+          csc?: string | null
+          csc_id?: string | null
+          empresa_id?: string
+          id?: string
+          logradouro?: string | null
+          modo_producao?: boolean | null
+          numero?: string | null
+          regime_tributario?: string | null
+          uf?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "config_fiscal_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cupons: {
         Row: {
           ativo: boolean | null
@@ -1084,6 +1152,79 @@ export type Database = {
           },
         ]
       }
+      notas_fiscais: {
+        Row: {
+          api_response: Json | null
+          chave_acesso: string | null
+          comanda_id: string | null
+          created_at: string | null
+          danfe_url: string | null
+          empresa_id: string
+          erro_sefaz: string | null
+          id: string
+          numero_nota: string | null
+          pedido_delivery_id: string | null
+          serie: string | null
+          status: string | null
+          valor_total: number | null
+          xml_url: string | null
+        }
+        Insert: {
+          api_response?: Json | null
+          chave_acesso?: string | null
+          comanda_id?: string | null
+          created_at?: string | null
+          danfe_url?: string | null
+          empresa_id: string
+          erro_sefaz?: string | null
+          id?: string
+          numero_nota?: string | null
+          pedido_delivery_id?: string | null
+          serie?: string | null
+          status?: string | null
+          valor_total?: number | null
+          xml_url?: string | null
+        }
+        Update: {
+          api_response?: Json | null
+          chave_acesso?: string | null
+          comanda_id?: string | null
+          created_at?: string | null
+          danfe_url?: string | null
+          empresa_id?: string
+          erro_sefaz?: string | null
+          id?: string
+          numero_nota?: string | null
+          pedido_delivery_id?: string | null
+          serie?: string | null
+          status?: string | null
+          valor_total?: number | null
+          xml_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notas_fiscais_comanda_id_fkey"
+            columns: ["comanda_id"]
+            isOneToOne: false
+            referencedRelation: "comandas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_fiscais_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notas_fiscais_pedido_delivery_id_fkey"
+            columns: ["pedido_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos_delivery"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pagamentos_assinatura: {
         Row: {
           assinatura_id: string
@@ -1371,6 +1512,7 @@ export type Database = {
           empresa_id: string
           id: string
           imagem_url: string | null
+          ncm: string | null
           nome: string
           preco: number
           updated_at: string
@@ -1384,6 +1526,7 @@ export type Database = {
           empresa_id: string
           id?: string
           imagem_url?: string | null
+          ncm?: string | null
           nome: string
           preco: number
           updated_at?: string
@@ -1397,6 +1540,7 @@ export type Database = {
           empresa_id?: string
           id?: string
           imagem_url?: string | null
+          ncm?: string | null
           nome?: string
           preco?: number
           updated_at?: string

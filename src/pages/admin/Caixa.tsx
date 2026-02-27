@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
+import { NfceEmissionDialog } from '@/components/admin/NfceEmissionDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { printCaixaReceipt } from '@/utils/kitchenPrinter';
@@ -157,6 +158,16 @@ export default function Caixa() {
   const [liquidacaoComandaIds, setLiquidacaoComandaIds] = useState<string[]>([]);
   const [liquidacaoFormaPagamento, setLiquidacaoFormaPagamento] = useState<PaymentMethod>('dinheiro');
   const [isProcessingLiquidacao, setIsProcessingLiquidacao] = useState(false);
+
+  // NFC-e emission
+  const [nfceDialogOpen, setNfceDialogOpen] = useState(false);
+  const [nfceComandaData, setNfceComandaData] = useState<{
+    comandaId: string;
+    empresaId: string;
+    itens: { nome: string; ncm: string; quantidade: number; valor_unitario: number; valor_total: number }[];
+    valorTotal: number;
+    formaPagamento: string;
+  } | null>(null);
 
   /** --------- QUERIES --------- */
 
@@ -405,6 +416,27 @@ export default function Caixa() {
         toast.success('Comanda fechada e cupom enviado para impressão!');
       } else {
         toast.success('Comanda fechada com sucesso!');
+      }
+
+      // Offer NFC-e emission
+      if (result.printData && profile?.empresa_id) {
+        const itensNfce = result.printData.itens.map((item: any) => ({
+          nome: item.nome,
+          ncm: '', // Will be fetched from product data
+          quantidade: item.quantidade,
+          valor_unitario: item.precoUnitario,
+          valor_total: item.subtotal,
+        }));
+        setNfceComandaData({
+          comandaId: result.mesaId || '',
+          empresaId: profile.empresa_id,
+          itens: itensNfce,
+          valorTotal: result.total,
+          formaPagamento: typeof result.formaPagamento === 'string' ? result.formaPagamento : 'dinheiro',
+        });
+        // Show NFC-e button via toast
+        toast.info('Deseja emitir NFC-e? Clique no botão abaixo.', { duration: 8000 });
+        setNfceDialogOpen(true);
       }
 
       // Limpa os estados da comanda
@@ -854,6 +886,13 @@ export default function Caixa() {
 
   return (
     <div className="space-y-6">
+      {/* NFC-e Emission Dialog */}
+      <NfceEmissionDialog
+        open={nfceDialogOpen}
+        onOpenChange={setNfceDialogOpen}
+        data={nfceComandaData}
+      />
+
       {/* PIX Modal */}
       <Dialog open={showPixModal} onOpenChange={setShowPixModal}>
         <DialogContent className="max-w-md">
