@@ -1,20 +1,25 @@
 
 
-# Correção: Trial mostrando 3 dias ao invés de 14
+# Correção: Coluna trial no banco externo é `trial_end`
 
-## Problema Identificado
-O banco de dados está correto — a assinatura mais recente tem `trial_fim` configurado para 14 dias (2026-03-13). O problema está no componente `TrialValueBanner.tsx` que busca a coluna **`trial_end`** (que não existe) ao invés de **`trial_fim`** (coluna real).
+O banco externo (zlwpxflqtyhdwanmupgy) usa a coluna `trial_end` na tabela `assinaturas`, enquanto o Lovable Cloud usa `trial_fim`. O `.env` foi alterado para apontar ao banco externo, então o frontend precisa usar `trial_end`.
 
-## Correções
+## Correções no código
 
 ### 1. `src/components/admin/TrialValueBanner.tsx`
-- Linha 22: Trocar `trial_end` por `trial_fim` na query do Supabase
-- Linha 50: Trocar `assinatura.trial_end` por `assinatura.trial_fim`
+- Na query (select), trocar `trial_fim` de volta para `trial_end`
+- Na lógica de cálculo, trocar `assinatura.trial_fim` para `assinatura.trial_end`
 
-### 2. `supabase/functions/emit-nfce/index.ts` (fix build error)
-- Linha 50: Substituir `getClaims(token)` por `getUser(token)` — o método `getClaims` não existe no SDK do Supabase
+### 2. Verificar `src/components/subscription/SubscriptionGuard.tsx`
+- Confirmar qual coluna está sendo usada e alinhar com `trial_end` para compatibilidade com o banco externo
 
-## Detalhes Técnicos
-- A coluna padrão do sistema é `trial_fim` (conforme memória do projeto). O `TrialValueBanner` estava usando o nome antigo `trial_end`, resultando em `null` e cálculo incorreto dos dias restantes.
-- O `SubscriptionGuard` já usa `trial_fim` corretamente — apenas o banner estava desatualizado.
+### 3. Verificar `src/pages/admin/Assinatura.tsx`
+- Confirmar qual coluna está sendo usada e alinhar com `trial_end`
+
+## SQL para o banco externo (já fornecido acima)
+- UPDATE planos SET trial_days = 14
+- UPDATE assinaturas SET trial_end = data_inicio + INTERVAL '14 days' WHERE status = 'trialing'
+
+## Detalhe técnico
+O `.env` agora aponta para `zlwpxflqtyhdwanmupgy` (banco externo). Esse banco usa `trial_end` ao invés de `trial_fim`. Todos os componentes que acessam essa coluna precisam ser consistentes com o schema do banco externo.
 
