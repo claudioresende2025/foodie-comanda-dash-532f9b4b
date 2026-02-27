@@ -51,6 +51,7 @@ type Produto = {
   categoria_id: string | null;
   ativo: boolean;
   variacoes?: VariacaoTamanho[] | null;
+  ncm?: string | null;
 };
 
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,7 @@ export default function Cardapio() {
     preco: '',
     categoria_id: '',
     ativo: true,
+    ncm: '',
   });
   const [prodImage, setProdImage] = useState<File | null>(null);
   const [prodImagePreview, setProdImagePreview] = useState<string | null>(null);
@@ -257,15 +259,14 @@ export default function Cardapio() {
       const produtoData = {
         nome: prodForm.nome,
         descricao: prodForm.descricao || null,
-        // Se tem variações, usa o menor preço; senão, usa o preço único
         preco: possuiVariacoes && variacoes.length > 0
           ? Math.min(...variacoes.map(v => v.preco))
           : parseFloat(prodForm.preco),
         categoria_id: prodForm.categoria_id || null,
         ativo: prodForm.ativo,
         imagem_url,
-        // Salva as variações como JSON (será null se não tiver)
         variacoes: possuiVariacoes && variacoes.length > 0 ? variacoes : null,
+        ncm: prodForm.ncm || null,
       };
 
       if (editingProd) {
@@ -286,7 +287,7 @@ export default function Cardapio() {
 
       setIsProdDialogOpen(false);
       setEditingProd(null);
-      setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
+      setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true, ncm: '' });
       setProdImage(null);
       setProdImagePreview(null);
       setProdImageUrl(null);
@@ -323,6 +324,7 @@ export default function Cardapio() {
       preco: produto.preco.toString(),
       categoria_id: produto.categoria_id || '',
       ativo: produto.ativo,
+      ncm: produto.ncm || '',
     });
     setProdImagePreview(produto.imagem_url);
     
@@ -379,7 +381,7 @@ export default function Cardapio() {
                 setIsProdDialogOpen(open);
                 if (!open) {
                   setEditingProd(null);
-                  setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true });
+                  setProdForm({ nome: '', descricao: '', preco: '', categoria_id: '', ativo: true, ncm: '' });
                   setProdImage(null);
                   setProdImagePreview(null);
                   setProdImageUrl(null);
@@ -605,6 +607,35 @@ export default function Cardapio() {
                     />
                   </div>
 
+                  {/* NCM */}
+                  <div className="space-y-2">
+                    <Label>NCM (Código Fiscal)</Label>
+                    <Input
+                      placeholder="Ex: 16025000"
+                      value={prodForm.ncm}
+                      onChange={(e) => setProdForm({ ...prodForm, ncm: e.target.value.replace(/\D/g, '').slice(0, 8) })}
+                      maxLength={8}
+                    />
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { label: 'Lanches', ncm: '16025000' },
+                        { label: 'Bebidas', ncm: '22021000' },
+                        { label: 'Cervejas', ncm: '22030000' },
+                        { label: 'Pizzas', ncm: '19012090' },
+                        { label: 'Sobremesas', ncm: '21069090' },
+                      ].map((item) => (
+                        <button
+                          key={item.ncm}
+                          type="button"
+                          className="text-xs px-2 py-1 rounded border bg-muted hover:bg-muted/80 transition-colors"
+                          onClick={() => setProdForm({ ...prodForm, ncm: item.ncm })}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <Button onClick={handleSaveProduto} className="w-full" disabled={isSaving}>
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     {editingProd ? 'Salvar Alterações' : 'Criar Produto'}
@@ -669,6 +700,9 @@ export default function Cardapio() {
                           <p className="text-xs text-muted-foreground">
                             {produto.variacoes.length} tamanho{produto.variacoes.length > 1 ? 's' : ''}
                           </p>
+                        )}
+                        {produto.ncm && (
+                          <p className="text-xs text-muted-foreground">NCM: {produto.ncm}</p>
                         )}
                       </div>
                       {canEditCardapio && (

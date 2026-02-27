@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.trial-email-sequence]
 verify_jwt = false
+
+[functions.emit-nfce]
+verify_jwt = false
