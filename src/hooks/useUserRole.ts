@@ -175,16 +175,26 @@ export function useUserRole(): UserRoleData {
           .maybeSingle(),
       ]);
 
-      // Check super admin status
+      // Check super admin status using RPC function (bypasses RLS)
       try {
-        const { data: saData } = await (supabase as any)
-          .from('super_admins')
-          .select('user_id')
-          .eq('user_id', user.id)
-          .eq('ativo', true)
-          .maybeSingle();
-        setIsSuperAdmin(Boolean(saData?.user_id));
+        const { data: isSA, error: saError } = await (supabase as any)
+          .rpc('check_is_super_admin');
+        
+        if (saError) {
+          console.error('Error checking super admin status:', saError);
+          // Fallback: try direct query
+          const { data: saData } = await (supabase as any)
+            .from('super_admins')
+            .select('user_id')
+            .eq('user_id', user.id)
+            .eq('ativo', true)
+            .maybeSingle();
+          setIsSuperAdmin(Boolean(saData?.user_id));
+        } else {
+          setIsSuperAdmin(Boolean(isSA));
+        }
       } catch (e) {
+        console.error('Exception checking super admin:', e);
         setIsSuperAdmin(false);
       }
 
