@@ -566,7 +566,7 @@ export default function Planos() {
               <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Clock className="w-6 h-6 text-primary" />
               </div>
-              <h4 className="font-semibold mb-2">3 Dias Grátis</h4>
+              <h4 className="font-semibold mb-2">14 Dias Grátis</h4>
               <p className="text-sm text-muted-foreground">Teste todas as funcionalidades sem compromisso</p>
             </div>
             
