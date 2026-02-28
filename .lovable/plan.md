@@ -1,25 +1,29 @@
 
 
-# Correção: Coluna trial no banco externo é `trial_end`
+# URL personalizada com nome do restaurante na página de login
 
-O banco externo (zlwpxflqtyhdwanmupgy) usa a coluna `trial_end` na tabela `assinaturas`, enquanto o Lovable Cloud usa `trial_fim`. O `.env` foi alterado para apontar ao banco externo, então o frontend precisa usar `trial_end`.
+## Problema
+Atualmente a URL de login é fixa: `/auth`. O usuário quer que a URL mostre o nome do restaurante, ex: `/auth/Taz%20mania`.
 
-## Correções no código
+## Abordagem
+Usar um parâmetro de rota opcional para buscar a empresa pelo `nome_fantasia` e personalizar a página de login com o nome/logo do restaurante.
 
-### 1. `src/components/admin/TrialValueBanner.tsx`
-- Na query (select), trocar `trial_fim` de volta para `trial_end`
-- Na lógica de cálculo, trocar `assinatura.trial_fim` para `assinatura.trial_end`
+## Correções
 
-### 2. Verificar `src/components/subscription/SubscriptionGuard.tsx`
-- Confirmar qual coluna está sendo usada e alinhar com `trial_end` para compatibilidade com o banco externo
+### 1. `src/App.tsx`
+- Adicionar rota `/auth/:empresaNome` apontando para o componente `Auth`
 
-### 3. Verificar `src/pages/admin/Assinatura.tsx`
-- Confirmar qual coluna está sendo usada e alinhar com `trial_end`
+### 2. `src/pages/Auth.tsx`
+- Ler o parâmetro `:empresaNome` via `useParams()`
+- Buscar a empresa no banco usando `nome_fantasia` (busca case-insensitive via `.ilike()`)
+- Exibir o nome e logo do restaurante no topo da página quando encontrado
+- Após login, redirecionar para o menu/admin da empresa correta
 
-## SQL para o banco externo (já fornecido acima)
-- UPDATE planos SET trial_days = 14
-- UPDATE assinaturas SET trial_end = data_inicio + INTERVAL '14 days' WHERE status = 'trialing'
+### 3. `src/components/CardapioLink.tsx`
+- Atualizar o link gerado para incluir o formato `/auth/NomeDoRestaurante` como opção de compartilhamento
 
-## Detalhe técnico
-O `.env` agora aponta para `zlwpxflqtyhdwanmupgy` (banco externo). Esse banco usa `trial_end` ao invés de `trial_fim`. Todos os componentes que acessam essa coluna precisam ser consistentes com o schema do banco externo.
+## Detalhes Técnicos
+- A busca será feita com `supabase.from('empresas').select('id, nome_fantasia, logo_url').ilike('nome_fantasia', empresaNome)` usando o valor decodificado da URL
+- Se o restaurante não for encontrado, a página funciona normalmente como `/auth` genérico
+- A rota sem parâmetro (`/auth`) continua funcionando como antes
 
