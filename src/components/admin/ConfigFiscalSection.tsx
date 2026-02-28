@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+
 import {
   Select,
   SelectContent,
@@ -31,8 +31,6 @@ type ConfigFiscalForm = {
   bairro: string;
   cep: string;
   uf: string;
-  api_token_nfe: string;
-  modo_producao: boolean;
   certificado_senha: string;
   csc: string;
   csc_id: string;
@@ -46,8 +44,6 @@ const emptyForm: ConfigFiscalForm = {
   bairro: '',
   cep: '',
   uf: 'SP',
-  api_token_nfe: '',
-  modo_producao: false,
   certificado_senha: '',
   csc: '',
   csc_id: '',
@@ -87,8 +83,6 @@ export function ConfigFiscalSection() {
         bairro: configFiscal.bairro || '',
         cep: configFiscal.cep || '',
         uf: configFiscal.uf || 'SP',
-        api_token_nfe: configFiscal.api_token_nfe || '',
-        modo_producao: configFiscal.modo_producao || false,
         certificado_senha: configFiscal.certificado_senha || '',
         csc: configFiscal.csc || '',
         csc_id: configFiscal.csc_id || '',
@@ -127,8 +121,6 @@ export function ConfigFiscalSection() {
         bairro: form.bairro || null,
         cep: form.cep || null,
         uf: form.uf || null,
-        api_token_nfe: form.api_token_nfe || null,
-        modo_producao: form.modo_producao,
         certificado_path,
         certificado_senha: form.certificado_senha || null,
         csc: form.csc || null,
@@ -185,9 +177,6 @@ export function ConfigFiscalSection() {
             <FileText className="w-5 h-5" />
             Configurações Fiscais / NFC-e
           </CardTitle>
-          <Badge variant={form.modo_producao ? 'default' : 'secondary'}>
-            {form.modo_producao ? 'Produção' : 'Homologação'}
-          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -247,33 +236,6 @@ export function ConfigFiscalSection() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-        </div>
-
-        {/* API Token + Modo */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>API Token (Focus NFe)</Label>
-            <Input
-              type="password"
-              placeholder="Token da API Focus NFe"
-              value={form.api_token_nfe}
-              onChange={(e) => setForm({ ...form, api_token_nfe: e.target.value })}
-              autoComplete="off"
-            />
-          </div>
-          <div className="flex items-center justify-between p-3 border rounded-lg">
-            <div>
-              <p className="font-medium text-sm">Ambiente</p>
-              <p className="text-xs text-muted-foreground">
-                {form.modo_producao ? 'Notas reais sendo emitidas' : 'Testes sem valor fiscal'}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Homologação</span>
-              <Switch checked={form.modo_producao} onCheckedChange={(v) => setForm({ ...form, modo_producao: v })} />
-              <span className="text-xs text-muted-foreground">Produção</span>
             </div>
           </div>
         </div>
