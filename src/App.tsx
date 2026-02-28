@@ -71,6 +71,7 @@ const App = () => (
             <Route path="/para-restaurantes" element={<LandingRestaurantes />} />
             {/* Auth routes */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/:empresaNome" element={<Auth />} />
             <Route path="/auth/cliente" element={<AuthCliente />} />
             {/* Public menu routes for customers - accessible without login */}
             <Route path="/menu/:empresaId" element={<Menu />} />
