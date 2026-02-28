@@ -39,6 +39,11 @@ export function CardapioLink({ className, showCard = true }: CardapioLinkProps) 
     ? `${window.location.origin}/menu/${empresa.id}`
     : '';
 
+  // Gerar URL de login personalizada
+  const authUrl = empresa?.nome_fantasia
+    ? `${window.location.origin}/auth/${encodeURIComponent(empresa.nome_fantasia)}`
+    : '';
+
   const handleCopy = async () => {
     if (!cardapioUrl) return;
     
@@ -139,6 +144,35 @@ export function CardapioLink({ className, showCard = true }: CardapioLinkProps) 
               </Button>
             </div>
           </div>
+
+          {authUrl && (
+            <div>
+              <Label htmlFor="auth-url">Link de Login Personalizado</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <Input
+                  id="auth-url"
+                  value={authUrl}
+                  readOnly
+                  className="flex-1 font-mono text-sm"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(authUrl);
+                      toast.success('Link de login copiado!');
+                    } catch {
+                      toast.error('Erro ao copiar');
+                    }
+                  }}
+                  title="Copiar link de login"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
           
           <div className="flex gap-2">
             <Button
@@ -154,7 +188,7 @@ export function CardapioLink({ className, showCard = true }: CardapioLinkProps) 
               ) : (
                 <>
                   <Copy className="h-4 w-4 mr-2" />
-                  Copiar Link
+                  Copiar Link Cardápio
                 </>
               )}
             </Button>

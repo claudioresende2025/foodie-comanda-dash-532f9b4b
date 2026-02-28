@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,6 +21,7 @@ const passwordSchema = z.string().min(6, 'Senha deve ter no mínimo 6 caracteres
 const nomeSchema = z.string().min(2, 'Nome deve ter no mínimo 2 caracteres');
 
 export default function Auth() {
+  const { empresaNome } = useParams<{ empresaNome?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nome, setNome] = useState('');
@@ -32,6 +34,23 @@ export default function Auth() {
   
   const { signIn, signUp, user, profile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Buscar empresa pelo nome na URL
+  const { data: empresaUrl } = useQuery({
+    queryKey: ['empresa-auth', empresaNome],
+    queryFn: async () => {
+      if (!empresaNome) return null;
+      const decoded = decodeURIComponent(empresaNome);
+      const { data, error } = await supabase
+        .from('empresas')
+        .select('id, nome_fantasia, logo_url')
+        .ilike('nome_fantasia', decoded)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!empresaNome,
+  });
 
   // Função para verificar o role do usuário e redirecionar apropriadamente
   const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
@@ -181,13 +200,23 @@ export default function Auth() {
       <div className="w-full max-w-md animate-fade-in">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-fcd mb-4">
-            <Utensils className="w-8 h-8 text-primary-foreground" />
-          </div>
+          {empresaUrl?.logo_url ? (
+            <img 
+              src={empresaUrl.logo_url} 
+              alt={empresaUrl.nome_fantasia} 
+              className="w-20 h-20 rounded-2xl shadow-fcd mb-4 mx-auto object-cover"
+            />
+          ) : (
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-fcd mb-4">
+              <Utensils className="w-8 h-8 text-primary-foreground" />
+            </div>
+          )}
           <h1 className="text-3xl font-bold text-foreground">
-            Food<span className="text-accent">Comanda</span>
+            {empresaUrl?.nome_fantasia || (<>Food<span className="text-accent">Comanda</span></>)}
           </h1>
-          <p className="text-muted-foreground mt-2">Sistema Digital de Comandas</p>
+          <p className="text-muted-foreground mt-2">
+            {empresaUrl ? 'Acesse sua conta' : 'Sistema Digital de Comandas'}
+          </p>
         </div>
 
         <Card className="shadow-fcd border-0">
