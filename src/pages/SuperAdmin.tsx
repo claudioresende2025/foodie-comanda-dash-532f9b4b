@@ -149,6 +149,13 @@ export default function SuperAdmin() {
   const [empresaDialogOpen, setEmpresaDialogOpen] = useState(false);
   const [empresaOverrides, setEmpresaOverrides] = useState<any>(null);
   const [savingOverrides, setSavingOverrides] = useState(false);
+  const [empresaDialogTab, setEmpresaDialogTab] = useState('controles');
+
+  // Config Fiscal (API Token + Ambiente) para o dialog
+  const [fiscalApiToken, setFiscalApiToken] = useState('');
+  const [fiscalModoProducao, setFiscalModoProducao] = useState(false);
+  const [fiscalConfigId, setFiscalConfigId] = useState<string | null>(null);
+  const [savingFiscal, setSavingFiscal] = useState(false);
 
   // Função para exibir nome correto do plano
   const getPlanDisplayName = (planoNome: string | null | undefined, planoSlug?: string | null) => {
@@ -162,6 +169,7 @@ export default function SuperAdmin() {
 
   useEffect(() => {
     if (!selectedEmpresa) return;
+    setEmpresaDialogTab('controles');
     (async () => {
       try {
         const { data } = await (supabase as any).from('empresa_overrides').select('*').eq('empresa_id', selectedEmpresa.id).maybeSingle();
@@ -173,6 +181,29 @@ export default function SuperAdmin() {
       } catch (e) {
         console.warn('Erro carregando overrides', e);
         setEmpresaOverrides({});
+      }
+
+      // Load fiscal config
+      try {
+        const { data: fiscal } = await supabase
+          .from('config_fiscal')
+          .select('id, api_token_nfe, modo_producao')
+          .eq('empresa_id', selectedEmpresa.id)
+          .maybeSingle();
+        if (fiscal) {
+          setFiscalApiToken(fiscal.api_token_nfe || '');
+          setFiscalModoProducao(fiscal.modo_producao || false);
+          setFiscalConfigId(fiscal.id);
+        } else {
+          setFiscalApiToken('');
+          setFiscalModoProducao(false);
+          setFiscalConfigId(null);
+        }
+      } catch (e) {
+        console.warn('Erro carregando config fiscal', e);
+        setFiscalApiToken('');
+        setFiscalModoProducao(false);
+        setFiscalConfigId(null);
       }
     })();
   }, [selectedEmpresa]);
@@ -1012,185 +1043,249 @@ export default function SuperAdmin() {
           </DialogHeader>
           
           {selectedEmpresa && (
-            <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">CNPJ</p>
-                  <p className="font-medium">{selectedEmpresa.cnpj || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Endereço</p>
-                  <p className="font-medium">{selectedEmpresa.endereco_completo || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Plano</p>
-                  <p className="font-medium">{getPlanDisplayName(selectedEmpresa.assinatura?.plano?.nome, selectedEmpresa.assinatura?.plano?.slug)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Status</p>
-                  {getStatusBadge(selectedEmpresa)}
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Criado em</p>
-                  <p className="font-medium">
-                    {format(new Date(selectedEmpresa.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Chave PIX</p>
-                  <p className="font-medium">{selectedEmpresa.chave_pix || '-'}</p>
-                </div>
-              </div>
+            <Tabs value={empresaDialogTab} onValueChange={setEmpresaDialogTab} className="flex-1 overflow-hidden flex flex-col">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="controles">Controles</TabsTrigger>
+                <TabsTrigger value="api-fiscal">API Fiscal</TabsTrigger>
+              </TabsList>
 
-              <Separator />
+              <TabsContent value="controles" className="flex-1 overflow-hidden">
+                <ScrollArea className="h-full max-h-[60vh] pr-4">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">CNPJ</p>
+                        <p className="font-medium">{selectedEmpresa.cnpj || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Endereço</p>
+                        <p className="font-medium">{selectedEmpresa.endereco_completo || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Plano</p>
+                        <p className="font-medium">{getPlanDisplayName(selectedEmpresa.assinatura?.plano?.nome, selectedEmpresa.assinatura?.plano?.slug)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Status</p>
+                        {getStatusBadge(selectedEmpresa)}
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Criado em</p>
+                        <p className="font-medium">
+                          {format(new Date(selectedEmpresa.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Chave PIX</p>
+                        <p className="font-medium">{selectedEmpresa.chave_pix || '-'}</p>
+                      </div>
+                    </div>
 
-              <div>
-                <h3 className="font-semibold">Overrides / Controles</h3>
-                <p className="text-sm text-muted-foreground">Ative ou desative recursos manualmente para esta empresa. Isso tem prioridade sobre o plano contratado.</p>
+                    <Separator />
 
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div className="space-y-2">
-                    <Label>Mesas</Label>
-                    <Switch checked={empresaOverrides?.mesas || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, mesas: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Delivery</Label>
-                    <Switch checked={empresaOverrides?.delivery || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, delivery: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>KDS</Label>
-                    <Switch checked={empresaOverrides?.kds || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, kds: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Marketing</Label>
-                    <Switch checked={empresaOverrides?.marketing || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, marketing: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Cardápio</Label>
-                    <Switch checked={empresaOverrides?.cardapio || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, cardapio: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Dashboard</Label>
-                    <Switch checked={empresaOverrides?.dashboard || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, dashboard: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Garçom (App)</Label>
-                    <Switch checked={empresaOverrides?.garcom || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, garcom: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Equipe</Label>
-                    <Switch checked={empresaOverrides?.equipe || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, equipe: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Estatísticas</Label>
-                    <Switch checked={empresaOverrides?.estatisticas || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, estatisticas: v })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Caixa</Label>
-                    <Switch checked={empresaOverrides?.caixa || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, caixa: v })} />
-                  </div>
-                </div>
+                    <div>
+                      <h3 className="font-semibold">Overrides / Controles</h3>
+                      <p className="text-sm text-muted-foreground">Ative ou desative recursos manualmente para esta empresa.</p>
 
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <Label>Limite telas KDS</Label>
-                    <Input type="number" value={empresaOverrides?.kds_screens_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, kds_screens_limit: e.target.value ? parseInt(e.target.value) : null })} />
-                  </div>
-                  <div>
-                    <Label>Limite funcionários</Label>
-                    <Input type="number" value={empresaOverrides?.staff_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, staff_limit: e.target.value ? parseInt(e.target.value) : null })} />
-                  </div>
-                  <div>
-                    <Label>Limite mesas</Label>
-                    <Input type="number" value={empresaOverrides?.mesas_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, mesas_limit: e.target.value ? parseInt(e.target.value) : null })} />
-                  </div>
-                  <div>
-                    <Label>Limite garçons</Label>
-                    <Input type="number" value={empresaOverrides?.garcom_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, garcom_limit: e.target.value ? parseInt(e.target.value) : null })} />
-                  </div>
-                </div>
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div className="space-y-2">
+                          <Label>Mesas</Label>
+                          <Switch checked={empresaOverrides?.mesas || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, mesas: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Delivery</Label>
+                          <Switch checked={empresaOverrides?.delivery || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, delivery: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>KDS</Label>
+                          <Switch checked={empresaOverrides?.kds || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, kds: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Marketing</Label>
+                          <Switch checked={empresaOverrides?.marketing || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, marketing: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cardápio</Label>
+                          <Switch checked={empresaOverrides?.cardapio || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, cardapio: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Dashboard</Label>
+                          <Switch checked={empresaOverrides?.dashboard || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, dashboard: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Garçom (App)</Label>
+                          <Switch checked={empresaOverrides?.garcom || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, garcom: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Equipe</Label>
+                          <Switch checked={empresaOverrides?.equipe || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, equipe: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Estatísticas</Label>
+                          <Switch checked={empresaOverrides?.estatisticas || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, estatisticas: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Caixa</Label>
+                          <Switch checked={empresaOverrides?.caixa || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, caixa: v })} />
+                        </div>
+                      </div>
 
-                <div className="flex gap-2 mt-4">
-                  <Button variant="outline" onClick={() => { setEmpresaDialogOpen(false); }}>
-                    Fechar
-                  </Button>
-                  <Button onClick={async () => {
-                    setSavingOverrides(true);
-                    try {
-                      const overridesPayload = empresaOverrides || {};
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <Label>Limite telas KDS</Label>
+                          <Input type="number" value={empresaOverrides?.kds_screens_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, kds_screens_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                        </div>
+                        <div>
+                          <Label>Limite funcionários</Label>
+                          <Input type="number" value={empresaOverrides?.staff_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, staff_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                        </div>
+                        <div>
+                          <Label>Limite mesas</Label>
+                          <Input type="number" value={empresaOverrides?.mesas_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, mesas_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                        </div>
+                        <div>
+                          <Label>Limite garçons</Label>
+                          <Input type="number" value={empresaOverrides?.garcom_limit ?? ''} onChange={(e) => setEmpresaOverrides({ ...empresaOverrides, garcom_limit: e.target.value ? parseInt(e.target.value) : null })} />
+                        </div>
+                      </div>
 
-                      // Prefer calling RPC upsert_empresa_overrides (runs as security definer)
+                      <div className="flex gap-2 mt-4">
+                        <Button variant="outline" onClick={() => { setEmpresaDialogOpen(false); }}>
+                          Fechar
+                        </Button>
+                        <Button onClick={async () => {
+                          setSavingOverrides(true);
+                          try {
+                            const overridesPayload = empresaOverrides || {};
+                            try {
+                              const { error: rpcError } = await supabase.rpc('upsert_empresa_overrides', {
+                                p_empresa_id: selectedEmpresa.id,
+                                p_overrides: overridesPayload,
+                                p_kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
+                                p_staff_limit: empresaOverrides?.staff_limit ?? null,
+                                p_mesas_limit: empresaOverrides?.mesas_limit ?? null,
+                                p_garcom_limit: empresaOverrides?.garcom_limit ?? null,
+                              } as any);
+                              if (rpcError) throw rpcError;
+                              toast.success('Overrides salvos');
+                              setEmpresaDialogOpen(false);
+                              await loadEmpresas();
+                              return;
+                            } catch (rpcErr) {
+                              console.warn('RPC fallback:', rpcErr);
+                            }
+                            const payload = {
+                              empresa_id: selectedEmpresa.id,
+                              overrides: overridesPayload,
+                              kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
+                              staff_limit: empresaOverrides?.staff_limit ?? null,
+                              mesas_limit: empresaOverrides?.mesas_limit ?? null,
+                              garcom_limit: empresaOverrides?.garcom_limit ?? null,
+                            };
+                            const { data: existing, error: selError } = await (supabase as any)
+                              .from('empresa_overrides').select('id').eq('empresa_id', selectedEmpresa.id).maybeSingle();
+                            if (selError) throw selError;
+                            let res;
+                            if (existing?.id) {
+                              res = await (supabase as any).from('empresa_overrides').update(payload).eq('empresa_id', selectedEmpresa.id);
+                            } else {
+                              res = await (supabase as any).from('empresa_overrides').insert(payload);
+                            }
+                            if (res.error) throw res.error;
+                            toast.success('Overrides salvos');
+                            setEmpresaDialogOpen(false);
+                            await loadEmpresas();
+                          } catch (err: any) {
+                            console.error('Erro salvando overrides', err);
+                            toast.error('Erro ao salvar overrides');
+                          } finally {
+                            setSavingOverrides(false);
+                          }
+                        }} disabled={savingOverrides}>
+                          {savingOverrides ? 'Salvando...' : 'Salvar Overrides'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="api-fiscal" className="flex-1">
+                <div className="space-y-6 py-2">
+                  <div className="space-y-2">
+                    <Label>API Token (Focus NFe)</Label>
+                    <Input
+                      type="password"
+                      placeholder="Token da API Focus NFe"
+                      value={fiscalApiToken}
+                      onChange={(e) => setFiscalApiToken(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium text-sm">Ambiente</p>
+                      <p className="text-xs text-muted-foreground">
+                        {fiscalModoProducao ? 'Notas reais sendo emitidas' : 'Testes sem valor fiscal'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Homologação</span>
+                      <Switch checked={fiscalModoProducao} onCheckedChange={setFiscalModoProducao} />
+                      <span className="text-xs text-muted-foreground">Produção</span>
+                    </div>
+                  </div>
+
+                  <Badge variant={fiscalModoProducao ? 'default' : 'secondary'}>
+                    {fiscalModoProducao ? 'Produção' : 'Homologação'}
+                  </Badge>
+
+                  <div className="flex gap-2 mt-4">
+                    <Button variant="outline" onClick={() => setEmpresaDialogOpen(false)}>
+                      Fechar
+                    </Button>
+                    <Button onClick={async () => {
+                      setSavingFiscal(true);
                       try {
-                        const { error: rpcError } = await supabase.rpc('upsert_empresa_overrides', {
-                          p_empresa_id: selectedEmpresa.id,
-                          p_overrides: overridesPayload,
-                          p_kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
-                          p_staff_limit: empresaOverrides?.staff_limit ?? null,
-                          p_mesas_limit: empresaOverrides?.mesas_limit ?? null,
-                          p_garcom_limit: empresaOverrides?.garcom_limit ?? null,
-                        } as any);
+                        const payload = {
+                          empresa_id: selectedEmpresa.id,
+                          api_token_nfe: fiscalApiToken || null,
+                          modo_producao: fiscalModoProducao,
+                          updated_at: new Date().toISOString(),
+                        };
 
-                        if (rpcError) throw rpcError;
-
-                        toast.success('Overrides salvos');
-                        setEmpresaDialogOpen(false);
-                        await loadEmpresas();
-                        return;
-                      } catch (rpcErr) {
-                        console.warn('RPC upsert_empresa_overrides failed, falling back to direct write:', rpcErr);
-                        // continue to fallback below
+                        if (fiscalConfigId) {
+                          const { error } = await supabase
+                            .from('config_fiscal')
+                            .update(payload)
+                            .eq('id', fiscalConfigId);
+                          if (error) throw error;
+                        } else {
+                          const { error } = await supabase
+                            .from('config_fiscal')
+                            .insert(payload);
+                          if (error) throw error;
+                        }
+                        toast.success('Configuração fiscal salva!');
+                      } catch (err) {
+                        console.error('Erro salvando config fiscal:', err);
+                        toast.error('Erro ao salvar configuração fiscal');
+                      } finally {
+                        setSavingFiscal(false);
                       }
-
-                      // Fallback: attempt select -> insert/update (may fail if RLS blocks)
-                      const payload = {
-                        empresa_id: selectedEmpresa.id,
-                        overrides: overridesPayload,
-                        kds_screens_limit: empresaOverrides?.kds_screens_limit ?? null,
-                        staff_limit: empresaOverrides?.staff_limit ?? null,
-                        mesas_limit: empresaOverrides?.mesas_limit ?? null,
-                        garcom_limit: empresaOverrides?.garcom_limit ?? null,
-                      };
-
-                      const { data: existing, error: selError } = await (supabase as any)
-                        .from('empresa_overrides')
-                        .select('id')
-                        .eq('empresa_id', selectedEmpresa.id)
-                        .maybeSingle();
-
-                      if (selError) throw selError;
-
-                      let res;
-                      if (existing && existing.id) {
-                        res = await (supabase as any).from('empresa_overrides').update(payload).eq('empresa_id', selectedEmpresa.id);
-                      } else {
-                        res = await (supabase as any).from('empresa_overrides').insert(payload);
-                      }
-
-                      if (res.error) throw res.error;
-
-                      toast.success('Overrides salvos');
-                      setEmpresaDialogOpen(false);
-                      await loadEmpresas();
-                    } catch (err: any) {
-                      console.error('Erro salvando overrides', err);
-                      // Detect common RLS error and show actionable hint
-                      const msg = String(err?.message || err);
-                      if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('violates row-level security') || msg.includes('403')) {
-                        toast.error('Erro ao salvar overrides: privilégios insuficientes. Execute a função RPC `upsert_empresa_overrides` com a service role ou ajuste as policies no Supabase.');
-                      } else {
-                        toast.error('Erro ao salvar overrides');
-                      }
-                    } finally {
-                      setSavingOverrides(false);
-                    }
-                  }} disabled={savingOverrides}>
-                    {savingOverrides ? 'Salvando...' : 'Salvar Overrides'}
-                  </Button>
+                    }} disabled={savingFiscal}>
+                      {savingFiscal ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Save className="w-4 h-4 mr-2" />
+                      )}
+                      Salvar Config Fiscal
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </div>
-            </ScrollArea>
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
