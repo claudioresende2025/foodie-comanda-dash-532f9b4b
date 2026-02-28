@@ -72,6 +72,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "assinaturas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "assinaturas_plano_id_fkey"
             columns: ["plano_id"]
             isOneToOne: false
@@ -117,6 +124,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avaliacoes_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
           {
@@ -173,6 +187,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "caixas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
       categorias: {
@@ -212,6 +233,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "categorias_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -257,6 +285,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chamadas_garcom_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
           {
@@ -334,6 +369,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comandas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
           {
@@ -426,6 +468,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "combos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
       config_delivery: {
@@ -477,6 +526,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: true
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "config_delivery_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -547,6 +603,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "config_fiscal_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
       cupons: {
@@ -601,6 +664,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cupons_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -725,6 +795,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: true
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "empresa_overrides_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -864,6 +941,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fidelidade_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
       fidelidade_pontos: {
@@ -897,6 +981,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fidelidade_pontos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -983,10 +1074,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "indicacoes_empresa_indicada_id_fkey"
+            columns: ["empresa_indicada_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "indicacoes_empresa_indicadora_id_fkey"
             columns: ["empresa_indicadora_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "indicacoes_empresa_indicadora_id_fkey"
+            columns: ["empresa_indicadora_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -1079,6 +1184,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mesas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
           {
@@ -1217,6 +1329,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "notas_fiscais_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "notas_fiscais_pedido_delivery_id_fkey"
             columns: ["pedido_delivery_id"]
             isOneToOne: false
@@ -1278,6 +1397,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagamentos_assinatura_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -1423,6 +1549,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pedidos_delivery_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pedidos_delivery_endereco_id_fkey"
             columns: ["endereco_id"]
             isOneToOne: false
@@ -1561,6 +1694,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "produtos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
@@ -1597,6 +1737,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
         ]
@@ -1691,6 +1838,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "promocoes_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
       reembolsos: {
@@ -1749,6 +1903,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reembolsos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
             referencedColumns: ["id"]
           },
           {
@@ -1815,6 +1976,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "reservas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "reservas_mesa_id_fkey"
             columns: ["mesa_id"]
             isOneToOne: false
@@ -1874,6 +2042,13 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "user_roles_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
       webhook_logs: {
@@ -1915,11 +2090,38 @@ export type Database = {
             referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "webhook_logs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
     Views: {
-      [_ in never]: never
+      empresas_publico: {
+        Row: {
+          endereco_completo: string | null
+          id: string | null
+          logo_url: string | null
+          nome_fantasia: string | null
+        }
+        Insert: {
+          endereco_completo?: string | null
+          id?: string | null
+          logo_url?: string | null
+          nome_fantasia?: string | null
+        }
+        Update: {
+          endereco_completo?: string | null
+          id?: string | null
+          logo_url?: string | null
+          nome_fantasia?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_empresa_public_info: {
