@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
 
 interface Profile {
   id: string;
@@ -28,6 +29,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Logout automático após 1 hora de inatividade
+  useInactivityTimeout(!!user);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
