@@ -495,6 +495,9 @@ serve(async (req) => {
       );
     }
     
+    // Log para debug - mostra apenas primeiros caracteres da API key
+    logStep("API Key check", { keyPrefix: resendApiKey.substring(0, 10) + "..." });
+    
     // Ler o body como texto primeiro para debug
     const bodyText = await req.text();
     logStep("Raw body received", { bodyLength: bodyText.length, bodyPreview: bodyText.substring(0, 200) });
@@ -550,8 +553,9 @@ serve(async (req) => {
     const template = templates[type](data || {});
     logStep("Template generated", { subject: template.subject });
     
-    // Usar o domínio verificado suporte@servicecoding.com.br
+    // Usar o domínio verificado servicecoding.com.br
     const fromEmail = Deno.env.get("EMAIL_FROM") || "Food Comanda Pro <suporte@servicecoding.com.br>";
+    logStep("From email", { fromEmail });
     
     // Enviar via Resend API
     const response = await fetch("https://api.resend.com/emails", {
