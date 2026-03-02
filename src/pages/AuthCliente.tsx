@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ export default function AuthCliente() {
   const [empresaInfo, setEmpresaInfo] = useState<{ id: string; nome: string } | null>(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const skipAutoRedirect = useRef(false);
   
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -47,11 +48,13 @@ export default function AuthCliente() {
     }
   }, [empresaId]);
 
-  // Verificar se já está logado
+  // Verificar se já está logado (pular se acabou de fazer signup)
   useEffect(() => {
+    if (skipAutoRedirect.current) return;
+    
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+      if (session && !skipAutoRedirect.current) {
         // Redirecionar para o cardápio da empresa ou delivery
         if (empresaId) {
           navigate(`/menu/${empresaId}`);
@@ -122,6 +125,9 @@ export default function AuthCliente() {
     e.preventDefault();
     if (!validateSignup()) return;
 
+    // Marcar para pular auto-redirect antes do signup
+    skipAutoRedirect.current = true;
+    
     setIsLoading(true);
     
     try {
@@ -184,6 +190,9 @@ export default function AuthCliente() {
       // Redirecionar para página de confirmação de email
       navigate(`/email-confirmation?email=${encodeURIComponent(email)}&type=cliente`);
     } catch (error: any) {
+      // Resetar flag em caso de erro para permitir redirect futuro
+      skipAutoRedirect.current = false;
+      
       if (error.message?.includes('already registered')) {
         toast.error('Este e-mail já está cadastrado');
       } else {
