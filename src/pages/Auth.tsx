@@ -117,6 +117,9 @@ export default function Auth() {
     e.preventDefault();
     if (!validateLogin()) return;
     
+    // Resetar flag de redirecionamento para permitir que useEffect redirecione após login
+    hasRedirected.current = false;
+    
     setIsLoading(true);
     const { error } = await signIn(email, password);
     setIsLoading(false);
@@ -131,8 +134,8 @@ export default function Auth() {
       }
     } else {
       toast.success('Login realizado com sucesso!');
-      // Redirecionar imediatamente para /admin após login
-      navigate('/admin');
+      // O useEffect cuida do redirecionamento baseado no profile
+      // Não fazer navigate aqui para aguardar o profile ser carregado
     }
   };
 
@@ -140,11 +143,16 @@ export default function Auth() {
     e.preventDefault();
     if (!validateSignup()) return;
 
+    // Marcar como já redirecionado ANTES do signup para evitar que o useEffect redirecione
+    hasRedirected.current = true;
+    
     setIsLoading(true);
     const { error } = await signUp(email, password, nome);
     setIsLoading(false);
 
     if (error) {
+      // Se deu erro, resetar a flag para permitir redirect futuro
+      hasRedirected.current = false;
       if (error.message.includes('already registered')) {
         toast.error('Este e-mail já está cadastrado');
       } else {
