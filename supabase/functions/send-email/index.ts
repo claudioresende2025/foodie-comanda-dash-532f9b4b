@@ -115,7 +115,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin'}" 
+              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" 
                  style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                 Acessar Meu Painel
               </a>
@@ -176,7 +176,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.dashboardUrl || 'https://foodie-comanda-dash.lovable.app/admin'}" 
+              <a href="${data.dashboardUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" 
                  style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                 Ir para o Painel
               </a>
@@ -224,7 +224,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             <p style="font-size: 16px;">Para continuar usando todas as funcionalidades, escolha um plano que atenda suas necessidades.</p>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.planosUrl || 'https://foodie-comanda-dash.lovable.app/planos'}" 
+              <a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" 
                  style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                 Ver Planos Disponíveis
               </a>
@@ -324,7 +324,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <p style="margin: 0;"><strong>3️⃣</strong> Convide sua equipe (garçons, caixas)</p>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Acessar Meu Painel</a>
+              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Acessar Meu Painel</a>
             </div>
             <p style="color: #6b7280; font-size: 14px; text-align: center;">Precisa de ajuda? Responda este e-mail!</p>
           </div>
@@ -355,7 +355,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               </ul>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin/cardapio'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Criar Cardápio Agora</a>
+              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin/cardapio'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Criar Cardápio Agora</a>
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -383,7 +383,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             <p style="font-size: 16px;">Continue explorando! Ainda faltam <strong>${data.diasRestantes || 7} dias</strong> de teste.</p>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Continuar Configurando</a>
+              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Continuar Configurando</a>
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -409,7 +409,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             <p style="font-size: 16px;">Assine agora e continue sem interrupções. A partir de <strong>R$ 49,90/mês</strong>.</p>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.planosUrl || 'https://foodie-comanda-dash.lovable.app/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Ver Planos e Assinar</a>
+              <a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Ver Planos e Assinar</a>
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -435,7 +435,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <p style="color: #6b7280; margin: 8px 0 0 0;">Válido por 48 horas</p>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.planosUrl || 'https://foodie-comanda-dash.lovable.app/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Assinar com 20% OFF</a>
+              <a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Assinar com 20% OFF</a>
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -461,7 +461,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <p style="color: #6b7280; margin: 8px 0 0 0;">Sem compromisso. Cancele quando quiser.</p>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodie-comanda-dash.lovable.app/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Voltar Agora — 30 Dias Grátis</a>
+              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Voltar Agora — 30 Dias Grátis</a>
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>

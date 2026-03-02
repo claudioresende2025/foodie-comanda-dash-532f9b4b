@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { Building2, Upload, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function Onboarding() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
@@ -143,20 +143,44 @@ export default function Onboarding() {
           let planoExists = null;
           
           if (planoIdToUse) {
+            // Tentar buscar por UUID
             const { data } = await (supabase as any)
               .from('planos')
               .select('id, nome, slug')
               .eq('id', planoIdToUse)
               .maybeSingle();
             planoExists = data;
+            
+            // Se não encontrou por UUID, pode ser que o ID seja um slug (fallback)
+            if (!planoExists && planoIdToUse.length < 50) {
+              const { data: dataBySlug } = await (supabase as any)
+                .from('planos')
+                .select('id, nome, slug')
+                .eq('slug', planoIdToUse.toLowerCase())
+                .maybeSingle();
+              planoExists = dataBySlug;
+            }
           }
           
-          // Se não encontrou por ID, tenta por slug
+          // Se não encontrou por ID, tenta por slug explícito
           if (!planoExists && planoSlugToUse) {
+            console.log('[Onboarding] Buscando por slug:', planoSlugToUse);
             const { data } = await (supabase as any)
               .from('planos')
               .select('id, nome, slug')
-              .eq('slug', planoSlugToUse)
+              .eq('slug', planoSlugToUse.toLowerCase())
+              .maybeSingle();
+            planoExists = data;
+          }
+          
+          // Último fallback: tentar por ILIKE no slug
+          if (!planoExists && planoSlugToUse) {
+            console.log('[Onboarding] Buscando por ilike slug:', planoSlugToUse);
+            const { data } = await (supabase as any)
+              .from('planos')
+              .select('id, nome, slug')
+              .ilike('slug', `%${planoSlugToUse}%`)
+              .limit(1)
               .maybeSingle();
             planoExists = data;
           }
@@ -227,8 +251,15 @@ export default function Onboarding() {
 
       if (roleError) throw roleError;
 
+      // IMPORTANTE: Atualizar o estado global do perfil antes de navegar
+      // Isso garante que o menu lateral e outros componentes carreguem corretamente
+      await refreshProfile();
+      
+      // Pequeno delay para garantir que o estado foi propagado
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       toast.success('Empresa cadastrada com sucesso!');
-      navigate('/admin');
+      navigate('/admin', { replace: true });
     } catch (error: any) {
       console.error('[Onboarding] Error creating empresa:', error);
       console.error('[Onboarding] Error details:', {

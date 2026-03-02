@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ const nomeSchema = z.string().min(2, 'Nome deve ter no mínimo 2 caracteres');
 
 export default function Auth() {
   const { empresaNome } = useParams<{ empresaNome?: string }>();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nome, setNome] = useState('');
@@ -36,6 +37,33 @@ export default function Auth() {
   
   const { signIn, signUp, user, profile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Ler tab da URL e mostrar mensagem de plano selecionado
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'signup') {
+      setActiveTab('signup');
+    }
+    
+    // Verificar se tem plano pendente no localStorage e exibir toast
+    try {
+      const pending = localStorage.getItem('post_subscribe_plan');
+      if (pending) {
+        const parsed = JSON.parse(pending);
+        if (parsed?.planoSlug) {
+          const planoNomes: Record<string, string> = {
+            'bronze': 'Bronze (Iniciante)',
+            'prata': 'Prata (Intermediário)',
+            'ouro': 'Ouro (Enterprise)',
+          };
+          const nomePlano = planoNomes[parsed.planoSlug] || parsed.planoSlug;
+          toast.success(`Plano ${nomePlano} selecionado! Complete seu cadastro.`);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [searchParams]);
 
   // Buscar empresa pelo nome na URL
   const { data: empresaUrl } = useQuery({
