@@ -213,8 +213,23 @@ export default function Onboarding() {
       toast.success('Empresa cadastrada com sucesso!');
       navigate('/admin');
     } catch (error: any) {
-      console.error('Error creating empresa:', error);
-      toast.error('Erro ao cadastrar empresa. Tente novamente.');
+      console.error('[Onboarding] Error creating empresa:', error);
+      console.error('[Onboarding] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+      });
+      
+      // Mostrar erro mais específico quando possível
+      const errorMsg = error?.message || 'Erro desconhecido';
+      if (errorMsg.includes('violates row-level security')) {
+        toast.error('Erro de permissão. Tente fazer logout e login novamente.');
+      } else if (errorMsg.includes('duplicate key')) {
+        toast.error('Já existe uma empresa com esses dados.');
+      } else {
+        toast.error(`Erro ao cadastrar empresa: ${errorMsg}`);
+      }
     } finally {
       setIsLoading(false);
     }

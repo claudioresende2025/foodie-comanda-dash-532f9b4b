@@ -80,7 +80,7 @@ export default function EmailConfirmation() {
                 <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">
                   3
                 </div>
-                <p className="text-sm">Clique em "Confirmar meu e-mail"</p>
+                <p className="text-sm">Clique em "Fazer Login" para confirmar</p>
               </div>
             </div>
 
@@ -90,7 +90,7 @@ export default function EmailConfirmation() {
             </p>
 
             <p className="text-xs text-center text-muted-foreground">
-              Após confirmar seu e-mail, você será redirecionado automaticamente.
+              Após confirmar seu e-mail, você será redirecionado para {isCliente ? 'a página de delivery' : 'fazer login'}.
             </p>
           </CardContent>
         </Card>

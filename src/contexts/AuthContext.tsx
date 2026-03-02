@@ -119,7 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, nome: string) => {
-    const redirectUrl = `${window.location.origin}/admin/onboarding`;
+    // Redirecionar para /auth após confirmação - o usuário fará login novamente
+    const redirectUrl = `${window.location.origin}/auth`;
     
     const { data, error } = await supabase.auth.signUp({
       email,

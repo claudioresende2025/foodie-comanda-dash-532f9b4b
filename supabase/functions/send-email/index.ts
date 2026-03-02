@@ -57,9 +57,9 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="https://foodie-comanda-dash.lovable.app/admin/onboarding" 
+              <a href="https://foodcomandapro.servicecoding.com.br/auth" 
                  style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                Acessar Meu Painel
+                Fazer Login
               </a>
             </div>
             
