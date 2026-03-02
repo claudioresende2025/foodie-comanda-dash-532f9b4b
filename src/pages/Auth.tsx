@@ -30,6 +30,8 @@ export default function Auth() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showEmailConfirmation, setShowEmailConfirmation] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
   const hasRedirected = useRef(false);
   
   const { signIn, signUp, user, profile, loading: authLoading } = useAuth();
@@ -149,21 +151,10 @@ export default function Auth() {
         toast.error('Erro ao criar conta. Tente novamente.');
       }
     } else {
-      toast.success('Conta criada com sucesso!');
-      // Se tem plano pendente no localStorage, redirecionar para onboarding com params
-      try {
-        const pending = localStorage.getItem('post_subscribe_plan');
-        if (pending) {
-          const parsed = JSON.parse(pending);
-          if (parsed?.planoId) {
-            navigate(`/admin/onboarding?planoId=${parsed.planoId}&periodo=${parsed.periodo || 'mensal'}`);
-            return;
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-      navigate('/admin/onboarding');
+      // Não redirecionar - mostrar tela de confirmação de email
+      setRegisteredEmail(email);
+      setShowEmailConfirmation(true);
+      toast.success('Conta criada! Verifique seu e-mail para confirmar.');
     }
   };
 
@@ -216,6 +207,65 @@ export default function Auth() {
       setForgotEmail('');
     }
   };
+
+  // Tela de confirmação de email após cadastro
+  if (showEmailConfirmation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
+        <div className="w-full max-w-md animate-fade-in">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4">
+              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Verifique seu e-mail
+            </h1>
+            <p className="text-muted-foreground">
+              Enviamos um link de confirmação para:
+            </p>
+            <p className="text-primary font-semibold mt-2 text-lg">
+              {registeredEmail}
+            </p>
+          </div>
+
+          <Card className="shadow-fcd border-0">
+            <CardContent className="pt-6">
+              <div className="space-y-4 text-center">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <p className="text-amber-800 text-sm">
+                    <strong>📧 Importante:</strong> Clique no link enviado para seu e-mail para confirmar sua conta. Após a confirmação, você será redirecionado para configurar seu restaurante.
+                  </p>
+                </div>
+                
+                <p className="text-muted-foreground text-sm">
+                  Não recebeu o e-mail? Verifique sua pasta de spam ou lixo eletrônico.
+                </p>
+
+                <div className="pt-4 space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setShowEmailConfirmation(false);
+                      setActiveTab('login');
+                    }}
+                  >
+                    Voltar para Login
+                  </Button>
+                  
+                  <p className="text-xs text-muted-foreground">
+                    Após confirmar seu e-mail, faça login para continuar.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
