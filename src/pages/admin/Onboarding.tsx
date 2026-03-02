@@ -124,33 +124,50 @@ export default function Onboarding() {
         
         // Prioridade: URL > localStorage > Bronze padrão
         let planoIdToUse = urlPlanoId;
+        let planoSlugToUse: string | null = null;
         let periodoToUse = urlPeriodo || 'mensal';
         let isUpgrade = false;
         
         if (!planoIdToUse && pending) {
           const parsed = JSON.parse(pending);
           planoIdToUse = parsed?.planoId;
+          planoSlugToUse = parsed?.planoSlug;
           periodoToUse = parsed?.periodo || 'mensal';
           isUpgrade = !!parsed?.isUpgrade;
         }
         
-        console.log('[Onboarding] Plano a usar:', { planoIdToUse, periodoToUse, isUpgrade });
+        console.log('[Onboarding] Plano a usar:', { planoIdToUse, planoSlugToUse, periodoToUse, isUpgrade });
         
-        if (planoIdToUse) {
-          // Verificar se o plano existe
-          const { data: planoExists } = await (supabase as any)
-            .from('planos')
-            .select('id, nome')
-            .eq('id', planoIdToUse)
-            .single();
+        if (planoIdToUse || planoSlugToUse) {
+          // Tentar buscar plano por ID primeiro, depois por slug
+          let planoExists = null;
+          
+          if (planoIdToUse) {
+            const { data } = await (supabase as any)
+              .from('planos')
+              .select('id, nome, slug')
+              .eq('id', planoIdToUse)
+              .maybeSingle();
+            planoExists = data;
+          }
+          
+          // Se não encontrou por ID, tenta por slug
+          if (!planoExists && planoSlugToUse) {
+            const { data } = await (supabase as any)
+              .from('planos')
+              .select('id, nome, slug')
+              .eq('slug', planoSlugToUse)
+              .maybeSingle();
+            planoExists = data;
+          }
           
           if (planoExists) {
             console.log('[Onboarding] Criando assinatura com plano:', planoExists.nome);
             
-            // Usar plano escolhido no checkout
+            // Usar o ID do plano encontrado (pode ter vindo via ID ou slug)
             const { error: assinaturaError } = await (supabase as any).from('assinaturas').insert({
               empresa_id: empresa.id,
-              plano_id: planoIdToUse,
+              plano_id: planoExists.id,
               status: isUpgrade ? 'active' : 'trialing',
               periodo: periodoToUse,
               data_inicio: now.toISOString(),

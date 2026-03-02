@@ -124,10 +124,16 @@ export function AdminLayout() {
     // Não redirecionar enquanto estiver carregando ou se não tiver user
     if (loading || roleLoading || !user) return;
     
+    // Se não tem empresa_id, está fazendo onboarding - não redirecionar
+    if (!profile?.empresa_id) return;
+    
     // Proprietário sempre tem acesso completo - não redirecionar
     if (role === 'proprietario') return;
     
     const path = location.pathname;
+    
+    // Ignorar verificação para onboarding (sempre permitido)
+    if (path.startsWith('/admin/onboarding')) return;
     
     // Lista de rotas com suas permissões e URLs
     const routePermissions = [
@@ -144,6 +150,7 @@ export function AdminLayout() {
       { permission: canAccessConfiguracoes, url: '/admin/configuracoes', match: (p: string) => p.startsWith('/admin/configuracoes') },
       { permission: canAccessMarketing, url: '/admin/marketing', match: (p: string) => p.startsWith('/admin/marketing') },
       { permission: true, url: '/admin/assinatura', match: (p: string) => p.startsWith('/admin/assinatura') },
+      { permission: true, url: '/admin/onboarding', match: (p: string) => p.startsWith('/admin/onboarding') },
     ];
     
     // Encontra a rota atual

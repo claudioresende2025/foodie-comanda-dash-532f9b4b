@@ -270,7 +270,8 @@ export default function Planos() {
       if (!empresaId) {
         try {
           localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
-            planoId: plano.id, 
+            planoId: plano.id,
+            planoSlug: (plano as any).slug || plano.nome.toLowerCase().replace(/[^a-z]/g, ''),
             periodo: isAnual ? 'anual' : 'mensal', 
             empresaId: null,
             isUpgrade: false 
@@ -294,7 +295,8 @@ export default function Planos() {
       // Salvar plano pendente
       try {
         localStorage.setItem('post_subscribe_plan', JSON.stringify({ 
-          planoId: plano.id, 
+          planoId: plano.id,
+          planoSlug: (plano as any).slug || plano.nome.toLowerCase().replace(/[^a-z]/g, ''),
           periodo: isAnual ? 'anual' : 'mensal', 
           empresaId,
           isUpgrade: !!currentSubscription 

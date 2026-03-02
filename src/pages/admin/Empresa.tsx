@@ -204,7 +204,8 @@ export default function Empresa() {
         <p className="text-muted-foreground">Gerencie as informações do seu estabelecimento</p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/* Grid: Logo + Couver lado a lado */}
+      <div className="grid gap-6 lg:grid-cols-2">
         {/* Logo */}
         <Card>
           <CardHeader>
@@ -235,10 +236,8 @@ export default function Empresa() {
             </div>
           </CardContent>
         </Card>
-      
 
-      {/* Couver / Música ao vivo */}
-      <div className="grid gap-6 lg:grid-cols-1">
+        {/* Couver / Música ao vivo */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Couver / Música ao Vivo</CardTitle>
@@ -316,8 +315,8 @@ export default function Empresa() {
         </Card>
       </div>
 
-        {/* Dados */}
-        <Card className="lg:col-span-2">
+      {/* Informações Fiscais - Full Width */}
+      <Card>
           <CardHeader>
             <CardTitle className="text-lg">Informações Fiscais</CardTitle>
           </CardHeader>
@@ -392,7 +391,6 @@ export default function Empresa() {
             </Button>
           </CardContent>
         </Card>
-      </div>
 
       {/* Configurações Fiscais / NFC-e */}
       <ConfigFiscalSection />

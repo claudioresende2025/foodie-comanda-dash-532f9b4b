@@ -85,7 +85,7 @@ const allMenuItems: MenuItem[] = [
 export function AdminSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut, user } = useAuth();
+  const { signOut, user, profile } = useAuth();
   const { setOpenMobile, isMobile } = useSidebar();
   const {
     role,
@@ -197,6 +197,11 @@ export function AdminSidebar() {
         </SidebarContent>
       </Sidebar>
     );
+  }
+
+  // Se o usuário está em onboarding (sem empresa), ocultar o sidebar completamente
+  if (!profile?.empresa_id) {
+    return null;
   }
 
   return (
