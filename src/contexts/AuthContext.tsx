@@ -136,16 +136,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // O email de confirmação com o link é enviado pelo Supabase automaticamente
     if (!error && data?.user) {
       try {
-        await supabase.functions.invoke('send-email', {
-          body: {
-            type: 'account_confirmation',
-            to: email,
-            data: {
-              nome,
-              confirmUrl: redirectUrl,
-            },
+        const emailPayload = {
+          type: 'account_confirmation',
+          to: email,
+          data: {
+            nome,
+            confirmUrl: redirectUrl,
           },
+        };
+        console.log('[AuthContext] Enviando email:', emailPayload);
+        
+        const { data: responseData, error: invokeError } = await supabase.functions.invoke('send-email', {
+          body: emailPayload,
         });
+        
+        if (invokeError) {
+          console.warn('[AuthContext] Erro ao invocar send-email:', invokeError);
+        } else {
+          console.log('[AuthContext] Email enviado com sucesso:', responseData);
+        }
       } catch (emailError) {
         console.warn('Erro ao enviar email de boas-vindas personalizado:', emailError);
         // Não retornar erro aqui, pois o cadastro foi feito com sucesso

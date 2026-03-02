@@ -495,8 +495,37 @@ serve(async (req) => {
       );
     }
     
-    const { type, to, data }: EmailRequest = await req.json();
-    logStep("Request received", { type, to });
+    // Ler o body como texto primeiro para debug
+    const bodyText = await req.text();
+    logStep("Raw body received", { bodyLength: bodyText.length, bodyPreview: bodyText.substring(0, 200) });
+    
+    if (!bodyText || bodyText.trim() === '') {
+      logStep("ERROR: Empty body");
+      return new Response(
+        JSON.stringify({ success: false, error: "Body vazio" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    
+    let parsedBody: EmailRequest;
+    try {
+      parsedBody = JSON.parse(bodyText);
+    } catch (parseError) {
+      logStep("ERROR: JSON parse failed", { error: parseError.message, body: bodyText.substring(0, 500) });
+      return new Response(
+        JSON.stringify({ success: false, error: `JSON inválido: ${parseError.message}` }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    
+    const { type, to, data } = parsedBody;
+    logStep("Request parsed", { type, to });
     
     if (!type || !to) {
       return new Response(

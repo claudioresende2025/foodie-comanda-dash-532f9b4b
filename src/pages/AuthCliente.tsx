@@ -156,16 +156,25 @@ export default function AuthCliente() {
 
       // Enviar email de confirmação personalizado via Resend
       try {
-        await supabase.functions.invoke('send-email', {
-          body: {
-            type: 'account_confirmation',
-            to: email,
-            data: {
-              nome,
-              confirmUrl: `${window.location.origin}/delivery`,
-            },
+        const emailPayload = {
+          type: 'account_confirmation',
+          to: email,
+          data: {
+            nome,
+            confirmUrl: `${window.location.origin}/delivery`,
           },
+        };
+        console.log('[AuthCliente] Enviando email:', emailPayload);
+        
+        const { data: responseData, error: invokeError } = await supabase.functions.invoke('send-email', {
+          body: emailPayload,
         });
+        
+        if (invokeError) {
+          console.warn('[AuthCliente] Erro ao invocar send-email:', invokeError);
+        } else {
+          console.log('[AuthCliente] Email enviado com sucesso:', responseData);
+        }
       } catch (emailError) {
         console.warn('Erro ao enviar email de confirmação personalizado:', emailError);
       }

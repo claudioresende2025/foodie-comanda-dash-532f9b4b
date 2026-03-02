@@ -1,11 +1,9 @@
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Mail, CheckCircle2 } from 'lucide-react';
 
 export default function EmailConfirmation() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   
   const email = searchParams.get('email') || '';
   const type = searchParams.get('type') || 'proprietario'; // 'proprietario' ou 'cliente'
@@ -91,20 +89,8 @@ export default function EmailConfirmation() {
               Não recebeu? Verifique sua pasta de <strong>spam</strong> ou <strong>lixo eletrônico</strong>.
             </p>
 
-            {/* Botão voltar */}
-            <div className="pt-2">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate(isCliente ? '/auth/cliente' : '/auth')}
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Voltar para Login
-              </Button>
-            </div>
-
             <p className="text-xs text-center text-muted-foreground">
-              Após confirmar seu e-mail, faça login com as credenciais cadastradas.
+              Após confirmar seu e-mail, você será redirecionado automaticamente.
             </p>
           </CardContent>
         </Card>
