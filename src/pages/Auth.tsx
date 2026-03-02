@@ -181,9 +181,31 @@ export default function Auth() {
     }
     
     setIsLoading(true);
+    
+    // URL de reset fixa para o domínio de produção
+    const resetRedirectUrl = 'https://foodie-comanda-dash.lovable.app/reset-password';
+    
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: resetRedirectUrl,
     });
+    
+    // Também enviar email personalizado via Resend
+    if (!error) {
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'password_reset',
+            to: forgotEmail,
+            data: {
+              resetUrl: resetRedirectUrl,
+            },
+          },
+        });
+      } catch (emailError) {
+        console.warn('Erro ao enviar email personalizado de recuperação:', emailError);
+      }
+    }
+    
     setIsLoading(false);
     
     if (error) {

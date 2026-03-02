@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: 'welcome' | 'subscription_confirmed' | 'trial_reminder' | 'password_reset' | 'payment_receipt' | 'trial_welcome' | 'trial_tip_cardapio' | 'trial_midpoint' | 'trial_urgency' | 'trial_expired' | 'trial_reengagement';
+  type: 'welcome' | 'subscription_confirmed' | 'trial_reminder' | 'password_reset' | 'payment_receipt' | 'trial_welcome' | 'trial_tip_cardapio' | 'trial_midpoint' | 'trial_urgency' | 'trial_expired' | 'trial_reengagement' | 'account_confirmation';
   to: string;
   data: Record<string, any>;
 }
@@ -18,6 +18,71 @@ const logStep = (step: string, details?: any) => {
 
 // Templates de e-mail em HTML
 const templates: Record<string, (data: any) => { subject: string; html: string }> = {
+  account_confirmation: (data) => ({
+    subject: `🎉 Bem-vindo ao Food Comanda Pro, ${data.nome}!`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Bem-vindo ao Food Comanda Pro</title>
+      </head>
+      <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Bem-vindo ao Food Comanda Pro!</h1>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <p style="font-size: 16px;">Olá <strong>${data.nome}</strong>,</p>
+            
+            <p style="font-size: 16px;">Sua conta foi criada com sucesso! Você receberá um e-mail separado com o link de confirmação. Após confirmar, você será redirecionado para o painel de configuração.</p>
+            
+            <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+              <p style="margin: 0; font-size: 14px; color: #92400e;">
+                <strong>📧 Importante:</strong> Verifique sua caixa de entrada (e spam) para confirmar seu e-mail.
+              </p>
+            </div>
+            
+            <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #16a34a;">
+              <h3 style="margin-top: 0; color: #166534;">🚀 O que você poderá fazer:</h3>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li style="margin-bottom: 8px;">Configurar seu cardápio digital</li>
+                <li style="margin-bottom: 8px;">Cadastrar suas mesas com QR Code</li>
+                <li style="margin-bottom: 8px;">Gerenciar pedidos em tempo real</li>
+                <li style="margin-bottom: 8px;">Configurar delivery online</li>
+                <li>Convidar sua equipe</li>
+              </ul>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://foodie-comanda-dash.lovable.app/admin/onboarding" 
+                 style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                Acessar Meu Painel
+              </a>
+            </div>
+            
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0;">
+            
+            <p style="color: #6b7280; font-size: 14px; text-align: center;">
+              Precisa de ajuda? Responda este e-mail ou entre em contato conosco.
+            </p>
+            
+            <p style="color: #9ca3af; font-size: 12px; margin-top: 20px; text-align: center;">
+              Se você não criou esta conta, ignore este e-mail.
+            </p>
+          </div>
+          
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">
+            © ${new Date().getFullYear()} Food Comanda Pro. Todos os direitos reservados.
+          </p>
+        </div>
+      </body>
+      </html>
+    `
+  }),
+
   welcome: (data) => ({
     subject: `Bem-vindo ao Food Comanda Pro, ${data.nome}!`,
     html: `
@@ -456,9 +521,8 @@ serve(async (req) => {
     const template = templates[type](data || {});
     logStep("Template generated", { subject: template.subject });
     
-    // Usar domínio padrão do Resend para testes (onboarding@resend.dev)
-    // Em produção, substituir por domínio verificado
-    const fromEmail = Deno.env.get("EMAIL_FROM") || "Food Comanda <onboarding@resend.dev>";
+    // Usar o domínio verificado suporte@servicecoding.com.br
+    const fromEmail = Deno.env.get("EMAIL_FROM") || "Food Comanda Pro <suporte@servicecoding.com.br>";
     
     // Enviar via Resend API
     const response = await fetch("https://api.resend.com/emails", {

@@ -119,9 +119,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, nome: string) => {
-    const redirectUrl = `${window.location.origin}/`;
+    const redirectUrl = `${window.location.origin}/admin/onboarding`;
     
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -131,6 +131,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       },
     });
+
+    // Se o registro foi bem-sucedido, enviar email de boas-vindas personalizado via Resend
+    // O email de confirmação com o link é enviado pelo Supabase automaticamente
+    if (!error && data?.user) {
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'account_confirmation',
+            to: email,
+            data: {
+              nome,
+              confirmUrl: redirectUrl,
+            },
+          },
+        });
+      } catch (emailError) {
+        console.warn('Erro ao enviar email de boas-vindas personalizado:', emailError);
+        // Não retornar erro aqui, pois o cadastro foi feito com sucesso
+      }
+    }
+
     return { error: error as Error | null };
   };
 
