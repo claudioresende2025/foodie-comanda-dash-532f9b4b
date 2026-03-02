@@ -133,6 +133,7 @@ export default function AuthCliente() {
           data: {
             nome,
           },
+          emailRedirectTo: `${window.location.origin}/delivery`,
         },
       });
 
@@ -153,14 +154,26 @@ export default function AuthCliente() {
         // O sistema já trata usuários sem role como clientes
       }
 
-      toast.success('Conta criada com sucesso!');
-      
-      // Redirecionar para o cardápio da empresa ou delivery
-      if (empresaId) {
-        navigate(`/menu/${empresaId}`);
-      } else {
-        navigate('/delivery');
+      // Enviar email de confirmação personalizado via Resend
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'account_confirmation',
+            to: email,
+            data: {
+              nome,
+              confirmUrl: `${window.location.origin}/delivery`,
+            },
+          },
+        });
+      } catch (emailError) {
+        console.warn('Erro ao enviar email de confirmação personalizado:', emailError);
       }
+
+      toast.success('Conta criada! Verifique seu e-mail para confirmar.');
+      
+      // Redirecionar para página de confirmação de email
+      navigate(`/email-confirmation?email=${encodeURIComponent(email)}&type=cliente`);
     } catch (error: any) {
       if (error.message?.includes('already registered')) {
         toast.error('Este e-mail já está cadastrado');

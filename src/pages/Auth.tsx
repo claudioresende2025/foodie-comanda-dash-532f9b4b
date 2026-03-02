@@ -151,10 +151,9 @@ export default function Auth() {
         toast.error('Erro ao criar conta. Tente novamente.');
       }
     } else {
-      // Não redirecionar - mostrar tela de confirmação de email
-      setRegisteredEmail(email);
-      setShowEmailConfirmation(true);
+      // Redirecionar para página de confirmação de email
       toast.success('Conta criada! Verifique seu e-mail para confirmar.');
+      navigate(`/email-confirmation?email=${encodeURIComponent(email)}&type=proprietario`);
     }
   };
 

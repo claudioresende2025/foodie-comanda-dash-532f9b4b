@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import Auth from "@/pages/Auth";
 import ResetPassword from "@/pages/ResetPassword";
 import AuthCliente from "@/pages/AuthCliente";
+import EmailConfirmation from "@/pages/EmailConfirmation";
 import NotFound from "@/pages/NotFound";
 import Menu from "@/pages/Menu";
 import Delivery from "@/pages/Delivery";
@@ -86,6 +87,7 @@ const App = () => (
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription/success" element={<SubscriptionSuccess />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/email-confirmation" element={<EmailConfirmation />} />
             {/* Super Admin (Desenvolvedor) */}
             <Route path="/super-admin" element={<SuperAdmin />} />
             {/* Delivery marketplace */}
