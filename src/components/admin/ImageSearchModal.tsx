@@ -145,7 +145,7 @@ export function ImageSearchModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
+      <DialogContent className="max-w-5xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ImageIcon className="w-5 h-5" />
@@ -179,7 +179,7 @@ export function ImageSearchModal({
           </div>
 
           {/* Grade de Imagens */}
-          <ScrollArea className="h-[400px]">
+          <ScrollArea className="h-[450px]">
             {error && (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                 <ImageIcon className="w-12 h-12 mb-2 opacity-50" />
@@ -203,7 +203,7 @@ export function ImageSearchModal({
             )}
 
             {!isLoading && images.length > 0 && (
-              <div className="grid grid-cols-4 gap-3 p-1">
+              <div className="grid grid-cols-5 gap-3 p-1">
                 {images.map((image) => (
                   <div
                     key={image.id}

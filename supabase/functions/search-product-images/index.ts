@@ -80,7 +80,7 @@ const foodTranslations: [string, string][] = [
   ['mostarda', 'mustard'],
 ];
 
-// Traduzir termo de busca - tenta múltiplas traduções
+// Traduzir termo de busca - mantém o original e adiciona tradução
 function translateQuery(query: string): string {
   const lowerQuery = query.toLowerCase().trim();
   const translations: string[] = [];
@@ -96,15 +96,15 @@ function translateQuery(query: string): string {
   }
   
   if (translations.length > 0) {
-    // Combina todas as traduções encontradas
-    const result = translations.join(' ');
+    // Combina termo original + traduções para melhor resultado
+    const result = `${query} ${translations.join(' ')}`;
     console.log(`[TRANSLATE] "${query}" -> "${result}"`);
     return result;
   }
   
-  // Se não encontrou tradução, adiciona "food" ao termo
-  console.log(`[TRANSLATE] "${query}" -> "${query} food" (fallback)`);
-  return `${query} food`;
+  // Se não encontrou tradução, usa o termo original
+  console.log(`[TRANSLATE] "${query}" -> "${query}" (sem tradução)`);
+  return query;
 }
 
 serve(async (req) => {
@@ -130,8 +130,9 @@ serve(async (req) => {
     if (PEXELS_API_KEY) {
       console.log("[SEARCH-PRODUCT-IMAGES] Usando Pexels API");
       
+      // Buscar até 20 imagens
       const response = await fetch(
-        `https://api.pexels.com/v1/search?query=${encodeURIComponent(searchTerm)}&per_page=8&orientation=square`,
+        `https://api.pexels.com/v1/search?query=${encodeURIComponent(searchTerm)}&per_page=20`,
         {
           headers: {
             Authorization: PEXELS_API_KEY,
@@ -172,7 +173,7 @@ serve(async (req) => {
       console.log("[SEARCH-PRODUCT-IMAGES] Usando Unsplash API");
       
       const response = await fetch(
-        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchTerm)}&per_page=8&orientation=squarish`,
+        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchTerm)}&per_page=20`,
         {
           headers: {
             Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}`,
@@ -213,7 +214,7 @@ serve(async (req) => {
     const hashCode = (s: string) => s.split('').reduce((a, b) => ((a << 5) - a + b.charCodeAt(0)) | 0, 0);
     const baseSeed = Math.abs(hashCode(searchTerm));
     
-    const picusumImages = Array.from({ length: 8 }, (_, i) => {
+    const picusumImages = Array.from({ length: 20 }, (_, i) => {
       const seed = baseSeed + i;
       const size = 400;
       
