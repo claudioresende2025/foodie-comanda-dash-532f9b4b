@@ -5,70 +5,105 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Dicionário de tradução PT -> EN para termos de comida
-const foodTranslations: Record<string, string> = {
-  'água': 'water bottle',
-  'água com gás': 'sparkling water',
-  'refrigerante': 'soda drink',
-  'coca cola': 'cola drink',
-  'coca-cola': 'cola drink',
-  'guaraná': 'guarana soda',
-  'suco': 'fruit juice',
-  'cerveja': 'beer glass',
-  'vinho': 'wine glass',
-  'café': 'coffee cup',
-  'cappuccino': 'cappuccino',
-  'pizza': 'pizza food',
-  'hamburguer': 'hamburger burger',
-  'hamburger': 'hamburger burger',
-  'batata frita': 'french fries',
-  'batata': 'potato fries',
-  'bacon': 'bacon strips',
-  'cheddar': 'cheese cheddar',
-  'salada': 'salad fresh',
-  'carne': 'beef steak',
-  'picanha': 'beef steak',
-  'filé': 'beef filet',
-  'frango': 'chicken dish',
-  'peixe': 'fish dish',
-  'salmão': 'salmon fish',
-  'arroz': 'rice dish',
-  'feijão': 'beans food',
-  'macarrão': 'pasta dish',
-  'lasanha': 'lasagna',
-  'sorvete': 'ice cream',
-  'bolo': 'cake dessert',
-  'pudim': 'pudding dessert',
-  'torta': 'pie dessert',
-  'sanduíche': 'sandwich',
-  'lanche': 'snack food',
-  'porção': 'appetizer food',
-  'entrada': 'appetizer',
-  'sobremesa': 'dessert',
-  'bebida': 'drink beverage',
-  'açaí': 'acai bowl',
-  'milk shake': 'milkshake',
-  'milkshake': 'milkshake',
-  'hot dog': 'hotdog',
-  'cachorro quente': 'hotdog',
-  'pastel': 'fried pastry',
-  'coxinha': 'brazilian snack',
-  'pão de queijo': 'cheese bread',
-  'tapioca': 'tapioca crepe',
-  'churrasco': 'barbecue meat',
-};
+// Dicionário de tradução PT -> EN para termos de comida (ordenado por tamanho decrescente para match mais específico primeiro)
+const foodTranslations: [string, string][] = [
+  // Termos compostos primeiro (mais específicos)
+  ['batata frita com bacon', 'french fries bacon'],
+  ['batata frita com cheddar', 'french fries cheese'],
+  ['batata frita', 'french fries'],
+  ['água com gás', 'sparkling water'],
+  ['coca cola', 'cola soda'],
+  ['coca-cola', 'cola soda'],
+  ['cachorro quente', 'hotdog'],
+  ['pão de queijo', 'cheese bread brazilian'],
+  ['milk shake', 'milkshake'],
+  ['hot dog', 'hotdog'],
+  ['x-burguer', 'cheeseburger'],
+  ['x burger', 'cheeseburger'],
+  ['x-salada', 'burger salad'],
+  ['x-bacon', 'bacon burger'],
+  ['x-tudo', 'loaded burger'],
+  // Termos simples
+  ['água', 'water bottle'],
+  ['refrigerante', 'soda cola'],
+  ['guaraná', 'guarana soda'],
+  ['suco', 'juice'],
+  ['cerveja', 'beer'],
+  ['vinho', 'wine'],
+  ['café', 'coffee'],
+  ['cappuccino', 'cappuccino'],
+  ['pizza', 'pizza'],
+  ['hamburguer', 'hamburger'],
+  ['hamburger', 'hamburger'],
+  ['batata', 'french fries'],
+  ['bacon', 'bacon'],
+  ['cheddar', 'cheddar cheese'],
+  ['queijo', 'cheese'],
+  ['salada', 'salad'],
+  ['carne', 'beef steak'],
+  ['picanha', 'picanha steak'],
+  ['filé', 'filet steak'],
+  ['frango', 'chicken'],
+  ['peixe', 'fish'],
+  ['salmão', 'salmon'],
+  ['camarão', 'shrimp'],
+  ['arroz', 'rice'],
+  ['feijão', 'beans'],
+  ['macarrão', 'pasta'],
+  ['lasanha', 'lasagna'],
+  ['sorvete', 'ice cream'],
+  ['bolo', 'cake'],
+  ['pudim', 'pudding'],
+  ['torta', 'pie'],
+  ['sanduíche', 'sandwich'],
+  ['lanche', 'burger'],
+  ['porção', 'appetizer'],
+  ['entrada', 'appetizer'],
+  ['sobremesa', 'dessert'],
+  ['bebida', 'drink'],
+  ['açaí', 'acai bowl'],
+  ['milkshake', 'milkshake'],
+  ['pastel', 'fried pastry'],
+  ['coxinha', 'coxinha brazilian'],
+  ['tapioca', 'tapioca'],
+  ['churrasco', 'bbq meat'],
+  ['costela', 'ribs'],
+  ['linguiça', 'sausage'],
+  ['ovo', 'egg'],
+  ['omelete', 'omelette'],
+  ['nuggets', 'chicken nuggets'],
+  ['onion rings', 'onion rings'],
+  ['anéis de cebola', 'onion rings'],
+  ['molho', 'sauce'],
+  ['maionese', 'mayonnaise'],
+  ['ketchup', 'ketchup'],
+  ['mostarda', 'mustard'],
+];
 
-// Traduzir termo de busca
+// Traduzir termo de busca - tenta múltiplas traduções
 function translateQuery(query: string): string {
-  const lowerQuery = query.toLowerCase();
+  const lowerQuery = query.toLowerCase().trim();
+  const translations: string[] = [];
+  let remainingQuery = lowerQuery;
   
-  for (const [pt, en] of Object.entries(foodTranslations)) {
-    if (lowerQuery.includes(pt)) {
-      return en;
+  // Procura por matches do mais específico ao menos específico
+  for (const [pt, en] of foodTranslations) {
+    if (remainingQuery.includes(pt)) {
+      translations.push(en);
+      // Remove o termo encontrado para não duplicar
+      remainingQuery = remainingQuery.replace(pt, ' ').trim();
     }
   }
   
+  if (translations.length > 0) {
+    // Combina todas as traduções encontradas
+    const result = translations.join(' ');
+    console.log(`[TRANSLATE] "${query}" -> "${result}"`);
+    return result;
+  }
+  
   // Se não encontrou tradução, adiciona "food" ao termo
+  console.log(`[TRANSLATE] "${query}" -> "${query} food" (fallback)`);
   return `${query} food`;
 }
 
