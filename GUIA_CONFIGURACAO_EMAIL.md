@@ -7,11 +7,11 @@
 1. **Edge Function `send-email`** - Função completa com templates HTML para:
    - `welcome` - Boas-vindas (cadastro geral)
    - `trial_welcome` - Início do trial (proprietário)
-   - `trial_tip_cardapio` - Dica de cardápio (dia 3)
-   - `trial_midpoint` - Meio do trial (dia 7)
-   - `trial_urgency` - Urgência (dia 11)
-   - `trial_expired` - Trial expirado (dia 14)
-   - `trial_reengagement` - Reengajamento (dia 21)
+   - `trial_tip_cardapio` - Dica de cardápio (dia 2)
+   - `trial_midpoint` - Meio do trial (dia 4)
+   - `trial_urgency` - Urgência (dia 6)
+   - `trial_expired` - Trial expirado (dia 7)
+   - `trial_reengagement` - Reengajamento (dia 14)
    - `subscription_confirmed` - Assinatura confirmada
    - `payment_receipt` - Recibo de pagamento
    - `trial_reminder` - Lembrete de trial
@@ -89,7 +89,7 @@ curl -X POST "https://SEU_PROJECT_ID.supabase.co/functions/v1/send-email" \
     "to": "seu-email@gmail.com",
     "data": {
       "nome": "Teste",
-      "trialDays": 14,
+      "trialDays": 7,
       "loginUrl": "https://foodie-comanda-dash.lovable.app/admin"
     }
   }'
@@ -127,11 +127,11 @@ SELECT cron.schedule(
 1. Cadastro → Supabase Auth cria usuário
 2. Trial inicia → trial_welcome (dia 0)
 3. Sequência automática:
-   - Dia 3: trial_tip_cardapio
-   - Dia 7: trial_midpoint  
-   - Dia 11: trial_urgency
-   - Dia 14: trial_expired
-   - Dia 21: trial_reengagement
+   - Dia 2: trial_tip_cardapio
+   - Dia 4: trial_midpoint  
+   - Dia 6: trial_urgency
+   - Dia 7: trial_expired
+   - Dia 14: trial_reengagement
 4. Se assinar → subscription_confirmed
 5. Cada pagamento → payment_receipt
 ```

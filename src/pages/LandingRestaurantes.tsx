@@ -54,7 +54,7 @@ const beforeAfter = [
 ];
 
 const faqs = [
-  { q: 'Preciso de cartão de crédito para testar?', a: 'Não! Oferecemos 14 dias grátis sem pedir cartão. Você testa tudo antes de decidir.' },
+  { q: 'Preciso de cartão de crédito para testar?', a: 'Não! Oferecemos 7 dias grátis sem pedir cartão. Você testa tudo antes de decidir.' },
   { q: 'Funciona em qualquer celular?', a: 'Sim! É um sistema web responsivo que funciona em qualquer dispositivo com navegador.' },
   { q: 'Preciso instalar algo?', a: 'Não. Funciona direto no navegador. Opcional: pode instalar como app (PWA) para acesso rápido.' },
   { q: 'Posso cancelar a qualquer momento?', a: 'Sim, sem multa e sem burocracia. Cancele quando quiser pelo painel.' },
@@ -91,7 +91,7 @@ export default function LandingRestaurantes() {
       >
         <motion.div variants={fadeUp}>
           <Badge className="mb-6 bg-primary/10 text-primary border-primary/20 px-4 py-1.5">
-            <Clock className="w-3.5 h-3.5 mr-1.5" /> 14 dias grátis • Sem cartão de crédito
+            <Clock className="w-3.5 h-3.5 mr-1.5" /> 7 dias grátis • Sem cartão de crédito
           </Badge>
         </motion.div>
         <motion.h1 variants={fadeUp} className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 max-w-4xl mx-auto leading-tight">
@@ -105,7 +105,7 @@ export default function LandingRestaurantes() {
         </motion.p>
         <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button size="lg" className="text-lg px-8 py-6" onClick={() => navigate('/auth/restaurante')}>
-            <Zap className="mr-2 w-5 h-5" /> Comece Grátis por 14 Dias
+            <Zap className="mr-2 w-5 h-5" /> Comece Grátis por 7 Dias
           </Button>
           <Button size="lg" variant="outline" className="text-lg px-8 py-6" onClick={() => navigate('/planos')}>
             Ver Planos <ChevronRight className="ml-1 w-5 h-5" />
@@ -226,7 +226,7 @@ export default function LandingRestaurantes() {
         <div className="container mx-auto px-4 text-center">
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}>
             <h2 className="text-3xl md:text-4xl font-bold mb-4">Planos que cabem no seu bolso</h2>
-            <p className="text-lg text-muted-foreground mb-8">A partir de R$ 149,90/mês. Teste grátis por 14 dias.</p>
+            <p className="text-lg text-muted-foreground mb-8">A partir de R$ 149,90/mês. Teste grátis por 7 dias.</p>
             <Button size="lg" className="text-lg px-8 py-6" onClick={() => navigate('/planos')}>
               Ver Todos os Planos <ArrowRight className="ml-2 w-5 h-5" />
             </Button>

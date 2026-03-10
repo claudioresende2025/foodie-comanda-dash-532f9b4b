@@ -318,7 +318,7 @@ export default function SubscriptionSuccess() {
           to: userForm.email,
           data: {
             nome: userForm.nome,
-            trialDays: 14,
+            trialDays: 7,
             loginUrl: `${window.location.origin}/admin`,
           },
         },

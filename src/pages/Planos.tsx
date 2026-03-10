@@ -146,7 +146,7 @@ export default function Planos() {
           nome: 'Plano Bronze (Iniciante)',
           preco_mensal: 149.90,
           preco_anual: Math.round(149.90 * 12 * 0.93 * 100) / 100, // 7% desconto
-          trial_days: 14,
+          trial_days: 7,
           descricao: 'Plano Bronze - Ideal para lanchonetes e MEI',
           destaque: false,
           recursos: [
@@ -165,7 +165,7 @@ export default function Planos() {
           nome: 'Plano Prata (Intermediário)',
           preco_mensal: 299.90,
           preco_anual: Math.round(299.90 * 12 * 0.93 * 100) / 100, // 7% desconto
-          trial_days: 14,
+          trial_days: 7,
           descricao: 'Plano Prata - Ideal para restaurantes com mesas',
           destaque: true,
           recursos: [
@@ -184,7 +184,7 @@ export default function Planos() {
           nome: 'Plano Ouro (Enterprise)',
           preco_mensal: 549.90,
           preco_anual: Math.round(549.90 * 12 * 0.93 * 100) / 100, // 7% desconto
-          trial_days: 14,
+          trial_days: 7,
           descricao: 'Plano Ouro - Operações de Alto Volume',
           destaque: false,
           recursos: [
@@ -212,7 +212,7 @@ export default function Planos() {
             descricao: override.descricao ?? p.descricao ?? '',
             preco_mensal: override.preco_mensal ?? p.preco_mensal,
             preco_anual: override.preco_anual ?? p.preco_anual,
-            trial_days: override.trial_days ?? p.trial_days ?? 14,
+            trial_days: override.trial_days ?? p.trial_days ?? 7,
             recursos: override.recursos || (p.recursos && p.recursos.length ? p.recursos : (defaultRecursosByPlan[p.nome] || [])),
             destaque: override.destaque ?? p.destaque ?? false,
           });
@@ -508,7 +508,7 @@ export default function Planos() {
                         </Badge>
                       </div>
                     )}
-                    <p className="text-sm text-muted-foreground mt-1">Trial de {plano.trial_days ?? 14} dias</p>
+                    <p className="text-sm text-muted-foreground mt-1">Trial de {plano.trial_days ?? 7} dias</p>
                   </div>
 
                   <Separator className="my-6" />
@@ -578,7 +578,7 @@ export default function Planos() {
               <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Clock className="w-6 h-6 text-primary" />
               </div>
-              <h4 className="font-semibold mb-2">14 Dias Grátis</h4>
+              <h4 className="font-semibold mb-2">7 Dias Grátis</h4>
               <p className="text-sm text-muted-foreground">Teste todas as funcionalidades sem compromisso</p>
             </div>
             
@@ -641,7 +641,7 @@ export default function Planos() {
             <div className="bg-card rounded-lg p-6 border">
               <h4 className="font-semibold mb-2">Como funciona o período de teste?</h4>
               <p className="text-muted-foreground text-sm">
-                Você tem 14 dias para testar todas as funcionalidades do plano escolhido gratuitamente.
+                Você tem 7 dias para testar todas as funcionalidades do plano escolhido gratuitamente.
                 Não cobramos nada e não pedimos cartão de crédito durante esse período.
               </p>
             </div>
@@ -691,7 +691,7 @@ export default function Planos() {
           <p className="text-muted-foreground mb-4 max-w-xl mx-auto">
             Junte-se a centenas de restaurantes que já simplificaram sua gestão
           </p>
-          <p className="text-sm text-muted-foreground mb-8">Sem cartão de crédito • 14 dias grátis • Garantia de 7 dias</p>
+          <p className="text-sm text-muted-foreground mb-8">Sem cartão de crédito • 7 dias grátis • Garantia de 7 dias</p>
           <Button size="lg" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             Escolher Meu Plano
           </Button>

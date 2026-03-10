@@ -8,11 +8,11 @@ const corsHeaders = {
 
 const EMAIL_SEQUENCE: { day: number; template: string }[] = [
   { day: 0, template: "trial_welcome" },
-  { day: 3, template: "trial_tip_cardapio" },
-  { day: 7, template: "trial_midpoint" },
-  { day: 11, template: "trial_urgency" },
-  { day: 14, template: "trial_expired" },
-  { day: 21, template: "trial_reengagement" },
+  { day: 2, template: "trial_tip_cardapio" },
+  { day: 4, template: "trial_midpoint" },
+  { day: 6, template: "trial_urgency" },
+  { day: 7, template: "trial_expired" },
+  { day: 14, template: "trial_reengagement" },
 ];
 
 const logStep = (step: string, details?: any) => {
