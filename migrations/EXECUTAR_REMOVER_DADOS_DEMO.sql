@@ -12,17 +12,24 @@
 -- ============================================================================
 
 -- ============================================================================
--- ETAPA 1: Deletar itens de pedido relacionados aos produtos
+-- ETAPA 1: Deletar itens de delivery relacionados aos produtos (se existir)
 -- ============================================================================
-DELETE FROM public.itens_pedido 
-WHERE produto_id IN (SELECT id FROM public.produtos);
-
--- Também deletar de delivery_order_items se existir
-DELETE FROM public.delivery_order_items 
-WHERE produto_id IN (SELECT id FROM public.produtos);
+DO $$
+BEGIN
+  -- Tentar deletar de itens_delivery
+  DELETE FROM public.itens_delivery 
+  WHERE produto_id IN (SELECT id FROM public.produtos);
+EXCEPTION WHEN undefined_table THEN
+  RAISE NOTICE 'Tabela itens_delivery não existe, pulando...';
+END $$;
 
 -- ============================================================================
--- ETAPA 2: Deletar todos os produtos de todas as empresas
+-- ETAPA 2: Limpar referências de produtos em pedidos
+-- ============================================================================
+UPDATE public.pedidos SET produto_id = NULL WHERE produto_id IS NOT NULL;
+
+-- ============================================================================
+-- ETAPA 3: Deletar todos os produtos de todas as empresas
 -- ============================================================================
 DELETE FROM public.produtos;
 
