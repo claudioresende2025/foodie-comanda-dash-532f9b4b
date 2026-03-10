@@ -23,52 +23,104 @@ serve(async (req) => {
     const UNSPLASH_ACCESS_KEY = Deno.env.get("UNSPLASH_ACCESS_KEY");
     
     if (!UNSPLASH_ACCESS_KEY) {
-      // Fallback: usar Lorem Picsum (funciona sempre, sem API key)
-      console.log("[SEARCH-PRODUCT-IMAGES] UNSPLASH_ACCESS_KEY não configurada, usando Lorem Picsum");
+      // Fallback: usar Unsplash Source (funciona sem API key, com busca real)
+      console.log("[SEARCH-PRODUCT-IMAGES] UNSPLASH_ACCESS_KEY não configurada, usando Unsplash Source");
       
-      // IDs de imagens de comida do Picsum (curadas manualmente)
-      const foodPicsumIds = [
-        1060, // fruit
-        292,  // berries
-        429,  // food
-        493,  // pizza/bread
-        999,  // coffee
-        824,  // vegetables
-        36,   // food/plants
-        225,  // nature/fruit
-        326,  // bread
-        488,  // food
-        674,  // berries
-        835,  // wine
-        42,   // nature
-        102,  // meal
-        139,  // food
-        312,  // food
-      ];
+      // Traduzir termos comuns para inglês para melhor resultado
+      const foodTranslations: Record<string, string> = {
+        'água': 'water bottle',
+        'água com gás': 'sparkling water',
+        'refrigerante': 'soda drink',
+        'coca cola': 'cola drink',
+        'coca-cola': 'cola drink',
+        'guaraná': 'guarana soda',
+        'suco': 'fruit juice',
+        'cerveja': 'beer glass',
+        'vinho': 'wine glass',
+        'café': 'coffee cup',
+        'cappuccino': 'cappuccino',
+        'pizza': 'pizza food',
+        'hamburguer': 'hamburger burger',
+        'hamburger': 'hamburger burger',
+        'batata frita': 'french fries',
+        'batata': 'potato fries',
+        'bacon': 'bacon strips',
+        'cheddar': 'cheese cheddar',
+        'salada': 'salad fresh',
+        'carne': 'beef steak',
+        'picanha': 'beef steak',
+        'filé': 'beef filet',
+        'frango': 'chicken dish',
+        'peixe': 'fish dish',
+        'salmão': 'salmon fish',
+        'arroz': 'rice dish',
+        'feijão': 'beans food',
+        'macarrão': 'pasta dish',
+        'lasanha': 'lasagna',
+        'sorvete': 'ice cream',
+        'bolo': 'cake dessert',
+        'pudim': 'pudding dessert',
+        'torta': 'pie dessert',
+        'sanduíche': 'sandwich',
+        'lanche': 'snack food',
+        'porção': 'appetizer food',
+        'entrada': 'appetizer',
+        'sobremesa': 'dessert',
+        'bebida': 'drink beverage',
+        'açaí': 'acai bowl',
+        'milk shake': 'milkshake',
+        'milkshake': 'milkshake',
+        'hot dog': 'hotdog',
+        'cachorro quente': 'hotdog',
+        'pastel': 'fried pastry',
+        'coxinha': 'brazilian snack',
+        'pão de queijo': 'cheese bread',
+        'tapioca': 'tapioca crepe',
+        'churrasco': 'barbecue meat',
+      };
+
+      // Traduzir o termo de busca
+      let searchTerm = query.toLowerCase();
+      let translated = false;
       
-      // Usar Lorem Picsum com IDs específicos para imagens de qualidade
-      const searchTerm = query.toLowerCase();
-      const placeholderImages = foodPicsumIds.map((id, i) => {
-        // Usar seed baseado na busca para ter variedade por termo
-        const seedHash = searchTerm.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const adjustedId = foodPicsumIds[(i + seedHash) % foodPicsumIds.length];
+      for (const [pt, en] of Object.entries(foodTranslations)) {
+        if (searchTerm.includes(pt)) {
+          searchTerm = en;
+          translated = true;
+          break;
+        }
+      }
+      
+      // Se não foi traduzido, adicionar "food" ao termo
+      if (!translated) {
+        searchTerm = `${query} food dish`;
+      }
+
+      console.log(`[SEARCH-PRODUCT-IMAGES] Termo traduzido: ${searchTerm}`);
+
+      // Gerar múltiplas imagens usando Unsplash Source com variações
+      // Adiciona um timestamp/random para evitar cache e obter imagens diferentes
+      const baseTime = Date.now();
+      const placeholderImages = Array.from({ length: 8 }, (_, i) => {
+        const uniqueSeed = baseTime + i * 1000;
+        const encodedQuery = encodeURIComponent(searchTerm);
         
         return {
-          id: `picsum-${i}-${adjustedId}`,
+          id: `unsplash-source-${i}-${uniqueSeed}`,
           urls: {
-            small: `https://picsum.photos/id/${adjustedId}/300/300`,
-            regular: `https://picsum.photos/id/${adjustedId}/800/800`,
-            thumb: `https://picsum.photos/id/${adjustedId}/150/150`,
+            small: `https://source.unsplash.com/300x300/?${encodedQuery}&sig=${uniqueSeed}`,
+            regular: `https://source.unsplash.com/800x800/?${encodedQuery}&sig=${uniqueSeed}`,
+            thumb: `https://source.unsplash.com/150x150/?${encodedQuery}&sig=${uniqueSeed}`,
           },
-          alt_description: `Imagem ${i + 1} para ${query}`,
+          alt_description: `${query} - Imagem ${i + 1}`,
           user: {
-            name: "Lorem Picsum",
-            links: { html: "https://picsum.photos" },
+            name: "Unsplash",
+            links: { html: "https://unsplash.com" },
           },
         };
       });
 
-      return new Response(JSON.stringify({ results: placeholderImages, source: 'lorem-picsum' }), {
+      return new Response(JSON.stringify({ results: placeholderImages, source: 'unsplash-source' }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
