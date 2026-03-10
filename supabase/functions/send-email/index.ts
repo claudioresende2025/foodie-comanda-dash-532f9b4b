@@ -57,9 +57,17 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
+              <!--[if mso]>
+              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="https://foodcomandapro.servicecoding.com.br/auth" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="17%" stroke="f" fillcolor="#16a34a">
+                <w:anchorlock/>
+                <center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Fazer Login</center>
+              </v:roundrect>
+              <![endif]-->
+              <!--[if !mso]><!-->
               <a href="https://foodcomandapro.servicecoding.com.br/auth" 
-                 style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                Fazer Login
+                 style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; mso-padding-alt: 0; text-underline-color: #16a34a;">
+                <!--<![endif]-->
+                <span style="mso-text-raise: 10pt; color: #ffffff;">Fazer Login</span>
               </a>
             </div>
             
@@ -115,9 +123,17 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
+              <!--[if mso]>
+              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="17%" stroke="f" fillcolor="#16a34a">
+                <w:anchorlock/>
+                <center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Acessar Meu Painel</center>
+              </v:roundrect>
+              <![endif]-->
+              <!--[if !mso]><!-->
               <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" 
-                 style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                Acessar Meu Painel
+                 style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                <!--<![endif]-->
+                <span style="color: #ffffff;">Acessar Meu Painel</span>
               </a>
             </div>
             
@@ -176,9 +192,17 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
+              <!--[if mso]>
+              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.dashboardUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="17%" stroke="f" fillcolor="#16a34a">
+                <w:anchorlock/>
+                <center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Ir para o Painel</center>
+              </v:roundrect>
+              <![endif]-->
+              <!--[if !mso]><!-->
               <a href="${data.dashboardUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" 
-                 style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                Ir para o Painel
+                 style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                <!--<![endif]-->
+                <span style="color: #ffffff;">Ir para o Painel</span>
               </a>
             </div>
             
@@ -224,9 +248,17 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             <p style="font-size: 16px;">Para continuar usando todas as funcionalidades, escolha um plano que atenda suas necessidades.</p>
             
             <div style="text-align: center; margin: 30px 0;">
+              <!--[if mso]>
+              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="17%" stroke="f" fillcolor="#16a34a">
+                <w:anchorlock/>
+                <center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Ver Planos Disponíveis</center>
+              </v:roundrect>
+              <![endif]-->
+              <!--[if !mso]><!-->
               <a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" 
-                 style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                Ver Planos Disponíveis
+                 style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                <!--<![endif]-->
+                <span style="color: #ffffff;">Ver Planos Disponíveis</span>
               </a>
             </div>
           </div>
@@ -258,9 +290,17 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             <p style="font-size: 16px;">Recebemos uma solicitação para redefinir a senha da sua conta. Clique no botão abaixo para criar uma nova senha:</p>
             
             <div style="text-align: center; margin: 30px 0;">
+              <!--[if mso]>
+              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.resetUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="17%" stroke="f" fillcolor="#3b82f6">
+                <w:anchorlock/>
+                <center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Redefinir Minha Senha</center>
+              </v:roundrect>
+              <![endif]-->
+              <!--[if !mso]><!-->
               <a href="${data.resetUrl}" 
-                 style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                Redefinir Minha Senha
+                 style="display: inline-block; background-color: #3b82f6; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                <!--<![endif]-->
+                <span style="color: #ffffff;">Redefinir Minha Senha</span>
               </a>
             </div>
             
@@ -324,7 +364,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <p style="margin: 0;"><strong>3️⃣</strong> Convide sua equipe (garçons, caixas)</p>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Acessar Meu Painel</a>
+              <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="17%" stroke="f" fillcolor="#16a34a"><w:anchorlock/><center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Acessar Meu Painel</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;"><span style="color: #ffffff;">Acessar Meu Painel</span></a><!--<![endif]-->
             </div>
             <p style="color: #6b7280; font-size: 14px; text-align: center;">Precisa de ajuda? Responda este e-mail!</p>
           </div>
@@ -355,7 +395,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               </ul>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin/cardapio'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Criar Cardápio Agora</a>
+              <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin/cardapio'}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="17%" stroke="f" fillcolor="#16a34a"><w:anchorlock/><center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Criar Cardápio Agora</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin/cardapio'}" style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;"><span style="color: #ffffff;">Criar Cardápio Agora</span></a><!--<![endif]-->
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -383,7 +423,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             <p style="font-size: 16px;">Continue explorando! Ainda faltam <strong>${data.diasRestantes || 7} dias</strong> de teste.</p>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Continuar Configurando</a>
+              <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="17%" stroke="f" fillcolor="#16a34a"><w:anchorlock/><center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Continuar Configurando</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;"><span style="color: #ffffff;">Continuar Configurando</span></a><!--<![endif]-->
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -409,7 +449,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
             </div>
             <p style="font-size: 16px;">Assine agora e continue sem interrupções. A partir de <strong>R$ 49,90/mês</strong>.</p>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Ver Planos e Assinar</a>
+              <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="17%" stroke="f" fillcolor="#16a34a"><w:anchorlock/><center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Ver Planos e Assinar</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;"><span style="color: #ffffff;">Ver Planos e Assinar</span></a><!--<![endif]-->
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -435,7 +475,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <p style="color: #6b7280; margin: 8px 0 0 0;">Válido por 48 horas</p>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Assinar com 20% OFF</a>
+              <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="17%" stroke="f" fillcolor="#16a34a"><w:anchorlock/><center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Assinar com 20% OFF</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${data.planosUrl || 'https://foodcomandapro.servicecoding.com.br/planos'}" style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;"><span style="color: #ffffff;">Assinar com 20% OFF</span></a><!--<![endif]-->
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
@@ -461,7 +501,7 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
               <p style="color: #6b7280; margin: 8px 0 0 0;">Sem compromisso. Cancele quando quiser.</p>
             </div>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Voltar Agora — 30 Dias Grátis</a>
+              <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="height:48px;v-text-anchor:middle;width:280px;" arcsize="17%" stroke="f" fillcolor="#16a34a"><w:anchorlock/><center style="color:#ffffff;font-family:'Segoe UI',sans-serif;font-size:16px;font-weight:bold;">Voltar Agora — 30 Dias Grátis</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${data.loginUrl || 'https://foodcomandapro.servicecoding.com.br/admin'}" style="display: inline-block; background-color: #16a34a; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;"><span style="color: #ffffff;">Voltar Agora — 30 Dias Grátis</span></a><!--<![endif]-->
             </div>
           </div>
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
