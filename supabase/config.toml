@@ -35,3 +35,9 @@ verify_jwt = false
 
 [functions.emit-nfce]
 verify_jwt = false
+
+[functions.search-product-images]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false
