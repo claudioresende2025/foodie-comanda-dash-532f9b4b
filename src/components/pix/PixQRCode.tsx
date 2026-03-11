@@ -112,21 +112,33 @@ function formatPixKey(key: string): string {
       return cleanKey.toLowerCase();
     
     case 'cpf':
-      return onlyDigits;
+      // CPF deve ter apenas 11 dígitos numéricos
+      return onlyDigits.substring(0, 11);
     
     case 'cnpj':
-      return onlyDigits;
+      // CNPJ deve ter apenas 14 dígitos numéricos
+      return onlyDigits.substring(0, 14);
     
     case 'phone':
+      // Telefone no padrão PIX: +55DDNNNNNNNNN
+      // Se já está no formato correto (+55...)
       if (cleanKey.startsWith('+55')) {
-        return '+55' + cleanKey.replace(/\D/g, '').replace(/^55/, '');
+        // Extrai apenas os dígitos após o +55
+        const phoneDigits = cleanKey.substring(3).replace(/\D/g, '');
+        return '+55' + phoneDigits;
       }
+      
+      // Se começa com + mas não é +55, mantém
       if (cleanKey.startsWith('+')) {
         return cleanKey.replace(/[^\d+]/g, '');
       }
+      
+      // Se começa com 55 e tem 12-13 dígitos, adiciona o +
       if (onlyDigits.startsWith('55') && onlyDigits.length >= 12) {
         return '+' + onlyDigits;
       }
+      
+      // Caso contrário, adiciona +55 na frente
       return '+55' + onlyDigits;
     
     default:

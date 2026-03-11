@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,10 +8,127 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Building2, Upload, Save, Loader2 } from 'lucide-react';
+import { Building2, Upload, Save, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { maskCNPJ } from '@/utils/masks';
 import { ConfigFiscalSection } from '@/components/admin/ConfigFiscalSection';
+
+// Funções para validar e formatar chave PIX
+type PixKeyType = 'cpf' | 'cnpj' | 'phone' | 'email' | 'evp' | 'unknown';
+
+function detectPixKeyType(key: string): PixKeyType {
+  const cleanKey = key.trim();
+  
+  if (!cleanKey) return 'unknown';
+  
+  // E-mail
+  if (cleanKey.includes('@') && cleanKey.includes('.')) {
+    return 'email';
+  }
+  
+  // Chave aleatória (UUID/EVP)
+  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  if (uuidRegex.test(cleanKey)) {
+    return 'evp';
+  }
+  
+  // Telefone com +
+  if (cleanKey.startsWith('+')) {
+    return 'phone';
+  }
+  
+  const onlyDigits = cleanKey.replace(/\D/g, '');
+  
+  // CNPJ (14 dígitos)
+  if (onlyDigits.length === 14) {
+    return 'cnpj';
+  }
+  
+  // CPF (11 dígitos, mas precisa verificar se não é telefone)
+  if (onlyDigits.length === 11) {
+    // Se começa com 55 e tem parênteses ou hífen, é telefone
+    const phonePatterns = [
+      /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/,
+      /^55\d{9,11}$/
+    ];
+    
+    if (phonePatterns.some(pattern => pattern.test(cleanKey.replace(/\s/g, '')))) {
+      return 'phone';
+    }
+    
+    return 'cpf';
+  }
+  
+  // Telefone (10-13 dígitos)
+  if (onlyDigits.length >= 10 && onlyDigits.length <= 13) {
+    return 'phone';
+  }
+  
+  return 'unknown';
+}
+
+function formatPixKeyForStorage(key: string): { formatted: string; type: PixKeyType; isValid: boolean; message: string } {
+  const cleanKey = key.trim();
+  const keyType = detectPixKeyType(cleanKey);
+  const onlyDigits = cleanKey.replace(/\D/g, '');
+  
+  switch (keyType) {
+    case 'email':
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (emailRegex.test(cleanKey.toLowerCase())) {
+        return { formatted: cleanKey.toLowerCase(), type: 'email', isValid: true, message: 'E-mail válido' };
+      }
+      return { formatted: cleanKey, type: 'email', isValid: false, message: 'E-mail inválido' };
+    
+    case 'evp':
+      return { formatted: cleanKey.toLowerCase(), type: 'evp', isValid: true, message: 'Chave aleatória válida' };
+    
+    case 'cpf':
+      if (onlyDigits.length === 11) {
+        return { formatted: onlyDigits, type: 'cpf', isValid: true, message: 'CPF válido' };
+      }
+      return { formatted: onlyDigits, type: 'cpf', isValid: false, message: 'CPF deve ter 11 dígitos' };
+    
+    case 'cnpj':
+      if (onlyDigits.length === 14) {
+        return { formatted: onlyDigits, type: 'cnpj', isValid: true, message: 'CNPJ válido' };
+      }
+      return { formatted: onlyDigits, type: 'cnpj', isValid: false, message: 'CNPJ deve ter 14 dígitos' };
+    
+    case 'phone':
+      // Formata telefone no padrão PIX: +55DDNNNNNNNNN
+      let phoneDigits = onlyDigits;
+      
+      // Remove 55 do início se existir
+      if (phoneDigits.startsWith('55') && phoneDigits.length >= 12) {
+        phoneDigits = phoneDigits.substring(2);
+      }
+      
+      // Deve ter 10 ou 11 dígitos (DDD + número)
+      if (phoneDigits.length === 10 || phoneDigits.length === 11) {
+        const formatted = '+55' + phoneDigits;
+        return { formatted, type: 'phone', isValid: true, message: `Telefone formatado: ${formatted}` };
+      }
+      
+      return { formatted: '+55' + phoneDigits, type: 'phone', isValid: false, message: 'Telefone deve ter DDD + 8 ou 9 dígitos' };
+    
+    default:
+      return { formatted: cleanKey, type: 'unknown', isValid: false, message: 'Tipo de chave não reconhecido' };
+  }
+}
+
+function getPixKeyTypeLabel(type: PixKeyType): string {
+  const labels: Record<PixKeyType, string> = {
+    cpf: 'CPF',
+    cnpj: 'CNPJ',
+    phone: 'Telefone',
+    email: 'E-mail',
+    evp: 'Chave Aleatória',
+    unknown: 'Desconhecido'
+  };
+  return labels[type];
+}
 
 export default function Empresa() {
   const { profile } = useAuth();
@@ -56,6 +173,12 @@ export default function Empresa() {
     sunday: false,
   });
   const [specificDates, setSpecificDates] = useState<string>('');
+  
+  // Validação da chave PIX em tempo real
+  const pixKeyValidation = useMemo(() => {
+    if (!formData.chave_pix) return null;
+    return formatPixKeyForStorage(formData.chave_pix);
+  }, [formData.chave_pix]);
   
   // Mapeamento de dias da semana para português
   const diasSemana = [
@@ -148,6 +271,16 @@ export default function Empresa() {
       // Remove CNPJ mask before saving
       const cnpjClean = formData.cnpj.replace(/\D/g, '');
 
+      // Formata e valida chave PIX antes de salvar
+      let chavePix: string | null = null;
+      if (formData.chave_pix && formData.chave_pix.trim()) {
+        const pixValidation = formatPixKeyForStorage(formData.chave_pix);
+        if (!pixValidation.isValid) {
+          throw new Error(`Chave PIX inválida: ${pixValidation.message}`);
+        }
+        chavePix = pixValidation.formatted;
+      }
+
       const { error } = await supabase
         .from('empresas')
         .update({
@@ -155,7 +288,7 @@ export default function Empresa() {
           cnpj: cnpjClean || null,
           endereco_completo: formData.endereco_completo || null,
           inscricao_estadual: formData.inscricao_estadual || null,
-          chave_pix: formData.chave_pix || null,
+          chave_pix: chavePix,
           logo_url,
         })
         .eq('id', profile.empresa_id);
@@ -361,18 +494,40 @@ export default function Empresa() {
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="chave_pix">Chave PIX</Label>
-                <Input
-                  id="chave_pix"
-                  type="text"
-                  value={formData.chave_pix}
-                  onChange={(e) => setFormData({ ...formData, chave_pix: e.target.value })}
-                  placeholder="Ex: 123.456.789-00 ou email@exemplo.com ou chave-aleatoria"
-                  disabled={!canEditPixKey}
-                  autoComplete="off"
-                />
+                <div className="relative">
+                  <Input
+                    id="chave_pix"
+                    type="text"
+                    value={formData.chave_pix}
+                    onChange={(e) => setFormData({ ...formData, chave_pix: e.target.value })}
+                    placeholder="Ex: +5531999999999 ou email@exemplo.com"
+                    disabled={!canEditPixKey}
+                    autoComplete="off"
+                    className={pixKeyValidation ? (pixKeyValidation.isValid ? 'border-green-500 pr-10' : 'border-red-500 pr-10') : ''}
+                  />
+                  {pixKeyValidation && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      {pixKeyValidation.isValid ? (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                      )}
+                    </div>
+                  )}
+                </div>
+                {pixKeyValidation && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant={pixKeyValidation.isValid ? 'default' : 'destructive'} className="text-xs">
+                      {getPixKeyTypeLabel(pixKeyValidation.type)}
+                    </Badge>
+                    <span className={`text-xs ${pixKeyValidation.isValid ? 'text-green-600' : 'text-red-600'}`}>
+                      {pixKeyValidation.message}
+                    </span>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                   {canEditPixKey 
-                    ? 'Aceita: CPF (000.000.000-00), CNPJ (00.000.000/0000-00), E-mail, Telefone (+5531999999999) ou Chave Aleatória'
+                    ? 'Formatos aceitos: CPF (apenas números), CNPJ (apenas números), E-mail, Telefone (+5531999999999) ou Chave Aleatória (UUID)'
                     : 'Apenas o proprietário pode editar a chave PIX'}
                 </p>
               </div>
