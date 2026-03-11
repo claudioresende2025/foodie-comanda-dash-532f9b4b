@@ -22,7 +22,7 @@ function detectPixKeyType(key: string): PixKeyType {
   
   if (!cleanKey) return 'unknown';
   
-  // E-mail
+  // E-mail - prioridade alta
   if (cleanKey.includes('@') && cleanKey.includes('.')) {
     return 'email';
   }
@@ -33,35 +33,37 @@ function detectPixKeyType(key: string): PixKeyType {
     return 'evp';
   }
   
-  // Telefone com +
+  // Telefone - DEVE começar com + para ser identificado como telefone
   if (cleanKey.startsWith('+')) {
     return 'phone';
   }
   
   const onlyDigits = cleanKey.replace(/\D/g, '');
   
-  // CNPJ (14 dígitos)
+  // CNPJ (exatamente 14 dígitos)
   if (onlyDigits.length === 14) {
     return 'cnpj';
   }
   
-  // CPF (11 dígitos, mas precisa verificar se não é telefone)
+  // CPF (exatamente 11 dígitos)
+  // CPF NÃO deve ser confundido com telefone - telefone deve começar com +
   if (onlyDigits.length === 11) {
-    // Se começa com 55 e tem parênteses ou hífen, é telefone
+    // Apenas considera telefone se tiver formato visual de telefone
     const phonePatterns = [
-      /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/,
-      /^55\d{9,11}$/
+      /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/,  // (DD) NNNNN-NNNN
+      /^\d{2}\s?\d{4,5}-?\d{4}$/       // DD NNNNN-NNNN
     ];
     
     if (phonePatterns.some(pattern => pattern.test(cleanKey.replace(/\s/g, '')))) {
       return 'phone';
     }
     
+    // 11 dígitos sem formatação de telefone = CPF
     return 'cpf';
   }
   
-  // Telefone (10-13 dígitos)
-  if (onlyDigits.length >= 10 && onlyDigits.length <= 13) {
+  // Telefone (10 ou 12-13 dígitos) - nunca 11 sem + (seria CPF)
+  if (onlyDigits.length === 10 || (onlyDigits.length >= 12 && onlyDigits.length <= 13)) {
     return 'phone';
   }
   

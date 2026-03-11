@@ -54,30 +54,36 @@ function normalizeText(text: string): string {
 function detectPixKeyType(key: string): 'cpf' | 'cnpj' | 'phone' | 'email' | 'evp' | 'unknown' {
   const cleanKey = key.trim();
   
+  // E-mail - prioridade alta
   if (cleanKey.includes('@') && cleanKey.includes('.')) {
     return 'email';
   }
   
+  // Chave aleatória (UUID/EVP)
   const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
   if (uuidRegex.test(cleanKey)) {
     return 'evp';
   }
   
-  if (cleanKey.startsWith('+55') || cleanKey.startsWith('+')) {
+  // Telefone - DEVE começar com + para ser identificado como telefone
+  if (cleanKey.startsWith('+')) {
     return 'phone';
   }
   
   const onlyDigits = cleanKey.replace(/\D/g, '');
   
+  // CNPJ - exatamente 14 dígitos
   if (onlyDigits.length === 14) {
     return 'cnpj';
   }
   
+  // CPF - exatamente 11 dígitos SEM começar com 55 (para não confundir com telefone)
+  // CPF nunca começa com 55 na prática (primeiro dígito é da região)
   if (onlyDigits.length === 11) {
+    // Verifica se parece telefone com formatação brasileira
     const phonePatterns = [
-      /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/,
-      /^\d{2}\s?\d{4,5}-?\d{4}$/,
-      /^55\d{10,11}$/
+      /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/,  // (DD) NNNNN-NNNN
+      /^\d{2}\s?\d{4,5}-?\d{4}$/       // DD NNNNN-NNNN
     ];
     
     const looksLikePhone = phonePatterns.some(pattern => pattern.test(cleanKey.replace(/\s/g, '')));
@@ -85,13 +91,20 @@ function detectPixKeyType(key: string): 'cpf' | 'cnpj' | 'phone' | 'email' | 'ev
       return 'phone';
     }
     
+    // Se começa com 55 e tem formato de telefone completo internacional
     if (onlyDigits.startsWith('55')) {
-      return 'phone';
+      // Mas os 2 próximos dígitos precisam ser um DDD válido (11-99)
+      const ddd = parseInt(onlyDigits.substring(2, 4));
+      if (ddd >= 11 && ddd <= 99) {
+        return 'phone';
+      }
     }
     
+    // Por padrão, 11 dígitos é CPF
     return 'cpf';
   }
   
+  // Telefone - 10 a 13 dígitos (DDD + número, com ou sem código de país)
   if (onlyDigits.length >= 10 && onlyDigits.length <= 13) {
     return 'phone';
   }
@@ -106,26 +119,33 @@ function formatPixKey(key: string): string {
   
   switch (keyType) {
     case 'email':
+      // E-mail em minúsculas
       return cleanKey.toLowerCase().trim();
     
     case 'evp':
+      // UUID em minúsculas
       return cleanKey.toLowerCase();
     
     case 'cpf':
-      // CPF deve ter apenas 11 dígitos numéricos
+      // CPF - somente 11 dígitos numéricos (SEM +55!)
       return onlyDigits.substring(0, 11);
     
     case 'cnpj':
-      // CNPJ deve ter apenas 14 dígitos numéricos
+      // CNPJ - somente 14 dígitos numéricos (SEM +55!)
       return onlyDigits.substring(0, 14);
     
     case 'phone':
-      // Telefone no padrão PIX: +55DDNNNNNNNNN
+      // Telefone no padrão PIX: +55DDNNNNNNNNN (13 ou 14 chars total)
       // Se já está no formato correto (+55...)
       if (cleanKey.startsWith('+55')) {
         // Extrai apenas os dígitos após o +55
-        const phoneDigits = cleanKey.substring(3).replace(/\D/g, '');
-        return '+55' + phoneDigits;
+        const phoneDigits = onlyDigits.substring(2); // Remove o 55 do início dos dígitos
+        // Garante que tenha apenas DDD + número (10 ou 11 dígitos)
+        if (phoneDigits.length === 10 || phoneDigits.length === 11) {
+          return '+55' + phoneDigits;
+        }
+        // Se tiver mais dígitos, pega os últimos 10-11
+        return '+55' + phoneDigits.slice(-11);
       }
       
       // Se começa com + mas não é +55, mantém
@@ -133,13 +153,20 @@ function formatPixKey(key: string): string {
         return cleanKey.replace(/[^\d+]/g, '');
       }
       
-      // Se começa com 55 e tem 12-13 dígitos, adiciona o +
+      // Se começa com 55 (código do Brasil) e tem 12+ dígitos
       if (onlyDigits.startsWith('55') && onlyDigits.length >= 12) {
-        return '+' + onlyDigits;
+        // Remove o 55 e adiciona +55
+        const phoneWithoutCountry = onlyDigits.substring(2);
+        return '+55' + phoneWithoutCountry;
       }
       
       // Caso contrário, adiciona +55 na frente
-      return '+55' + onlyDigits;
+      // Garante que tenha apenas DDD + número
+      if (onlyDigits.length >= 10 && onlyDigits.length <= 11) {
+        return '+55' + onlyDigits;
+      }
+      
+      return '+55' + onlyDigits.slice(-11);
     
     default:
       return cleanKey;
