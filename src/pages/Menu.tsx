@@ -431,6 +431,18 @@ export default function Menu() {
   useEffect(() => {
     if (!empresaId || !mesaId) return;
 
+    const checkPendingCall = async () => {
+      const { data } = await supabase
+        .from("chamadas_garcom")
+        .select("id")
+        .eq("empresa_id", empresaId)
+        .eq("mesa_id", mesaId)
+        .eq("status", "pendente")
+        .maybeSingle();
+
+      setWaiterCallPending(!!data);
+    };
+
     const channel = supabase
       .channel("chamadas-realtime")
       .on(
@@ -442,9 +454,24 @@ export default function Menu() {
           filter: `mesa_id=eq.${mesaId}`,
         },
         (payload) => {
-          if (payload.eventType === "UPDATE" && payload.new.status === "atendida") {
-            setWaiterCallPending(false);
-            toast.success("O garçom está a caminho!");
+          // Quando UPDATE: verificar se foi atendida
+          if (payload.eventType === "UPDATE") {
+            const newStatus = (payload.new as any).status;
+            if (newStatus === "atendida") {
+              setWaiterCallPending(false);
+              toast.success("O garçom está a caminho!");
+            }
+          }
+          // Quando DELETE: rechecar se ainda há pendentes
+          if (payload.eventType === "DELETE") {
+            checkPendingCall();
+          }
+          // Quando INSERT: marcar como pendente
+          if (payload.eventType === "INSERT") {
+            const status = (payload.new as any).status;
+            if (status === "pendente") {
+              setWaiterCallPending(true);
+            }
           }
         },
       )
