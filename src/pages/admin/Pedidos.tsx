@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,8 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Clock, ChefHat, CheckCircle, Truck, XCircle, Loader2, RefreshCw } from "lucide-react";
+import { Clock, ChefHat, CheckCircle, Truck, XCircle, Loader2, RefreshCw, BellRing, Check, Bell } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
+
+type ChamadaGarcom = {
+  id: string;
+  mesa_id: string;
+  status: string;
+  created_at: string;
+};
+
+type Mesa = {
+  id: string;
+  numero_mesa: number;
+  nome?: string | null;
+};
 
 type PedidoStatus = Database["public"]["Enums"]["pedido_status"];
 
@@ -66,6 +79,8 @@ export default function Pedidos() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<PedidoStatus>("pendente");
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // ===============================
   // QUERY ÚNICA → SUPER PERFORMÁTICA
@@ -104,13 +119,74 @@ export default function Pedidos() {
     refetchInterval: 8000,
   });
 
+  // Query para chamadas de garçom pendentes
+  const { data: chamadas = [] } = useQuery<ChamadaGarcom[]>({
+    queryKey: ["chamadas-garcom-kds", profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return [];
+      const { data, error } = await supabase
+        .from("chamadas_garcom")
+        .select("id, mesa_id, status, created_at")
+        .eq("empresa_id", profile.empresa_id)
+        .eq("status", "pendente")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.empresa_id,
+    refetchInterval: 5000,
+  });
+
+  // Query para mesas (para exibir nome/número)
+  const { data: mesas = [] } = useQuery<Mesa[]>({
+    queryKey: ["mesas-kds", profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return [];
+      const { data, error } = await supabase
+        .from("mesas")
+        .select("id, numero_mesa, nome")
+        .eq("empresa_id", profile.empresa_id);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.empresa_id,
+  });
+
+  // Helper para obter nome/número da mesa
+  const getMesaDisplayName = (mesaId: string) => {
+    const mesa = mesas.find((m) => m.id === mesaId);
+    if (!mesa) return "Mesa";
+    return mesa.nome || `Mesa ${mesa.numero_mesa}`;
+  };
+
+  // ===============================
+  // SOM CONTÍNUO PARA CHAMADAS PENDENTES
+  // ===============================
+  useEffect(() => {
+    if (soundIntervalRef.current) {
+      clearInterval(soundIntervalRef.current);
+      soundIntervalRef.current = null;
+    }
+
+    if (chamadas.length > 0 && soundEnabled) {
+      playNotificationSound();
+      soundIntervalRef.current = setInterval(() => {
+        playNotificationSound();
+      }, 5000);
+    }
+
+    return () => {
+      if (soundIntervalRef.current) clearInterval(soundIntervalRef.current);
+    };
+  }, [chamadas.length, soundEnabled]);
+
   // ===============================
   // REALTIME
   // ===============================
   useEffect(() => {
     if (!profile?.empresa_id) return;
 
-    const channel = supabase
+    const channelPedidos = supabase
       .channel("kds-pedidos")
       .on(
         "postgres_changes",
@@ -130,10 +206,32 @@ export default function Pedidos() {
       )
       .subscribe();
 
+    const channelChamadas = supabase
+      .channel("kds-chamadas")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chamadas_garcom",
+          filter: `empresa_id=eq.${profile.empresa_id}`,
+        },
+        (payload) => {
+          queryClient.invalidateQueries({ queryKey: ["chamadas-garcom-kds", profile.empresa_id] });
+
+          if (payload.eventType === "INSERT") {
+            if (soundEnabled) playNotificationSound();
+            toast.info("🔔 Chamada de garçom recebida!", { duration: 5000 });
+          }
+        },
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channelPedidos);
+      supabase.removeChannel(channelChamadas);
     };
-  }, [profile?.empresa_id, queryClient]);
+  }, [profile?.empresa_id, queryClient, soundEnabled]);
 
   // ===============================
   // UPDATE STATUS
@@ -151,6 +249,21 @@ export default function Pedidos() {
       toast.error("Erro ao atualizar status");
     },
   });
+
+  // Handler para atender chamada de garçom
+  const handleAtenderChamada = async (chamadaId: string) => {
+    const { error } = await supabase
+      .from("chamadas_garcom")
+      .update({ status: "atendida", atendida_at: new Date().toISOString() })
+      .eq("id", chamadaId);
+
+    if (error) {
+      toast.error("Erro ao atender chamada");
+    } else {
+      toast.success("Chamada atendida!");
+      queryClient.invalidateQueries({ queryKey: ["chamadas-garcom-kds", profile?.empresa_id] });
+    }
+  };
 
   const getNextStatus = (current: PedidoStatus): PedidoStatus | null => {
     const flow: Record<PedidoStatus, PedidoStatus | null> = {
@@ -187,11 +300,53 @@ export default function Pedidos() {
           <h1 className="text-2xl font-bold text-foreground">KDS - Cozinha</h1>
           <p className="text-muted-foreground">Gerencie os pedidos da cozinha</p>
         </div>
-        <Button variant="outline" onClick={() => refetch()}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Atualizar
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant={soundEnabled ? "default" : "outline"}
+            onClick={() => setSoundEnabled(!soundEnabled)}
+          >
+            {soundEnabled ? <Bell className="w-4 h-4 mr-2" /> : <Bell className="w-4 h-4 mr-2 opacity-50" />}
+            Som {soundEnabled ? "Ativado" : "Desativado"}
+          </Button>
+          <Button variant="outline" onClick={() => refetch()}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Atualizar
+          </Button>
+        </div>
       </div>
+
+      {/* Chamadas Pendentes */}
+      {chamadas.length > 0 && (
+        <Card className="border-2 border-orange-500 bg-orange-50 dark:bg-orange-950/30 animate-pulse">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+              <BellRing className="w-5 h-5" />
+              Chamadas Pendentes ({chamadas.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {chamadas.map((chamada) => {
+                const displayName = getMesaDisplayName(chamada.mesa_id);
+                return (
+                  <Button
+                    key={chamada.id}
+                    variant="destructive"
+                    className="h-20 flex flex-col gap-1"
+                    onClick={() => handleAtenderChamada(chamada.id)}
+                    title={`Atender ${displayName}`}
+                  >
+                    <span className="text-lg font-bold">{displayName}</span>
+                    <span className="text-xs flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Atender
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PedidoStatus)}>
         <TabsList className="grid w-full grid-cols-5 h-auto">
