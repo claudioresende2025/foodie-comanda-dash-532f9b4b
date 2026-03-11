@@ -220,6 +220,7 @@ export default function Menu() {
             localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
             setComandaId(null);
             setCart([]);
+            setFechamentoSolicitado(false); // Resetar estado de fechamento
             
             if (novoStatus === 'fechada') {
               toast.info('Esta comanda foi fechada pelo caixa. Solicite uma nova para continuar pedindo.');
@@ -379,7 +380,24 @@ export default function Menu() {
       setWaiterCallPending(!!data);
     };
 
+    // Verificar status da mesa para fechamento solicitado
+    const checkMesaStatus = async () => {
+      const { data: mesa } = await supabase
+        .from("mesas")
+        .select("status")
+        .eq("id", mesaId)
+        .maybeSingle();
+      
+      if (mesa?.status === "solicitou_fechamento") {
+        setFechamentoSolicitado(true);
+      } else if (mesa?.status === "disponivel") {
+        // Mesa foi liberada, resetar estado
+        setFechamentoSolicitado(false);
+      }
+    };
+
     checkPendingCall();
+    checkMesaStatus();
   }, [empresaId, mesaId]);
 
   // Realtime subscription for order status updates
@@ -481,6 +499,47 @@ export default function Menu() {
       supabase.removeChannel(channel);
     };
   }, [empresaId, mesaId]);
+
+  // Realtime for mesa status changes (detectar quando garçom dá baixa)
+  useEffect(() => {
+    if (!mesaId) return;
+
+    const channel = supabase
+      .channel("mesa-status-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "mesas",
+          filter: `id=eq.${mesaId}`,
+        },
+        (payload) => {
+          const newStatus = (payload.new as any).status;
+          
+          // Se mesa foi liberada (garçom deu baixa), resetar estados
+          if (newStatus === "disponivel") {
+            setFechamentoSolicitado(false);
+            setComandaId(null);
+            setMeusPedidos([]);
+            localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+            localStorage.removeItem(`client_info_${empresaId}_${mesaId}`);
+            toast.info("Conta fechada! Obrigado pela visita.");
+          }
+          
+          // Se mesa mudou para ocupada (novo pedido em outro dispositivo)
+          if (newStatus === "ocupada" && !comandaId) {
+            // Recarregar comanda da mesa
+            window.location.reload();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [mesaId, empresaId, comandaId]);
 
   const fetchMenuData = async () => {
     try {
@@ -857,6 +916,7 @@ export default function Menu() {
       toast.success("Pedido enviado com sucesso!");
       setCart([]);
       setIsCartOpen(false);
+      setFechamentoSolicitado(false); // Resetar estado de fechamento quando faz novo pedido
       fetchMeusPedidos(currentComandaId);
     } catch (error) {
       // 💡 CORREÇÃO AQUI: Tenta extrair a mensagem de erro do Supabase

@@ -375,6 +375,7 @@ export default function Garcom() {
     } else {
       toast.success('Chamada atendida!');
       queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['chamadas-garcom-kds', profile?.empresa_id] }); // Sincronizar com página Pedidos (KDS)
       refetchChamadas();
     }
   };
@@ -410,12 +411,12 @@ export default function Garcom() {
 
     // Buscar total dos pedidos diretamente pela mesa
     try {
-      // Primeiro buscar comandas da mesa
+      // Primeiro buscar comandas da mesa (exclui fechadas e canceladas)
       const { data: comandas, error: errorComandas } = await supabase
         .from('comandas')
         .select('id, status')
         .eq('mesa_id', mesa.id)
-        .neq('status', 'fechada');
+        .in('status', ['aberta', 'aguardando_pagamento']);
 
       console.log('[DAR BAIXA] Comandas da mesa:', comandas, 'Erro:', errorComandas);
 
@@ -471,7 +472,7 @@ export default function Garcom() {
         .from('comandas')
         .select('id')
         .eq('mesa_id', selectedMesaForBaixa.id)
-        .neq('status', 'fechada');
+        .in('status', ['aberta', 'aguardando_pagamento']);
 
       if (comandas && comandas.length > 0) {
         const comandaIds = comandas.map(c => c.id);
@@ -520,8 +521,17 @@ export default function Garcom() {
 
       toast.success('Baixa realizada com sucesso! Mesa liberada.');
       setDarBaixaDialogOpen(false);
+      
+      // 7. Atender TODAS as chamadas pendentes desta mesa (para parar o som)
+      await supabase
+        .from('chamadas_garcom')
+        .update({ status: 'atendida', atendida_at: new Date().toISOString() })
+        .eq('mesa_id', selectedMesaForBaixa.id)
+        .eq('status', 'pendente');
+      
       queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
     } catch (error: any) {
       console.error('Erro ao dar baixa:', error);
       toast.error(`Erro ao processar baixa: ${error.message}`);

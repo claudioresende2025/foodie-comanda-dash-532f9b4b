@@ -262,6 +262,7 @@ export default function Pedidos() {
     } else {
       toast.success("Chamada atendida!");
       queryClient.invalidateQueries({ queryKey: ["chamadas-garcom-kds", profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ["chamadas-garcom", profile?.empresa_id] }); // Sincronizar com página Garçom
     }
   };
 
