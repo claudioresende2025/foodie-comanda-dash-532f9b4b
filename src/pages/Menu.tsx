@@ -257,7 +257,7 @@ export default function Menu() {
       // 1. Primeiro, buscar comanda ativa da MESA no banco (sincroniza entre dispositivos)
       const { data: comandaMesa } = await supabase
         .from("comandas")
-        .select("id, status")
+        .select("id, status, nome_cliente, telefone_cliente")
         .eq("empresa_id", empresaId)
         .eq("mesa_id", mesaId)
         .eq("status", "aberta")
@@ -269,6 +269,19 @@ export default function Menu() {
         // Existe uma comanda ativa nesta mesa - usar ela
         setComandaId(comandaMesa.id);
         localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaMesa.id);
+        
+        // Sincronizar dados do cliente entre dispositivos
+        if (comandaMesa.nome_cliente || comandaMesa.telefone_cliente) {
+          const clientKey = `client_info_${empresaId}_${mesaId}`;
+          const nameParts = (comandaMesa.nome_cliente || '').split(' ');
+          const clientInfo = {
+            firstName: nameParts[0] || '',
+            lastName: nameParts.slice(1).join(' ') || '',
+            phone: comandaMesa.telefone_cliente || ''
+          };
+          localStorage.setItem(clientKey, JSON.stringify(clientInfo));
+        }
+        
         fetchMeusPedidos(comandaMesa.id);
         return;
       }
@@ -279,13 +292,26 @@ export default function Menu() {
         // Verifica se a comanda ainda está aberta no banco de dados
         const { data: comanda } = await supabase
           .from("comandas")
-          .select("id, status")
+          .select("id, status, nome_cliente, telefone_cliente")
           .eq("id", savedComandaId)
           .maybeSingle();
 
         if (comanda && comanda.status === "aberta") {
           // Comanda ainda está aberta, pode usar
           setComandaId(savedComandaId);
+          
+          // Sincronizar dados do cliente entre dispositivos
+          if (comanda.nome_cliente || comanda.telefone_cliente) {
+            const clientKey = `client_info_${empresaId}_${mesaId}`;
+            const nameParts = (comanda.nome_cliente || '').split(' ');
+            const clientInfo = {
+              firstName: nameParts[0] || '',
+              lastName: nameParts.slice(1).join(' ') || '',
+              phone: comanda.telefone_cliente || ''
+            };
+            localStorage.setItem(clientKey, JSON.stringify(clientInfo));
+          }
+          
           fetchMeusPedidos(savedComandaId);
           return;
         } else {
@@ -298,7 +324,7 @@ export default function Menu() {
       if (mesaId && empresaId) {
         const { data: existingComanda } = await supabase
           .from("comandas")
-          .select("id")
+          .select("id, nome_cliente, telefone_cliente")
           .eq("mesa_id", mesaId)
           .eq("empresa_id", empresaId)
           .eq("status", "aberta")
@@ -309,6 +335,19 @@ export default function Menu() {
         if (existingComanda) {
           localStorage.setItem(`comanda_${empresaId}_${mesaId}`, existingComanda.id);
           setComandaId(existingComanda.id);
+          
+          // Sincronizar dados do cliente entre dispositivos
+          if (existingComanda.nome_cliente || existingComanda.telefone_cliente) {
+            const clientKey = `client_info_${empresaId}_${mesaId}`;
+            const nameParts = (existingComanda.nome_cliente || '').split(' ');
+            const clientInfo = {
+              firstName: nameParts[0] || '',
+              lastName: nameParts.slice(1).join(' ') || '',
+              phone: existingComanda.telefone_cliente || ''
+            };
+            localStorage.setItem(clientKey, JSON.stringify(clientInfo));
+          }
+          
           fetchMeusPedidos(existingComanda.id);
           return;
         }

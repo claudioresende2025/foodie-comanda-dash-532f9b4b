@@ -193,7 +193,7 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
           </div>
           <Button onClick={handleOpenMenu} className="w-full">
             <ExternalLink className="w-4 h-4 mr-2" />
-            Visualizar Cardapio
+            Visualizar Cardápio
           </Button>
 
           <div className="flex gap-2 mt-2">
