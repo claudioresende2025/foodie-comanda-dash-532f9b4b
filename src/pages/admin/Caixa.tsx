@@ -380,15 +380,31 @@ export default function Caixa() {
       // 2. Atualiza o status da mesa para disponível usando RPC (contorna RLS)
       // NOTA: O trigger também tenta liberar, mas usamos RPC para garantir
       if (mesaId) {
+        console.log('[CAIXA] Tentando liberar mesa:', mesaId);
         const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: mesaId });
         if (mesaError) {
           console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
           // Fallback: tenta update direto (pode falhar por RLS)
-          await supabase
+          const { error: fallbackError } = await supabase
             .from('mesas')
             .update({ status: 'disponivel', mesa_juncao_id: null })
             .eq('id', mesaId);
+          
+          if (fallbackError) {
+            console.error('[LIBERAR MESA] Fallback também falhou:', fallbackError.message);
+          } else {
+            console.log('[LIBERAR MESA] Fallback funcionou');
+          }
+        } else {
+          console.log('[LIBERAR MESA] Mesa liberada com sucesso via RPC');
         }
+        
+        // Atender chamadas de fechamento pendentes para esta mesa
+        await supabase
+          .from('chamadas_garcom')
+          .update({ status: 'atendida', atendida_at: new Date().toISOString() })
+          .eq('mesa_id', mesaId)
+          .eq('status', 'pendente');
       }
       
       return { formaPagamento, formasPagamento, total, mesaId, trocoPara, printData };
@@ -399,6 +415,13 @@ export default function Caixa() {
       queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile?.empresa_id, filterStartDate, filterEndDate, filterPaymentMethod] });
       queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['chamadas-garcom-kds', profile?.empresa_id] });
+      
+      // Forçar atualização imediata do cache de mesas
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['mesas', profile?.empresa_id] });
+      }, 500);
 
       // 🖨️ Impressão automática do cupom
       if (result.printData) {

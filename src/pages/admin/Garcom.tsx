@@ -509,14 +509,23 @@ export default function Garcom() {
       }
 
       // 6. Liberar mesa usando RPC (contorna RLS)
+      console.log('[GARÇOM] Tentando liberar mesa:', selectedMesaForBaixa.id);
       const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaForBaixa.id });
       if (mesaError) {
         console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
         // Fallback
-        await supabase
+        const { error: fallbackError } = await supabase
           .from('mesas')
           .update({ status: 'disponivel' })
           .eq('id', selectedMesaForBaixa.id);
+        
+        if (fallbackError) {
+          console.error('[LIBERAR MESA] Fallback também falhou:', fallbackError.message);
+        } else {
+          console.log('[LIBERAR MESA] Fallback funcionou');
+        }
+      } else {
+        console.log('[LIBERAR MESA] Mesa liberada com sucesso via RPC');
       }
 
       toast.success('Baixa realizada com sucesso! Mesa liberada.');
@@ -530,8 +539,16 @@ export default function Garcom() {
         .eq('status', 'pendente');
       
       queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] }); // Sincronizar com página Mesas
       queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['chamadas-garcom-kds', profile?.empresa_id] });
+      
+      // Forçar atualização imediata
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['mesas', profile?.empresa_id] });
+        queryClient.refetchQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
+      }, 500);
     } catch (error: any) {
       console.error('Erro ao dar baixa:', error);
       toast.error(`Erro ao processar baixa: ${error.message}`);
