@@ -44,8 +44,6 @@ interface PedidoEntrega {
     estado: string;
     complemento: string | null;
     referencia: string | null;
-    latitude: number | null;
-    longitude: number | null;
   };
   empresa: {
     nome_fantasia: string;
@@ -154,9 +152,7 @@ export default function EntregadorPanel() {
             cidade,
             estado,
             complemento,
-            referencia,
-            latitude,
-            longitude
+            referencia
           ),
           empresa:empresas(nome_fantasia)
         `)
@@ -331,17 +327,7 @@ export default function EntregadorPanel() {
   const geocodeDestino = useCallback(async (endereco: PedidoEntrega['endereco']) => {
     if (!endereco) return;
     
-    // Se já tem coordenadas salvas, usa elas
-    if (endereco.latitude && endereco.longitude) {
-      setDestinoCoords({
-        latitude: Number(endereco.latitude),
-        longitude: Number(endereco.longitude),
-      });
-      setShowMap(true);
-      return;
-    }
-
-    // Senão, faz geocoding
+    // Fazer geocoding do endereço
     try {
       const address = `${endereco.rua}, ${endereco.numero}, ${endereco.bairro}, ${endereco.cidade}, ${endereco.estado}, Brasil`;
       const response = await fetch(
