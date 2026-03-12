@@ -45,8 +45,6 @@ export const UpdateNotification = () => {
     const lastBuild = localStorage.getItem('app_build_version');
 
     if (currentBuild && lastBuild && lastBuild !== currentBuild) {
-
-    if (currentBuild && lastBuild && lastBuild !== currentBuild && !alreadyShown) {
       markUpdateAvailable();
     } else if (currentBuild && !lastBuild) {
       // Primeira vez: salva sem mostrar notificação
@@ -54,7 +52,7 @@ export const UpdateNotification = () => {
     }
 
     // Se já havia update disponível e ainda não foi mostrado
-    if (sessionStorage.getItem('update_available') === '1' && !alreadyShown) {
+    if (sessionStorage.getItem('update_available') === '1') {
       markUpdateAvailable();
     }
 
