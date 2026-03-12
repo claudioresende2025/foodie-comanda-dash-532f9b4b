@@ -18,6 +18,7 @@ import { ProductCard } from "@/components/delivery/ProductCard";
 import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
+import { UpsellSection } from "@/components/delivery/UpsellSection";
 import { useCart } from "@/hooks/useCart";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
@@ -1168,6 +1169,28 @@ export default function DeliveryRestaurant() {
                 </div>
               )}
 
+              {/* Seção de Upsell - Sugestões de acompanhamentos */}
+              {empresaId && cart.length > 0 && (
+                <UpsellSection
+                  empresaId={empresaId}
+                  cartProductIds={cart.map(item => item.produto.id)}
+                  onAddToCart={(product) => {
+                    addToCart(
+                      {
+                        id: product.id,
+                        nome: product.nome,
+                        descricao: product.descricao,
+                        preco: product.preco,
+                        imagem_url: product.imagem_url,
+                      },
+                      1,
+                      null,
+                      product.preco
+                    );
+                  }}
+                />
+              )}
+
               <div className="space-y-4">
                 <h3 className="font-bold text-base text-primary">Forma de Pagamento</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -1261,7 +1284,18 @@ export default function DeliveryRestaurant() {
         </SheetContent>
       </Sheet>
 
-      <Sheet open={showPixModal} onOpenChange={setShowPixModal}>
+      <Sheet 
+        open={showPixModal} 
+        onOpenChange={(open) => {
+          if (!open && !pixConfirmado) {
+            // Se fechou sem confirmar pagamento, ir para a lista de pedidos
+            setShowPixModal(false);
+            navigate("/delivery/pedidos");
+          } else {
+            setShowPixModal(open);
+          }
+        }}
+      >
         <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-auto">
           <SheetHeader className="mb-6">
             <SheetTitle className="flex items-center gap-2 text-lg">
@@ -1331,23 +1365,23 @@ export default function DeliveryRestaurant() {
                 if (pedidoId) {
                   navigate(`/delivery/tracking/${pedidoId}`);
                 } else {
-                  navigate("/delivery");
+                  navigate("/delivery/pedidos");
                 }
               }}
             >
               {pixConfirmado ? "Acompanhar Pedido" : "Aguardando Confirmação..."}
             </Button>
 
-            {/* Botão secundário para voltar */}
+            {/* Botão secundário para voltar aos pedidos */}
             <Button
               variant="outline"
               className="w-full mt-2"
               onClick={() => {
                 setShowPixModal(false);
-                navigate("/delivery");
+                navigate("/delivery/pedidos");
               }}
             >
-              Voltar aos Restaurantes
+              Ver Meus Pedidos
             </Button>
           </div>
         </SheetContent>
