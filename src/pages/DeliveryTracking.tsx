@@ -81,9 +81,83 @@ export default function DeliveryTracking() {
   const [empresa, setEmpresa] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [customerCoords, setCustomerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [restaurantCoords, setRestaurantCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   
   // Hook para rastreamento em tempo real do MOTOBOY
   const { location: deliveryLocation, hasLocation } = useDeliveryTracking(pedidoId);
+
+  // Geocoding do endereço do cliente
+  const geocodeCustomerAddress = useCallback(async (endereco: any) => {
+    if (!endereco) return;
+    
+    // Se já tem coordenadas salvas, usa elas
+    if (endereco.latitude && endereco.longitude) {
+      setCustomerCoords({
+        latitude: Number(endereco.latitude),
+        longitude: Number(endereco.longitude),
+      });
+      return;
+    }
+
+    // Senão, faz geocoding
+    try {
+      const address = `${endereco.rua}, ${endereco.numero}, ${endereco.bairro}, ${endereco.cidade}, ${endereco.estado}, Brasil`;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        { headers: { 'User-Agent': 'FoodieComanda/1.0' } }
+      );
+      const data = await response.json();
+      if (data && data.length > 0) {
+        const coords = {
+          latitude: parseFloat(data[0].lat),
+          longitude: parseFloat(data[0].lon),
+        };
+        setCustomerCoords(coords);
+        
+        // Salvar coordenadas no banco para próximas vezes
+        await supabase
+          .from('enderecos_cliente')
+          .update({ latitude: coords.latitude, longitude: coords.longitude })
+          .eq('id', endereco.id);
+      }
+    } catch (err) {
+      console.error('Erro no geocoding do cliente:', err);
+    }
+  }, []);
+
+  // Geocoding do restaurante
+  const geocodeRestaurant = useCallback(async (empresaData: any) => {
+    if (!empresaData) return;
+    
+    // Se já tem coordenadas salvas
+    if (empresaData.latitude && empresaData.longitude) {
+      setRestaurantCoords({
+        latitude: Number(empresaData.latitude),
+        longitude: Number(empresaData.longitude),
+      });
+      return;
+    }
+
+    // Senão, tenta geocoding com endereço_completo
+    if (empresaData.endereco_completo) {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(empresaData.endereco_completo + ', Brasil')}&limit=1`,
+          { headers: { 'User-Agent': 'FoodieComanda/1.0' } }
+        );
+        const data = await response.json();
+        if (data && data.length > 0) {
+          setRestaurantCoords({
+            latitude: parseFloat(data[0].lat),
+            longitude: parseFloat(data[0].lon),
+          });
+        }
+      } catch (err) {
+        console.error('Erro no geocoding do restaurante:', err);
+      }
+    }
+  }, []);
 
   const fetchPedido = useCallback(async () => {
     if (!pedidoId) return;
@@ -106,22 +180,32 @@ export default function DeliveryTracking() {
       }
 
       setPedido(data);
+      
+      // Geocoding do endereço do cliente
+      if (data.endereco) {
+        geocodeCustomerAddress(data.endereco);
+      }
 
-      // Fetch empresa
+      // Fetch empresa com latitude e longitude
       const { data: empresaData } = await supabase
         .from('empresas')
-        .select('nome_fantasia, logo_url, endereco_completo')
+        .select('nome_fantasia, logo_url, endereco_completo, latitude, longitude')
         .eq('id', data.empresa_id)
         .single();
 
       setEmpresa(empresaData);
+      
+      // Geocoding do restaurante
+      if (empresaData) {
+        geocodeRestaurant(empresaData);
+      }
     } catch (err) {
       console.error('Error fetching pedido:', err);
       setError('Erro ao carregar pedido');
     } finally {
       setIsLoading(false);
     }
-  }, [pedidoId]);
+  }, [pedidoId, geocodeCustomerAddress, geocodeRestaurant]);
 
   useEffect(() => {
     fetchPedido();
@@ -248,22 +332,8 @@ export default function DeliveryTracking() {
                         }
                       : null
                   }
-                  customerLocation={
-                    pedido.endereco?.latitude && pedido.endereco?.longitude
-                      ? {
-                          latitude: Number(pedido.endereco.latitude),
-                          longitude: Number(pedido.endereco.longitude),
-                        }
-                      : null
-                  }
-                  restaurantLocation={
-                    empresa?.latitude && empresa?.longitude
-                      ? {
-                          latitude: Number(empresa.latitude),
-                          longitude: Number(empresa.longitude),
-                        }
-                      : null
-                  }
+                  customerLocation={customerCoords}
+                  restaurantLocation={restaurantCoords}
                   restaurantName={empresa?.nome_fantasia}
                   customerAddress={
                     pedido.endereco

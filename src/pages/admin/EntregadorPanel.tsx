@@ -21,11 +21,13 @@ import {
   User,
   Bike,
   MapPinOff,
-  RefreshCw
+  RefreshCw,
+  Map
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { DeliveryMap } from '@/components/delivery/DeliveryMap';
 
 interface PedidoEntrega {
   id: string;
@@ -60,6 +62,8 @@ export default function EntregadorPanel() {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [pedidoEmEntrega, setPedidoEmEntrega] = useState<string | null>(null);
   const [resolvedEmpresaId, setResolvedEmpresaId] = useState<string | null>(null);
+  const [destinoCoords, setDestinoCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [showMap, setShowMap] = useState(false);
   
   // Ref para o watch do GPS
   const watchIdRef = useRef<number | null>(null);
@@ -278,6 +282,51 @@ export default function EntregadorPanel() {
     };
   }, []);
 
+  // Geocoding do endereço do cliente
+  const geocodeDestino = useCallback(async (endereco: PedidoEntrega['endereco']) => {
+    if (!endereco) return;
+    
+    // Se já tem coordenadas salvas, usa elas
+    if (endereco.latitude && endereco.longitude) {
+      setDestinoCoords({
+        latitude: Number(endereco.latitude),
+        longitude: Number(endereco.longitude),
+      });
+      setShowMap(true);
+      return;
+    }
+
+    // Senão, faz geocoding
+    try {
+      const address = `${endereco.rua}, ${endereco.numero}, ${endereco.bairro}, ${endereco.cidade}, ${endereco.estado}, Brasil`;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        { headers: { 'User-Agent': 'FoodieComanda/1.0' } }
+      );
+      const data = await response.json();
+      if (data && data.length > 0) {
+        setDestinoCoords({
+          latitude: parseFloat(data[0].lat),
+          longitude: parseFloat(data[0].lon),
+        });
+        setShowMap(true);
+      }
+    } catch (err) {
+      console.error('Erro no geocoding:', err);
+    }
+  }, []);
+
+  // Inicializar mapa se já tiver pedido em entrega (caso recarregue a página)
+  useEffect(() => {
+    const pedidoAtivo = pedidos.find(p => p.status === 'saiu_entrega');
+    if (pedidoAtivo && !showMap) {
+      setPedidoEmEntrega(pedidoAtivo.id);
+      if (pedidoAtivo.endereco) {
+        geocodeDestino(pedidoAtivo.endereco);
+      }
+    }
+  }, [pedidos, showMap, geocodeDestino]);
+
   // Handler para "Saiu para Entrega"
   const handleSaiuParaEntrega = async (pedido: PedidoEntrega) => {
     // Primeiro ativar GPS
@@ -286,6 +335,11 @@ export default function EntregadorPanel() {
     if (gpsStarted !== false) {
       // Atualizar status do pedido
       updateStatusMutation.mutate({ pedidoId: pedido.id, newStatus: 'saiu_entrega' });
+      
+      // Geocoding do destino para mostrar no mapa
+      if (pedido.endereco) {
+        geocodeDestino(pedido.endereco);
+      }
     }
   };
 
@@ -293,6 +347,10 @@ export default function EntregadorPanel() {
   const handleEntregue = async (pedidoId: string) => {
     // Parar GPS
     await stopGPSTracking();
+    
+    // Limpar mapa
+    setDestinoCoords(null);
+    setShowMap(false);
     
     // Atualizar status
     updateStatusMutation.mutate({ pedidoId, newStatus: 'entregue' });
@@ -464,20 +522,68 @@ export default function EntregadorPanel() {
                   </a>
                 </div>
 
+                {/* Mapa mostrando posição do entregador e destino */}
+                {showMap && pedidoEmEntrega === pedido.id && (
+                  <div className="rounded-xl overflow-hidden border">
+                    <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-3">
+                      <div className="flex items-center gap-2">
+                        <Map className="w-4 h-4" />
+                        <span className="font-medium text-sm">Navegação em Tempo Real</span>
+                        {currentPosition && (
+                          <Badge className="ml-auto bg-green-500 text-[10px]">GPS ATIVO</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <DeliveryMap
+                      deliveryLocation={
+                        currentPosition
+                          ? {
+                              latitude: currentPosition.coords.latitude,
+                              longitude: currentPosition.coords.longitude,
+                            }
+                          : null
+                      }
+                      customerLocation={destinoCoords}
+                      restaurantLocation={null}
+                      customerAddress={
+                        pedido.endereco
+                          ? `${pedido.endereco.rua}, ${pedido.endereco.numero} - ${pedido.endereco.bairro}`
+                          : undefined
+                      }
+                      showRoute={true}
+                    />
+                  </div>
+                )}
+
                 {/* Botão para abrir no Maps */}
-                {pedido.endereco?.latitude && pedido.endereco?.longitude && (
+                {(pedido.endereco?.latitude && pedido.endereco?.longitude) || destinoCoords ? (
                   <Button
                     variant="outline"
                     className="w-full"
                     onClick={() => {
-                      const url = `https://www.google.com/maps/dir/?api=1&destination=${pedido.endereco.latitude},${pedido.endereco.longitude}`;
+                      const lat = pedido.endereco?.latitude || destinoCoords?.latitude;
+                      const lng = pedido.endereco?.longitude || destinoCoords?.longitude;
+                      const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
                       window.open(url, '_blank');
                     }}
                   >
                     <Navigation className="w-4 h-4 mr-2" />
                     Abrir no Google Maps
                   </Button>
-                )}
+                ) : pedido.endereco ? (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      const address = `${pedido.endereco.rua}, ${pedido.endereco.numero}, ${pedido.endereco.bairro}, ${pedido.endereco.cidade}`;
+                      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+                      window.open(url, '_blank');
+                    }}
+                  >
+                    <Navigation className="w-4 h-4 mr-2" />
+                    Buscar no Google Maps
+                  </Button>
+                ) : null}
 
                 <Button
                   className="w-full bg-green-600 hover:bg-green-700"
