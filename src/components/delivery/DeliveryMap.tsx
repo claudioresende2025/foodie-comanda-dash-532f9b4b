@@ -110,6 +110,36 @@ export function DeliveryMap({
   const routeLineRef = useRef<L.Polyline | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [initialCenter, setInitialCenter] = useState<[number, number] | null>(null);
+
+  // Determinar centro inicial baseado nas localizações disponíveis
+  useEffect(() => {
+    if (initialCenter) return; // Já definido
+    
+    if (deliveryLocation) {
+      setInitialCenter([deliveryLocation.latitude, deliveryLocation.longitude]);
+    } else if (customerLocation) {
+      setInitialCenter([customerLocation.latitude, customerLocation.longitude]);
+    } else if (restaurantLocation) {
+      setInitialCenter([restaurantLocation.latitude, restaurantLocation.longitude]);
+    } else {
+      // Tentar usar geolocalização do dispositivo como última opção
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setInitialCenter([pos.coords.latitude, pos.coords.longitude]);
+          },
+          () => {
+            // Fallback para um ponto neutro (centro do Brasil)
+            setInitialCenter([-15.7801, -47.9292]);
+          },
+          { timeout: 5000 }
+        );
+      } else {
+        setInitialCenter([-15.7801, -47.9292]);
+      }
+    }
+  }, [deliveryLocation, customerLocation, restaurantLocation, initialCenter]);
 
   // Injetar CSS de animações
   useEffect(() => {
@@ -124,13 +154,10 @@ export function DeliveryMap({
 
   // Inicializar mapa
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+    if (!mapRef.current || mapInstanceRef.current || !initialCenter) return;
 
-    // Posição padrão (São Paulo)
-    const defaultCenter: [number, number] = [-23.5505, -46.6333];
-    
     const map = L.map(mapRef.current, {
-      center: defaultCenter,
+      center: initialCenter,
       zoom: 15,
       zoomControl: false,
       attributionControl: false,
@@ -153,7 +180,7 @@ export function DeliveryMap({
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, []);
+  }, [initialCenter]);
 
   // Função para animar movimento do marcador (smooth transition)
   const animateMarker = (marker: L.Marker, newPos: L.LatLng, duration: number = 1000) => {

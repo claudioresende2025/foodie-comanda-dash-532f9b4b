@@ -71,32 +71,72 @@ export default function EntregadorPanel() {
 
   // Resolver empresa_id: primeiro do profile, fallback via user_roles
   useEffect(() => {
-    if (profile?.empresa_id) {
-      setResolvedEmpresaId(profile.empresa_id);
-      return;
-    }
-    if (!user?.id) return;
+    const resolveEmpresa = async () => {
+      // Primeiro: tentar do profile
+      if (profile?.empresa_id) {
+        console.log('EntregadorPanel: empresa_id do profile:', profile.empresa_id);
+        setResolvedEmpresaId(profile.empresa_id);
+        return;
+      }
 
-    const fetchEmpresaFromRoles = async () => {
-      const { data } = await supabase
+      if (!user?.id) {
+        console.log('EntregadorPanel: Nenhum user.id disponível');
+        return;
+      }
+
+      // Segundo: tentar do user_roles
+      const { data: roleData } = await supabase
         .from('user_roles')
         .select('empresa_id')
         .eq('user_id', user.id)
         .limit(1)
         .maybeSingle();
       
-      if (data?.empresa_id) {
-        setResolvedEmpresaId(data.empresa_id);
+      if (roleData?.empresa_id) {
+        console.log('EntregadorPanel: empresa_id do user_roles:', roleData.empresa_id);
+        setResolvedEmpresaId(roleData.empresa_id);
+        return;
       }
+
+      // Terceiro: buscar qualquer empresa que tenha o usuário como funcionário
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profileData?.empresa_id) {
+        console.log('EntregadorPanel: empresa_id do profiles (refetch):', profileData.empresa_id);
+        setResolvedEmpresaId(profileData.empresa_id);
+        return;
+      }
+
+      console.log('EntregadorPanel: Não foi possível resolver empresa_id');
     };
-    fetchEmpresaFromRoles();
+
+    resolveEmpresa();
   }, [profile?.empresa_id, user?.id]);
 
-  // Buscar pedidos para entrega (status: saiu_entrega ou em_preparo pronto para sair)
+  // Buscar pedidos para entrega (status: confirmado, em_preparo ou saiu_entrega)
   const { data: pedidos = [], isLoading, refetch } = useQuery({
     queryKey: ['pedidos-entrega', resolvedEmpresaId],
     queryFn: async () => {
-      if (!resolvedEmpresaId) return [];
+      console.log('EntregadorPanel: Buscando pedidos para empresa_id:', resolvedEmpresaId);
+      
+      if (!resolvedEmpresaId) {
+        console.log('EntregadorPanel: empresa_id não disponível, retornando vazio');
+        return [];
+      }
+
+      // DEBUG: Buscar todos os pedidos para ver os status
+      const { data: allPedidos } = await supabase
+        .from('pedidos_delivery')
+        .select('id, status, created_at')
+        .eq('empresa_id', resolvedEmpresaId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      console.log('EntregadorPanel DEBUG - Todos os pedidos recentes:', allPedidos);
 
       const { data, error } = await supabase
         .from('pedidos_delivery')
@@ -121,10 +161,15 @@ export default function EntregadorPanel() {
           empresa:empresas(nome_fantasia)
         `)
         .eq('empresa_id', resolvedEmpresaId)
-        .in('status', ['em_preparo', 'saiu_entrega'])
+        .in('status', ['confirmado', 'em_preparo', 'saiu_entrega'])
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('EntregadorPanel: Erro na query:', error);
+        throw error;
+      }
+
+      console.log('EntregadorPanel: Pedidos para entrega:', data?.length || 0, data);
 
       return (data || []).map((p: any) => ({
         ...p,
@@ -371,7 +416,7 @@ export default function EntregadorPanel() {
   };
 
   // Separar pedidos
-  const pedidosProntos = pedidos.filter(p => p.status === 'em_preparo');
+  const pedidosProntos = pedidos.filter(p => p.status === 'em_preparo' || p.status === 'confirmado');
   const pedidosEmEntrega = pedidos.filter(p => p.status === 'saiu_entrega');
 
   if (isLoading) {
@@ -395,6 +440,11 @@ export default function EntregadorPanel() {
           <p className="text-muted-foreground text-sm">
             Gerencie suas entregas em tempo real
           </p>
+          {resolvedEmpresaId && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Empresa: {resolvedEmpresaId.slice(0, 8)}...
+            </p>
+          )}
         </div>
         <Button variant="outline" size="icon" onClick={() => refetch()}>
           <RefreshCw className="w-4 h-4" />
@@ -661,14 +711,34 @@ export default function EntregadorPanel() {
         </div>
       )}
 
+      {/* Sem empresa vinculada */}
+      {!resolvedEmpresaId && !isLoading && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h3 className="font-semibold text-lg text-red-700">Empresa não vinculada</h3>
+            <p className="text-red-600 text-sm mt-2">
+              Seu usuário não está vinculado a uma empresa.
+              Entre em contato com o administrador.
+            </p>
+            <p className="text-xs text-red-500 mt-4">
+              User ID: {user?.id?.slice(0, 8) || 'N/A'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Sem pedidos */}
-      {pedidos.length === 0 && (
+      {resolvedEmpresaId && pedidos.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center">
             <Bike className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
             <h3 className="font-semibold text-lg">Nenhum pedido para entrega</h3>
             <p className="text-muted-foreground text-sm">
               Quando houver pedidos prontos, eles aparecerão aqui.
+            </p>
+            <p className="text-xs text-muted-foreground mt-4">
+              Empresa: {resolvedEmpresaId?.slice(0, 8)}
             </p>
           </CardContent>
         </Card>
