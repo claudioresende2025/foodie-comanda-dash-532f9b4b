@@ -287,7 +287,7 @@ export default function DeliveryTracking() {
           <Card className="overflow-hidden">
             <CardContent className="p-0">
               {/* Header do mapa */}
-              <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4">
+              <div className={`${hasLocation ? 'bg-gradient-to-r from-purple-500 to-purple-600' : 'bg-gradient-to-r from-gray-500 to-gray-600'} text-white p-4`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
@@ -296,7 +296,9 @@ export default function DeliveryTracking() {
                     <div>
                       <h3 className="font-bold text-lg">Entrega em Andamento</h3>
                       <p className="text-sm text-white/80">
-                        {hasLocation ? 'Acompanhe em tempo real' : 'Aguardando localização'}
+                        {hasLocation 
+                          ? 'Acompanhe o entregador em tempo real' 
+                          : 'Aguardando entregador ativar GPS...'}
                       </p>
                     </div>
                   </div>
@@ -304,6 +306,12 @@ export default function DeliveryTracking() {
                     <div className="flex items-center gap-1 bg-green-500 px-3 py-1 rounded-full text-xs font-bold">
                       <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
                       AO VIVO
+                    </div>
+                  )}
+                  {!hasLocation && (
+                    <div className="flex items-center gap-1 bg-yellow-500 px-3 py-1 rounded-full text-xs font-bold">
+                      <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                      AGUARDANDO
                     </div>
                   )}
                 </div>

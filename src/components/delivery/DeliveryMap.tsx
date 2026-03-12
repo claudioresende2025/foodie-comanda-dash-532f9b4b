@@ -359,29 +359,31 @@ export function DeliveryMap({
         </div>
       </div>
 
-      {/* Overlay quando não há localização */}
+      {/* Overlay quando não há localização DO ENTREGADOR */}
       {!deliveryLocation && !isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gradient-to-b from-transparent via-background/60 to-background/90">
-          <div className="text-center p-6 max-w-xs">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center">
-              <span className="text-3xl">🛵</span>
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gradient-to-b from-black/40 via-black/60 to-black/80">
+          <div className="text-center p-6 max-w-xs bg-white rounded-2xl shadow-2xl">
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center shadow-lg">
+              <span className="text-4xl animate-bounce">🛵</span>
             </div>
-            <h3 className="font-bold text-lg mb-2">Aguardando Entregador</h3>
-            <p className="text-sm text-muted-foreground">
-              Quando o entregador sair para entrega, você verá a localização em tempo real aqui.
+            <h3 className="font-bold text-xl mb-2 text-gray-800">Aguardando Entregador</h3>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              O entregador ainda não compartilhou sua localização.
+              Assim que ele sair, você poderá acompanhar em tempo real.
             </p>
+            <div className="mt-4 p-3 bg-purple-50 border border-purple-100 rounded-xl">
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-ping" />
+                <span className="text-xs font-medium text-purple-700">Aguardando sinal do GPS...</span>
+              </div>
+            </div>
             {gpsStatus === 'denied' && (
               <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-xs text-yellow-800 font-medium">
-                  ⚠️ Ative o GPS para ver sua localização no mapa
+                  Ative o GPS para ver sua localização no mapa
                 </p>
               </div>
             )}
-            <div className="mt-4 flex justify-center gap-1">
-              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
           </div>
         </div>
       )}
