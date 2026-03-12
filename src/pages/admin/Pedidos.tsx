@@ -80,7 +80,7 @@ export default function Pedidos() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<PedidoStatus>("pendente");
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const soundIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const soundIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ===============================
   // QUERY ÚNICA → SUPER PERFORMÁTICA

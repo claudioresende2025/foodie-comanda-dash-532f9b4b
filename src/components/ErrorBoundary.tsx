@@ -33,7 +33,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
             </div>
 
             {/* Em desenvolvimento, mostramos detalhes do erro para diagnóstico */}
-            {process.env.NODE_ENV !== 'production' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <div className="text-left bg-muted p-4 rounded-lg overflow-auto max-h-64">
                 <h3 className="font-medium mb-2">Detalhes do erro (dev)</h3>
                 <pre className="text-xs whitespace-pre-wrap">{String(this.state.error?.message || this.state.error)}</pre>

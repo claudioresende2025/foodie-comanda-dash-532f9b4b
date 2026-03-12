@@ -35,6 +35,7 @@ export interface UserRoleData {
   canAccessConfiguracoes: boolean;
   canAccessMarketing: boolean;
   canAccessAssinatura: boolean;
+  canAccessEntregador: boolean;
   // Limites do plano
   kdsScreensLimit: number | null;
   staffLimit: number | null;

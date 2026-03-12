@@ -103,7 +103,7 @@ export default function Garcom() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [soundIntervalRef, setSoundIntervalRef] = useState<NodeJS.Timeout | null>(null);
+  const [soundIntervalRef, setSoundIntervalRef] = useState<ReturnType<typeof setInterval> | null>(null);
   const [activeTab, setActiveTab] = useState<PedidoStatus>('pendente');
 
   // Estados para "Dar Baixa" (finalização pelo garçom)
