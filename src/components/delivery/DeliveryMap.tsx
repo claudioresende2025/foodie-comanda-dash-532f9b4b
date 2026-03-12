@@ -15,7 +15,6 @@ interface DeliveryMapProps {
   restaurantName?: string;
   customerAddress?: string;
   showRoute?: boolean;
-  gpsStatus?: 'requesting' | 'granted' | 'denied' | 'unavailable' | 'blocked';
 }
 
 // Função auxiliar para ajustar cor
@@ -100,7 +99,6 @@ export function DeliveryMap({
   restaurantName,
   customerAddress,
   showRoute = true,
-  gpsStatus,
 }: DeliveryMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -377,13 +375,6 @@ export function DeliveryMap({
                 <span className="text-xs font-medium text-purple-700">Aguardando sinal do GPS...</span>
               </div>
             </div>
-            {gpsStatus === 'denied' && (
-              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-xs text-yellow-800 font-medium">
-                  Ative o GPS para ver sua localização no mapa
-                </p>
-              </div>
-            )}
           </div>
         </div>
       )}
