@@ -388,7 +388,7 @@ export default function DeliveryRestaurant() {
 
   // Polling para verificar confirmação do pagamento PIX
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     
     if (showPixModal && pedidoId && !pixConfirmado) {
       setVerificandoPix(true);

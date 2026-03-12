@@ -9,12 +9,16 @@ export const UpdateNotification = () => {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const showTimerRef = useRef<number | null>(null);
-  const updateDetectedRef = useRef(false);
+  const updateDetectedRef = useRef(sessionStorage.getItem('update_notification_shown') === '1');
 
   // Função unificada para detectar atualização - só dispara uma vez
   const markUpdateAvailable = (worker?: ServiceWorker) => {
-    // Se já detectou atualização nesta sessão do componente, ignora
+    // Se já detectou/mostrou nesta sessão, ignora
     if (updateDetectedRef.current) return;
+    if (sessionStorage.getItem('update_notification_shown') === '1') {
+      updateDetectedRef.current = true;
+      return;
+    }
     updateDetectedRef.current = true;
     
     if (worker) {
@@ -36,14 +40,11 @@ export const UpdateNotification = () => {
   };
 
   useEffect(() => {
-    // Se já foi mostrado nesta sessão de navegação, não permitir duplicados
-    const alreadyShown = sessionStorage.getItem('update_notification_shown') === '1';
-    
     // Verificação por build timestamp (funciona sem SW)
     const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
     const lastBuild = localStorage.getItem('app_build_version');
 
-    if (currentBuild && lastBuild && lastBuild !== currentBuild && !alreadyShown) {
+    if (currentBuild && lastBuild && lastBuild !== currentBuild) {
       markUpdateAvailable();
     } else if (currentBuild && !lastBuild) {
       // Primeira vez: salva sem mostrar notificação
@@ -51,7 +52,7 @@ export const UpdateNotification = () => {
     }
 
     // Se já havia update disponível e ainda não foi mostrado
-    if (sessionStorage.getItem('update_available') === '1' && !alreadyShown) {
+    if (sessionStorage.getItem('update_available') === '1') {
       markUpdateAvailable();
     }
 

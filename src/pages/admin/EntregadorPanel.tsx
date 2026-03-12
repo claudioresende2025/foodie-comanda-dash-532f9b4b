@@ -51,7 +51,7 @@ interface PedidoEntrega {
 }
 
 export default function EntregadorPanel() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const queryClient = useQueryClient();
   
   // Estados de GPS
@@ -59,16 +59,40 @@ export default function EntregadorPanel() {
   const [currentPosition, setCurrentPosition] = useState<GeolocationPosition | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [pedidoEmEntrega, setPedidoEmEntrega] = useState<string | null>(null);
+  const [resolvedEmpresaId, setResolvedEmpresaId] = useState<string | null>(null);
   
   // Ref para o watch do GPS
   const watchIdRef = useRef<number | null>(null);
   const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Resolver empresa_id: primeiro do profile, fallback via user_roles
+  useEffect(() => {
+    if (profile?.empresa_id) {
+      setResolvedEmpresaId(profile.empresa_id);
+      return;
+    }
+    if (!user?.id) return;
+
+    const fetchEmpresaFromRoles = async () => {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('empresa_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+      
+      if (data?.empresa_id) {
+        setResolvedEmpresaId(data.empresa_id);
+      }
+    };
+    fetchEmpresaFromRoles();
+  }, [profile?.empresa_id, user?.id]);
+
   // Buscar pedidos para entrega (status: saiu_entrega ou em_preparo pronto para sair)
   const { data: pedidos = [], isLoading, refetch } = useQuery({
-    queryKey: ['pedidos-entrega', profile?.empresa_id],
+    queryKey: ['pedidos-entrega', resolvedEmpresaId],
     queryFn: async () => {
-      if (!profile?.empresa_id) return [];
+      if (!resolvedEmpresaId) return [];
 
       const { data, error } = await supabase
         .from('pedidos_delivery')
@@ -92,7 +116,7 @@ export default function EntregadorPanel() {
           ),
           empresa:empresas(nome_fantasia)
         `)
-        .eq('empresa_id', profile.empresa_id)
+        .eq('empresa_id', resolvedEmpresaId)
         .in('status', ['em_preparo', 'saiu_entrega'])
         .order('created_at', { ascending: true });
 
@@ -104,8 +128,8 @@ export default function EntregadorPanel() {
         empresa: p.empresa,
       })) as PedidoEntrega[];
     },
-    enabled: !!profile?.empresa_id,
-    refetchInterval: 30000, // Atualizar a cada 30s
+    enabled: !!resolvedEmpresaId,
+    refetchInterval: 30000,
   });
 
   // Mutation para atualizar status do pedido
@@ -339,15 +363,41 @@ export default function EntregadorPanel() {
                 <p className="text-xs text-muted-foreground">
                   {isGPSActive 
                     ? `Precisão: ${currentPosition?.coords.accuracy?.toFixed(0) || '?'}m`
-                    : 'Inicie uma entrega para ativar'
+                    : 'Ative o GPS para compartilhar sua localização'
                   }
                 </p>
               </div>
             </div>
-            {isGPSActive && (
+            {isGPSActive ? (
               <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
                 Compartilhando
               </Badge>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!navigator.geolocation) {
+                    toast.error('Seu navegador não suporta geolocalização');
+                    return;
+                  }
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      setCurrentPosition(pos);
+                      setGpsError(null);
+                      toast.success('Permissão de GPS concedida!');
+                    },
+                    (err) => {
+                      setGpsError(getGPSErrorMessage(err));
+                      toast.error(getGPSErrorMessage(err));
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                  );
+                }}
+              >
+                <Navigation className="w-4 h-4 mr-1" />
+                Ativar GPS
+              </Button>
             )}
           </div>
           {gpsError && (

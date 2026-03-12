@@ -612,10 +612,10 @@ serve(async (req) => {
     let parsedBody: EmailRequest;
     try {
       parsedBody = JSON.parse(bodyText);
-    } catch (parseError) {
-      logStep("ERROR: JSON parse failed", { error: parseError.message, body: bodyText.substring(0, 500) });
+    } catch (parseError: unknown) {
+      logStep("ERROR: JSON parse failed", { error: (parseError as Error).message, body: bodyText.substring(0, 500) });
       return new Response(
-        JSON.stringify({ success: false, error: `JSON inválido: ${parseError.message}` }),
+        JSON.stringify({ success: false, error: `JSON inválido: ${(parseError as Error).message}` }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
