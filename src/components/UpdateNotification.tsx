@@ -40,9 +40,9 @@ export const UpdateNotification = () => {
   };
 
   useEffect(() => {
-    // Se já foi mostrado nesta sessão de navegação, não permitir duplicados
-    const alreadyShown = sessionStorage.getItem('update_notification_shown') === '1';
-    
+    // Verificação por build timestamp (funciona sem SW)
+    const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
+    const lastBuild = localStorage.getItem('app_build_version');
     // Verificação por build timestamp (funciona sem SW)
     const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
     const lastBuild = localStorage.getItem('app_build_version');
