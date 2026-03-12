@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BottomNavigation } from '@/components/delivery/BottomNavigation';
+import { RestaurantStaffBlock } from '@/components/delivery/RestaurantStaffBlock';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -35,6 +36,7 @@ export default function DeliveryOrders() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [isRestaurantStaff, setIsRestaurantStaff] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
@@ -48,6 +50,20 @@ export default function DeliveryOrders() {
       navigate('/delivery/auth', { state: { from: '/delivery/orders' } });
       return;
     }
+    
+    // Verifica se é funcionário de restaurante
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('empresa_id')
+      .eq('id', session.user.id)
+      .single();
+    
+    if (profile?.empresa_id) {
+      setIsRestaurantStaff(true);
+      setIsLoading(false);
+      return;
+    }
+    
     setUser(session.user);
     fetchPedidos(session.user.id);
   };
@@ -95,6 +111,29 @@ export default function DeliveryOrders() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Se for funcionário de restaurante, mostra mensagem de bloqueio
+  if (isRestaurantStaff) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="bg-primary text-primary-foreground p-4 sticky top-0 z-40">
+          <div className="max-w-2xl mx-auto flex items-center gap-3">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="text-primary-foreground hover:bg-primary-foreground/10"
+              onClick={() => navigate('/delivery')}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <h1 className="text-lg font-bold">Meus Pedidos</h1>
+          </div>
+        </header>
+        <RestaurantStaffBlock />
+        <BottomNavigation />
       </div>
     );
   }

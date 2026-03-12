@@ -311,10 +311,11 @@ export default function DeliveryAuth() {
       try {
         await supabase.functions.invoke('send-email', {
           body: {
-            type: 'welcome',
+            type: 'customer_welcome',
             to: email,
             data: {
-              nomeCliente: nome
+              nome: nome,
+              deliveryUrl: `${window.location.origin}/delivery`
             }
           }
         });

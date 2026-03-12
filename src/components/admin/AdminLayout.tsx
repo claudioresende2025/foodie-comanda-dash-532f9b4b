@@ -6,6 +6,7 @@ import { AdminSidebar } from './AdminSidebar';
 import { ThemeToggle } from './ThemeToggle';
 import { Loader2 } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 // Roles que pertencem à equipe (staff) - devem ter acesso ao Admin
@@ -15,6 +16,7 @@ export function AdminLayout() {
   const { user, loading, profile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [isDeliveryCustomer, setIsDeliveryCustomer] = useState<boolean | null>(null);
   
   // Ler configuração de menu compacto do localStorage
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -89,6 +91,36 @@ export function AdminLayout() {
     canAccessConfiguracoes,
     canAccessMarketing,
   } = useUserRole();
+
+  // Verificar se é cliente de delivery (sem empresa e sem roles)
+  useEffect(() => {
+    const checkDeliveryCustomer = async () => {
+      if (loading || !user) return;
+      
+      // Se já tem empresa_id, não é cliente de delivery
+      if (profile?.empresa_id) {
+        setIsDeliveryCustomer(false);
+        return;
+      }
+      
+      // Verificar se tem algum role (staff de alguma empresa)
+      const { data: userRoles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id);
+      
+      // Se não tem empresa_id E não tem nenhum role, é cliente de delivery
+      if (!userRoles || userRoles.length === 0) {
+        setIsDeliveryCustomer(true);
+        toast.info('Redirecionando para área de clientes...');
+        navigate('/delivery');
+      } else {
+        setIsDeliveryCustomer(false);
+      }
+    };
+    
+    checkDeliveryCustomer();
+  }, [loading, user, profile?.empresa_id, navigate]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -184,7 +216,8 @@ export function AdminLayout() {
     navigate,
   ]);
 
-  if (loading) {
+  // Mostrar loading enquanto verifica se é cliente de delivery
+  if (loading || (isDeliveryCustomer === null && !profile?.empresa_id)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -193,6 +226,11 @@ export function AdminLayout() {
         </div>
       </div>
     );
+  }
+
+  // Se for cliente de delivery, não renderizar nada (vai ser redirecionado)
+  if (isDeliveryCustomer) {
+    return null;
   }
 
   if (!user) {

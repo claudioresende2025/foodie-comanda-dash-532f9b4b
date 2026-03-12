@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface EmailRequest {
-  type: 'welcome' | 'subscription_confirmed' | 'trial_reminder' | 'password_reset' | 'payment_receipt' | 'trial_welcome' | 'trial_tip_cardapio' | 'trial_midpoint' | 'trial_urgency' | 'trial_expired' | 'trial_reengagement' | 'account_confirmation';
+  type: 'welcome' | 'subscription_confirmed' | 'trial_reminder' | 'password_reset' | 'payment_receipt' | 'trial_welcome' | 'trial_tip_cardapio' | 'trial_midpoint' | 'trial_urgency' | 'trial_expired' | 'trial_reengagement' | 'account_confirmation' | 'customer_welcome';
   to: string;
   data: Record<string, any>;
 }
@@ -507,6 +507,62 @@ const templates: Record<string, (data: any) => { subject: string; html: string }
           <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">© ${new Date().getFullYear()} Food Comanda Pro</p>
         </div>
       </body></html>
+    `
+  }),
+
+  // Template para clientes delivery
+  customer_welcome: (data) => ({
+    subject: `🍕 Bem-vindo ao Delivery!`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Bem-vindo ao Delivery</title>
+      </head>
+      <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #f97316 0%, #fb923c 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🍕 Bem-vindo ao Delivery!</h1>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <p style="font-size: 16px;">Olá <strong>${data.nome || 'Cliente'}</strong>,</p>
+            
+            <p style="font-size: 16px;">Seu cadastro foi realizado com sucesso! Agora você pode fazer pedidos nos melhores restaurantes da região.</p>
+            
+            <div style="background: #fff7ed; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #f97316;">
+              <h3 style="margin-top: 0; color: #c2410c;">🚀 O que você pode fazer:</h3>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li style="margin-bottom: 8px;">Explorar cardápios de diversos restaurantes</li>
+                <li style="margin-bottom: 8px;">Fazer pedidos de forma rápida e fácil</li>
+                <li style="margin-bottom: 8px;">Acompanhar seus pedidos em tempo real</li>
+                <li style="margin-bottom: 8px;">Salvar seus endereços favoritos</li>
+                <li>Acumular pontos de fidelidade</li>
+              </ul>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.deliveryUrl || 'https://foodcomandapro.servicecoding.com.br/delivery'}" 
+                 style="display: inline-block; background-color: #f97316; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                <span style="color: #ffffff;">Fazer Meu Primeiro Pedido</span>
+              </a>
+            </div>
+            
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0;">
+            
+            <p style="color: #6b7280; font-size: 14px; text-align: center;">
+              Bom apetite! 🍽️
+            </p>
+          </div>
+          
+          <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">
+            © ${new Date().getFullYear()} Food Comanda Pro. Todos os direitos reservados.
+          </p>
+        </div>
+      </body>
+      </html>
     `
   }),
 };

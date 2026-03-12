@@ -45,6 +45,7 @@ export default function DeliveryRestaurant() {
   const [enderecoSelecionadoId, setEnderecoSelecionadoId] = useState<string>("");
   const [marcarComoPadrao, setMarcarComoPadrao] = useState(false);
   const [usandoEnderecoSalvo, setUsandoEnderecoSalvo] = useState(false);
+  const [isRestaurantStaff, setIsRestaurantStaff] = useState(false);
 
   // Estados para cupom e fidelidade
   const [cupomCodigo, setCupomCodigo] = useState("");
@@ -102,6 +103,19 @@ export default function DeliveryRestaurant() {
       data: { session },
     } = await supabase.auth.getSession();
     setUser(session?.user || null);
+
+    // Verificar se é funcionário de restaurante
+    if (session?.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("empresa_id")
+        .eq("id", session.user.id)
+        .single();
+      
+      setIsRestaurantStaff(!!profile?.empresa_id);
+    } else {
+      setIsRestaurantStaff(false);
+    }
 
     // Buscar endereços salvos
     if (session?.user) {
@@ -438,6 +452,12 @@ export default function DeliveryRestaurant() {
     if (!user) {
       toast.error("Faça login para continuar");
       navigate("/delivery/auth", { state: { from: `/delivery/${empresaId}` } });
+      return;
+    }
+
+    // Bloquear checkout se for funcionário de restaurante
+    if (isRestaurantStaff) {
+      toast.error("Você está logado como funcionário de restaurante. Para fazer pedidos como cliente, faça logout e utilize outra conta.");
       return;
     }
 

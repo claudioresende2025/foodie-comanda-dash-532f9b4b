@@ -84,18 +84,33 @@ export default function Auth() {
 
   // Função para verificar o role do usuário e redirecionar apropriadamente
   const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
+    // Buscar todos os roles do usuário (pode ter em várias empresas)
+    const { data: userRoles } = await supabase
+      .from('user_roles')
+      .select('role, empresa_id')
+      .eq('user_id', userId);
+
+    // Se não tem empresa_id E não tem nenhum role, é um cliente de delivery
+    if (!empresaId && (!userRoles || userRoles.length === 0)) {
+      navigate('/delivery');
+      return;
+    }
+
+    // Se não tem empresa_id mas tem role em alguma empresa, vai para onboarding
     if (!empresaId) {
+      // Se tem role em alguma empresa, redireciona para admin dessa empresa
+      if (userRoles && userRoles.length > 0) {
+        const firstRole = userRoles[0];
+        if (firstRole.role && STAFF_ROLES.includes(firstRole.role)) {
+          navigate('/admin');
+          return;
+        }
+      }
       navigate('/admin/onboarding');
       return;
     }
 
-    const { data: userRole } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('empresa_id', empresaId)
-      .maybeSingle();
-
+    const userRole = userRoles?.find(r => r.empresa_id === empresaId);
     const role = userRole?.role;
 
     if (role && STAFF_ROLES.includes(role)) {

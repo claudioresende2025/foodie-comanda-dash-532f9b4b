@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { BottomNavigation } from '@/components/delivery/BottomNavigation';
+import { RestaurantStaffBlock } from '@/components/delivery/RestaurantStaffBlock';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -36,6 +37,7 @@ export default function DeliveryProfile() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRestaurantStaff, setIsRestaurantStaff] = useState(false);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
   
@@ -57,6 +59,20 @@ export default function DeliveryProfile() {
         navigate('/delivery/auth', { state: { from: '/delivery/profile' } });
         return;
       }
+      
+      // Verifica se é funcionário de restaurante
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('empresa_id')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (profile?.empresa_id) {
+        setIsRestaurantStaff(true);
+        setLoading(false);
+        return;
+      }
+      
       setUser(session.user);
       setRecoveryEmail(session.user.email || '');
       setLoading(false);
@@ -179,6 +195,29 @@ export default function DeliveryProfile() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Se for funcionário de restaurante, mostra mensagem de bloqueio
+  if (isRestaurantStaff) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="bg-primary text-primary-foreground p-4 sticky top-0 z-40">
+          <div className="max-w-lg mx-auto flex items-center gap-3">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="text-primary-foreground hover:bg-primary-foreground/10"
+              onClick={() => navigate('/delivery')}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <h1 className="text-lg font-bold">Meu Perfil</h1>
+          </div>
+        </header>
+        <RestaurantStaffBlock />
+        <BottomNavigation />
       </div>
     );
   }

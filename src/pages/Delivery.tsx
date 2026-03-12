@@ -4,8 +4,10 @@ import { RestaurantCard } from '@/components/delivery/RestaurantCard';
 import { EmptyState } from '@/components/delivery/EmptyState';
 import { LoadingSkeleton } from '@/components/delivery/LoadingSkeleton';
 import { BottomNavigation } from '@/components/delivery/BottomNavigation';
+import { RestaurantStaffBlock } from '@/components/delivery/RestaurantStaffBlock';
 import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Delivery() {
   const { 
@@ -15,8 +17,13 @@ export default function Delivery() {
     setSearchQuery, 
     refetch 
   } = useDeliveryRestaurants();
+  
+  const { profile, user } = useAuth();
 
   const [pageError, setPageError] = useState<string | null>(null);
+
+  // Verifica se o usuário logado é um proprietário/funcionário de restaurante
+  const isRestaurantStaff = user && profile?.empresa_id;
 
   useEffect(() => {
     try {
@@ -31,6 +38,20 @@ export default function Delivery() {
   // Se estiver carregando, mostra o esqueleto
   if (isLoading) {
     return <LoadingSkeleton />;
+  }
+
+  // Se for funcionário de restaurante, mostra mensagem para fazer logout
+  if (isRestaurantStaff) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <DeliveryHeader 
+          searchQuery="" 
+          onSearchChange={() => {}} 
+        />
+        <RestaurantStaffBlock />
+        <BottomNavigation />
+      </div>
+    );
   }
 
   if (pageError) {
