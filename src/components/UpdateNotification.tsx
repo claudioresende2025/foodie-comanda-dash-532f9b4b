@@ -43,9 +43,8 @@ export const UpdateNotification = () => {
     // Verificação por build timestamp (funciona sem SW)
     const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
     const lastBuild = localStorage.getItem('app_build_version');
-    // Verificação por build timestamp (funciona sem SW)
-    const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
-    const lastBuild = localStorage.getItem('app_build_version');
+
+    if (currentBuild && lastBuild && lastBuild !== currentBuild) {
 
     if (currentBuild && lastBuild && lastBuild !== currentBuild && !alreadyShown) {
       markUpdateAvailable();
