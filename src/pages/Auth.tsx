@@ -102,6 +102,11 @@ export default function Auth() {
       if (userRoles && userRoles.length > 0) {
         const firstRole = userRoles[0];
         if (firstRole.role && STAFF_ROLES.includes(firstRole.role)) {
+          // Se é motoboy, redireciona para o painel do entregador
+          if (firstRole.role === 'motoboy') {
+            navigate('/admin/entregador');
+            return;
+          }
           navigate('/admin');
           return;
         }
@@ -114,6 +119,11 @@ export default function Auth() {
     const role = userRole?.role;
 
     if (role && STAFF_ROLES.includes(role)) {
+      // Se é motoboy, redireciona direto para o painel do entregador
+      if (role === 'motoboy') {
+        navigate('/admin/entregador');
+        return;
+      }
       navigate('/admin');
     } else {
       navigate(`/menu/${empresaId}`);

@@ -386,6 +386,9 @@ export function useUserRole(): UserRoleData {
     // Marketing: Proprietário, Gerente
     canAccessMarketing: hasFullAccess || ((isProprietario || isGerente) && resolveFeature('marketing')),
     
+    // Painel Entregador: Motoboy, Proprietário, Gerente
+    canAccessEntregador: hasFullAccess || isProprietario || isGerente || isMotoboy,
+    
     // Limites do plano
     kdsScreensLimit: planData.kdsScreensLimit,
     staffLimit: planData.staffLimit,

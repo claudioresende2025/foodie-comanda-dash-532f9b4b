@@ -29,6 +29,7 @@ import {
   Utensils,
   UserCheck,
   Truck,
+  Bike,
   Loader2,
   Megaphone,
   CreditCard,
@@ -56,7 +57,8 @@ type MenuItemKey =
   | 'empresa' 
   | 'configuracoes'
   | 'assinatura'
-  | 'administracao';
+  | 'administracao'
+  | 'entregador';
 
 interface MenuItem {
   key: MenuItemKey;
@@ -70,6 +72,7 @@ const allMenuItems: MenuItem[] = [
   { key: 'mesas', title: 'Mesas', url: '/admin/mesas', icon: UtensilsCrossed },
   { key: 'cardapio', title: 'Cardápio', url: '/admin/cardapio', icon: ChefHat },
   { key: 'pedidos', title: 'Pedidos (KDS)', url: '/admin/pedidos', icon: ClipboardList },
+  { key: 'entregador', title: 'Painel Entregador', url: '/admin/entregador', icon: Bike },
   { key: 'delivery', title: 'Delivery', url: '/admin/delivery', icon: Truck },
   { key: 'deliveryStats', title: 'Estatísticas Delivery', url: '/admin/delivery/dashboard', icon: Truck },
   { key: 'marketing', title: 'Marketing', url: '/admin/marketing', icon: Megaphone },
@@ -93,6 +96,7 @@ export function AdminSidebar() {
     isProprietario,
     isGerente,
     isSuperAdmin,
+    isMotoboy,
     canAccessDashboard,
     canAccessMesas,
     canAccessCardapio,
@@ -106,6 +110,7 @@ export function AdminSidebar() {
     canAccessConfiguracoes,
     canAccessMarketing,
     canAccessAssinatura,
+    canAccessEntregador,
     isGarcom,
     planoSlug,
   } = useUserRole();
@@ -153,6 +158,7 @@ export function AdminSidebar() {
     mesas: canAccessMesas,
     cardapio: canAccessCardapio,
     pedidos: canAccessPedidos,
+    entregador: canAccessEntregador,
     delivery: canAccessDelivery,
     deliveryStats: canAccessDeliveryStats,
     marketing: canAccessMarketing,
@@ -176,7 +182,7 @@ export function AdminSidebar() {
   }, [isProprietario, isGerente, isSuperAdmin, canAccessDashboard, canAccessMesas, canAccessCardapio, 
       canAccessPedidos, canAccessDelivery, canAccessDeliveryStats, canAccessMarketing, 
       canAccessGarcom, canAccessCaixa, canAccessEquipe, canAccessEmpresa, canAccessConfiguracoes, 
-      canAccessAssinatura]);
+      canAccessAssinatura, canAccessEntregador]);
 
   if (isRoleLoading) {
     return (
