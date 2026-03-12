@@ -363,15 +363,41 @@ export default function EntregadorPanel() {
                 <p className="text-xs text-muted-foreground">
                   {isGPSActive 
                     ? `Precisão: ${currentPosition?.coords.accuracy?.toFixed(0) || '?'}m`
-                    : 'Inicie uma entrega para ativar'
+                    : 'Ative o GPS para compartilhar sua localização'
                   }
                 </p>
               </div>
             </div>
-            {isGPSActive && (
+            {isGPSActive ? (
               <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
                 Compartilhando
               </Badge>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!navigator.geolocation) {
+                    toast.error('Seu navegador não suporta geolocalização');
+                    return;
+                  }
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      setCurrentPosition(pos);
+                      setGpsError(null);
+                      toast.success('Permissão de GPS concedida!');
+                    },
+                    (err) => {
+                      setGpsError(getGPSErrorMessage(err));
+                      toast.error(getGPSErrorMessage(err));
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                  );
+                }}
+              >
+                <Navigation className="w-4 h-4 mr-1" />
+                Ativar GPS
+              </Button>
             )}
           </div>
           {gpsError && (

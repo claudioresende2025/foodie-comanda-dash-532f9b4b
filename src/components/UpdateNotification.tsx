@@ -9,12 +9,16 @@ export const UpdateNotification = () => {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const showTimerRef = useRef<number | null>(null);
-  const updateDetectedRef = useRef(false);
+  const updateDetectedRef = useRef(sessionStorage.getItem('update_notification_shown') === '1');
 
   // Função unificada para detectar atualização - só dispara uma vez
   const markUpdateAvailable = (worker?: ServiceWorker) => {
-    // Se já detectou atualização nesta sessão do componente, ignora
+    // Se já detectou/mostrou nesta sessão, ignora
     if (updateDetectedRef.current) return;
+    if (sessionStorage.getItem('update_notification_shown') === '1') {
+      updateDetectedRef.current = true;
+      return;
+    }
     updateDetectedRef.current = true;
     
     if (worker) {
