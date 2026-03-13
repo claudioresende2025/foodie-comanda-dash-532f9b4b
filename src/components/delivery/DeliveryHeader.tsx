@@ -50,40 +50,50 @@ export const DeliveryHeader = memo(function DeliveryHeader({
 
   return (
     <header className="sticky top-0 z-50 bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-lg backdrop-blur-sm">
-      <div className="container mx-auto px-4 py-5 safe-area-inset-top">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-card/20 backdrop-blur-sm overflow-hidden flex-shrink-0 shadow-lg ring-2 ring-white/20">
-            <img 
-              src="/pwa-icon.png" 
-              alt="Food Comanda Pro" 
-              className="w-full h-full object-cover"
-              loading="eager"
-            />
+      <div className="container mx-auto px-4 py-3 safe-area-inset-top">
+        {/* Linha superior: Logo à esquerda, ações à direita */}
+        <div className="flex items-center justify-between mb-3">
+          {/* Logo no canto esquerdo */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-card/20 backdrop-blur-sm overflow-hidden flex-shrink-0 shadow-lg ring-2 ring-white/20">
+              <img 
+                src="/pwa-icon.png" 
+                alt="Food Comanda Pro" 
+                className="w-full h-full object-cover"
+                loading="eager"
+              />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-bold tracking-tight truncate">Food Comanda Pro</h1>
+              <p className="text-[10px] sm:text-xs text-primary-foreground/70 font-medium">Delivery</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <h1 className="text-xl font-bold tracking-tight">Food Comanda Pro</h1>
-            <p className="text-xs text-primary-foreground/70 font-medium">Delivery</p>
+          
+          {/* Ações à direita */}
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <NotificationToggle type="delivery" />
+            {isLoggedIn && (
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleLogout}
+                className="text-primary-foreground hover:bg-white/20 gap-1 px-2 sm:px-3"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="text-xs sm:text-sm font-medium hidden sm:inline">Sair</span>
+              </Button>
+            )}
           </div>
-          <NotificationToggle type="delivery" />
-          {isLoggedIn && (
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={handleLogout}
-              className="text-primary-foreground hover:bg-white/20 gap-1.5"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="text-sm font-medium">Sair</span>
-            </Button>
-          )}
         </div>
+        
+        {/* Barra de busca */}
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input
             placeholder="Buscar restaurantes..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-12 h-12 bg-card text-foreground rounded-xl border-0 shadow-md focus-visible:ring-2 focus-visible:ring-accent"
+            className="pl-12 h-11 sm:h-12 bg-card text-foreground rounded-xl border-0 shadow-md focus-visible:ring-2 focus-visible:ring-accent"
           />
         </div>
       </div>

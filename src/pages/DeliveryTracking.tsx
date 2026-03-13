@@ -211,30 +211,48 @@ export default function DeliveryTracking() {
     fetchPedido();
   }, [fetchPedido]);
 
-  // Realtime subscription
+  // Realtime subscription para atualização de status em tempo real
   useEffect(() => {
     if (!pedidoId) return;
 
+    console.log('[DeliveryTracking] Iniciando subscription realtime para pedido:', pedidoId);
+
     const channel = supabase
-      .channel(`pedido-${pedidoId}`)
+      .channel(`pedido-tracking-${pedidoId}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*', // Escutar todos os eventos (INSERT, UPDATE, DELETE)
           schema: 'public',
           table: 'pedidos_delivery',
           filter: `id=eq.${pedidoId}`,
         },
         (payload) => {
-          setPedido((prev: any) => ({ ...prev, ...payload.new }));
+          console.log('[DeliveryTracking] Recebeu atualização realtime:', payload);
+          if (payload.new && typeof payload.new === 'object') {
+            setPedido((prev: any) => {
+              if (!prev) return payload.new;
+              return { ...prev, ...payload.new };
+            });
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[DeliveryTracking] Status subscription:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('[DeliveryTracking] ✅ Subscription realtime ativa');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[DeliveryTracking] ❌ Erro no canal realtime');
+          // Tentar refetch como fallback
+          setTimeout(() => fetchPedido(), 5000);
+        }
+      });
 
     return () => {
+      console.log('[DeliveryTracking] Removendo subscription');
       supabase.removeChannel(channel);
     };
-  }, [pedidoId]);
+  }, [pedidoId, fetchPedido]);
 
   if (isLoading) {
     return (

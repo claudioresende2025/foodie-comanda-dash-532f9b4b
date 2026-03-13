@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Package, Clock, CheckCircle, Truck, ChefHat, ArrowLeft, RefreshCw, CreditCard } from 'lucide-react';
@@ -44,6 +44,7 @@ export default function DeliveryOrders() {
   }, []);
 
   const checkAuth = async () => {
+    setIsLoading(true);
     const { data: { session } } = await supabase.auth.getSession();
     console.log('[DeliveryOrders] Session:', session?.user?.id);
     if (!session) {
@@ -68,8 +69,7 @@ export default function DeliveryOrders() {
     fetchPedidos(session.user.id);
   };
 
-  const fetchPedidos = async (userId: string) => {
-    setIsLoading(true);
+  const fetchPedidos = useCallback(async (userId: string) => {
     console.log('[DeliveryOrders] Fetching pedidos for user:', userId);
     try {
       const { data, error } = await supabase
@@ -97,7 +97,52 @@ export default function DeliveryOrders() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // Realtime subscription para atualização de status em tempo real
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log('[DeliveryOrders] Iniciando realtime subscription para user:', user.id);
+
+    const channel = supabase
+      .channel(`orders-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pedidos_delivery',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('[DeliveryOrders] Recebeu atualização realtime:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            // Novo pedido - adicionar à lista
+            fetchPedidos(user.id);
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
+            // Atualização de pedido existente
+            setPedidos(prev => prev.map(p => 
+              p.id === (payload.new as any).id 
+                ? { ...p, ...(payload.new as any) }
+                : p
+            ));
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            // Pedido removido
+            setPedidos(prev => prev.filter(p => p.id !== (payload.old as any).id));
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[DeliveryOrders] Status subscription:', status);
+      });
+
+    return () => {
+      console.log('[DeliveryOrders] Removendo subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const pedidosEmAndamento = pedidos.filter(p => 
     !['entregue', 'cancelado'].includes(p.status)
