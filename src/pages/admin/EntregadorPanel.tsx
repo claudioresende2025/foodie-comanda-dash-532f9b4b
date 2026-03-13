@@ -231,55 +231,75 @@ export default function EntregadorPanel() {
       return false;
     }
 
-    // Solicitar permissão e iniciar watch
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCurrentPosition(position);
-        setGpsError(null);
-        setIsGPSActive(true);
-        setPedidoEmEntrega(pedidoId);
+    // Função para iniciar o watch após obter posição inicial
+    const startWatch = (initialPosition?: GeolocationPosition) => {
+      if (initialPosition) {
+        setCurrentPosition(initialPosition);
+        sendLocationToServer(initialPosition, pedidoId);
+      }
+      
+      setGpsError(null);
+      setIsGPSActive(true);
+      setPedidoEmEntrega(pedidoId);
 
-        // Enviar localização inicial
-        sendLocationToServer(position, pedidoId);
+      // Iniciar watch contínuo - mais tolerante a erros
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          setCurrentPosition(pos);
+          setGpsError(null); // Limpar erro anterior
+          // Enviar para o servidor a cada atualização
+          sendLocationToServer(pos, pedidoId);
+        },
+        (error) => {
+          console.error('Erro no GPS watch:', error);
+          // Não mostrar erro de timeout no watch, apenas logar
+          if (error.code !== error.TIMEOUT) {
+            setGpsError(error.message);
+          }
+        },
+        {
+          enableHighAccuracy: false, // Menos preciso mas mais rápido
+          timeout: 30000, // 30 segundos
+          maximumAge: 10000, // Aceita posição de até 10 segundos atrás
+        }
+      );
 
-        // Iniciar watch contínuo
-        watchIdRef.current = navigator.geolocation.watchPosition(
+      // Também enviar a cada 15 segundos como backup
+      updateIntervalRef.current = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
           (pos) => {
             setCurrentPosition(pos);
-            // Enviar para o servidor a cada atualização
+            setGpsError(null);
             sendLocationToServer(pos, pedidoId);
           },
-          (error) => {
-            console.error('Erro no GPS:', error);
-            setGpsError(error.message);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 5000,
-          }
+          () => {}, // Ignorar erros no backup
+          { enableHighAccuracy: false, timeout: 20000, maximumAge: 15000 }
         );
+      }, 15000);
 
-        // Também enviar a cada 10 segundos como backup
-        updateIntervalRef.current = setInterval(() => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => sendLocationToServer(pos, pedidoId),
-            () => {},
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-          );
-        }, 10000);
+      toast.success('GPS ativado! Sua localização está sendo compartilhada.');
+    };
 
-        toast.success('GPS ativado! Sua localização está sendo compartilhada.');
+    // Tentar obter posição inicial - com alta tolerância
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        startWatch(position);
       },
       (error) => {
-        console.error('Erro ao obter localização:', error);
-        setGpsError(getGPSErrorMessage(error));
-        toast.error(getGPSErrorMessage(error));
+        console.error('Erro ao obter localização inicial:', error);
+        // Mesmo com erro, iniciar o watch - pode funcionar depois
+        if (error.code === error.TIMEOUT) {
+          toast.warning('GPS demorando... Tentando novamente automaticamente.');
+          startWatch(); // Iniciar watch mesmo sem posição inicial
+        } else {
+          setGpsError(getGPSErrorMessage(error));
+          toast.error(getGPSErrorMessage(error));
+        }
       },
       {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
+        enableHighAccuracy: false, // Menos preciso mas mais rápido no celular
+        timeout: 30000, // 30 segundos - mais tolerante
+        maximumAge: 30000, // Aceita posição de até 30 segundos atrás
       }
     );
 
@@ -350,13 +370,14 @@ export default function EntregadorPanel() {
   // Inicializar mapa se já tiver pedido em entrega (caso recarregue a página)
   useEffect(() => {
     const pedidoAtivo = pedidos.find(p => p.status === 'saiu_entrega');
-    if (pedidoAtivo && !showMap) {
+    if (pedidoAtivo) {
       setPedidoEmEntrega(pedidoAtivo.id);
-      if (pedidoAtivo.endereco) {
+      // Sempre fazer geocoding do endereço do pedido ativo
+      if (pedidoAtivo.endereco && !destinoCoords) {
         geocodeDestino(pedidoAtivo.endereco);
       }
     }
-  }, [pedidos, showMap, geocodeDestino]);
+  }, [pedidos, geocodeDestino, destinoCoords]);
 
   // Handler para "Saiu para Entrega"
   const handleSaiuParaEntrega = async (pedido: PedidoEntrega) => {
@@ -469,23 +490,45 @@ export default function EntregadorPanel() {
             ) : (
               <Button
                 size="sm"
-                variant="outline"
+                variant="default"
+                className="bg-primary"
                 onClick={() => {
                   if (!navigator.geolocation) {
                     toast.error('Seu navegador não suporta geolocalização');
                     return;
                   }
+                  toast.info('Obtendo localização... Aguarde.');
                   navigator.geolocation.getCurrentPosition(
                     (pos) => {
                       setCurrentPosition(pos);
                       setGpsError(null);
-                      toast.success('Permissão de GPS concedida!');
+                      setIsGPSActive(true);
+                      toast.success('GPS ativado com sucesso!');
                     },
                     (err) => {
-                      setGpsError(getGPSErrorMessage(err));
-                      toast.error(getGPSErrorMessage(err));
+                      // Mesmo com erro, tentar iniciar watch
+                      if (err.code === err.TIMEOUT) {
+                        toast.warning('GPS demorando... Tentando método alternativo.');
+                        // Tentar com configurações mais tolerantes
+                        navigator.geolocation.getCurrentPosition(
+                          (pos2) => {
+                            setCurrentPosition(pos2);
+                            setGpsError(null);
+                            setIsGPSActive(true);
+                            toast.success('GPS ativado!');
+                          },
+                          () => {
+                            setGpsError('Não foi possível obter localização. Verifique se o GPS está ativado.');
+                            toast.error('Não foi possível obter localização. Ative o GPS nas configurações.');
+                          },
+                          { enableHighAccuracy: false, timeout: 60000, maximumAge: 60000 }
+                        );
+                      } else {
+                        setGpsError(getGPSErrorMessage(err));
+                        toast.error(getGPSErrorMessage(err));
+                      }
                     },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    { enableHighAccuracy: false, timeout: 30000, maximumAge: 30000 }
                   );
                 }}
               >
@@ -559,14 +602,16 @@ export default function EntregadorPanel() {
                 </div>
 
                 {/* Mapa mostrando posição do entregador e destino */}
-                {showMap && pedidoEmEntrega === pedido.id && (
+                {(showMap || destinoCoords) && (
                   <div className="rounded-xl overflow-hidden border">
                     <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-3">
                       <div className="flex items-center gap-2">
                         <Map className="w-4 h-4" />
                         <span className="font-medium text-sm">Navegação em Tempo Real</span>
-                        {currentPosition && (
+                        {currentPosition ? (
                           <Badge className="ml-auto bg-green-500 text-[10px]">GPS ATIVO</Badge>
+                        ) : (
+                          <Badge className="ml-auto bg-yellow-500 text-[10px]">AGUARDANDO GPS</Badge>
                         )}
                       </div>
                     </div>
@@ -592,14 +637,12 @@ export default function EntregadorPanel() {
                 )}
 
                 {/* Botão para abrir no Maps */}
-                {(pedido.endereco?.latitude && pedido.endereco?.longitude) || destinoCoords ? (
+                {destinoCoords ? (
                   <Button
                     variant="outline"
                     className="w-full"
                     onClick={() => {
-                      const lat = pedido.endereco?.latitude || destinoCoords?.latitude;
-                      const lng = pedido.endereco?.longitude || destinoCoords?.longitude;
-                      const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+                      const url = `https://www.google.com/maps/dir/?api=1&destination=${destinoCoords.latitude},${destinoCoords.longitude}`;
                       window.open(url, '_blank');
                     }}
                   >
