@@ -33,11 +33,15 @@ const planos = [
       { nome: 'Dashboard', incluso: true, detalhe: 'Básico' },
       { nome: 'Cardápio', incluso: true },
       { nome: 'Mesas', incluso: true, detalhe: 'Limite 10' },
-      { nome: 'Pedidos (KDS)', incluso: true, detalhe: '1 tela' },
+      { nome: 'Pedidos (KDS)', incluso: true, detalhe: '1 Tela' },
+      { nome: 'Painel Entregador', incluso: true },
       { nome: 'Delivery', incluso: true },
       { nome: 'Estatísticas Delivery', incluso: false },
-      { nome: 'App Garçom', incluso: true, detalhe: '1 usuário' },
+      { nome: 'Desempenho', incluso: false },
+      { nome: 'Avaliações', incluso: false },
       { nome: 'Marketing', incluso: false },
+      { nome: 'Garçom', incluso: true, detalhe: '1 usuário' },
+      { nome: 'Caixa', incluso: true },
       { nome: 'Equipe', incluso: true, detalhe: 'Até 2 colaboradores' },
     ],
   },
@@ -52,11 +56,15 @@ const planos = [
       { nome: 'Dashboard', incluso: true, detalhe: 'Completo' },
       { nome: 'Cardápio', incluso: true },
       { nome: 'Mesas', incluso: true, detalhe: 'Ilimitado' },
-      { nome: 'Pedidos (KDS)', incluso: true, detalhe: '1 tela' },
+      { nome: 'Pedidos (KDS)', incluso: true, detalhe: '1 Tela' },
+      { nome: 'Painel Entregador', incluso: true },
       { nome: 'Delivery', incluso: true, detalhe: 'Integrado' },
       { nome: 'Estatísticas Delivery', incluso: true },
-      { nome: 'App Garçom', incluso: true, detalhe: 'Até 3 usuários' },
+      { nome: 'Desempenho', incluso: true },
+      { nome: 'Avaliações', incluso: true },
       { nome: 'Marketing', incluso: true },
+      { nome: 'Garçom', incluso: true, detalhe: 'Até 3 usuários' },
+      { nome: 'Caixa', incluso: true },
       { nome: 'Equipe', incluso: true, detalhe: 'Até 5 colaboradores' },
     ],
   },
@@ -72,10 +80,14 @@ const planos = [
       { nome: 'Cardápio', incluso: true },
       { nome: 'Mesas', incluso: true, detalhe: 'Ilimitado' },
       { nome: 'Pedidos (KDS)', incluso: true, detalhe: 'Ilimitado' },
+      { nome: 'Painel Entregador', incluso: true },
       { nome: 'Delivery', incluso: true, detalhe: 'Integrado' },
       { nome: 'Estatísticas Delivery', incluso: true },
-      { nome: 'App Garçom', incluso: true, detalhe: 'Ilimitado' },
+      { nome: 'Desempenho', incluso: true },
+      { nome: 'Avaliações', incluso: true },
       { nome: 'Marketing', incluso: true, detalhe: 'Cupons + Fidelidade' },
+      { nome: 'Garçom', incluso: true, detalhe: 'Ilimitado' },
+      { nome: 'Caixa', incluso: true },
       { nome: 'Equipe', incluso: true, detalhe: 'Ilimitado' },
     ],
   },
@@ -239,11 +251,13 @@ export function UpgradeModal({
                     className="w-full" 
                     variant={plano.destaque ? 'default' : 'outline'}
                     onClick={() => handleUpgrade(plano.slug)}
-                    disabled={!!processingPlan}
+                    disabled={!!processingPlan || isCurrentTrialPlan || isCurrentPlan}
                   >
                     {isProcessing ? (
                       <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Processando...</>
-                    ) : isCurrentTrialPlan ? 'Continuar' : 'Selecionar'}
+                    ) : (isCurrentTrialPlan || isCurrentPlan) ? (
+                      <><Check className="w-4 h-4 mr-2" /> Plano Atual</>
+                    ) : 'Selecionar'}
                   </Button>
                 </Card>
               );
@@ -261,8 +275,16 @@ export function UpgradeModal({
                 <Button variant="ghost" onClick={() => onOpenChange(false)}>
                   Fechar
                 </Button>
-                <Button variant="outline" onClick={() => { onOpenChange(false); navigate('/planos?mode=downgrade'); }}>
-                  Fazer Downgrade
+                {/* Se plano atual é bronze/iniciante → "Fazer Upgrade", senão "Fazer Downgrade" */}
+                <Button 
+                  variant="outline" 
+                  onClick={() => { 
+                    onOpenChange(false); 
+                    const mode = currentPlanSlug?.toLowerCase() === 'bronze' ? 'upgrade' : 'downgrade';
+                    navigate(`/planos?mode=${mode}`); 
+                  }}
+                >
+                  {currentPlanSlug?.toLowerCase() === 'bronze' ? 'Fazer Upgrade' : 'Fazer Downgrade'}
                 </Button>
               </>
             )}
