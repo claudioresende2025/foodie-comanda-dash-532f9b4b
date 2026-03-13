@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BottomNavigation } from '@/components/delivery/BottomNavigation';
 import { RestaurantStaffBlock } from '@/components/delivery/RestaurantStaffBlock';
+import AvaliacoesPendentes from '@/components/delivery/AvaliacoesPendentes';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -211,6 +212,9 @@ export default function DeliveryOrders() {
       </header>
 
       <main className="p-4 max-w-2xl mx-auto space-y-6">
+        {/* Banner de avaliações pendentes */}
+        <AvaliacoesPendentes />
+        
         {pedidos.length === 0 ? (
           <div className="text-center py-16">
             <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />

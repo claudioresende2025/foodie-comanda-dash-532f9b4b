@@ -77,12 +77,47 @@ export default function DeliveryRestaurant() {
   const [sizeModalProduct, setSizeModalProduct] = useState<any>(null);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
 
+  // Taxa de entrega dinâmica por bairro
+  const [taxaEntregaDinamica, setTaxaEntregaDinamica] = useState<number>(0);
+  const [bairroAtual, setBairroAtual] = useState<string>("");
+
   const { cart, addToCart, removeFromCart, clearCart, getQuantity, subtotal, total, itemCount } = useCart(
-    config?.taxa_entrega || 0,
+    taxaEntregaDinamica,
   );
 
   // Push notifications
   const { requestPermission, notifyPixConfirmed, permission } = usePushNotifications({ type: 'delivery' });
+
+  // Função para buscar taxa de entrega por bairro
+  const buscarTaxaBairro = useCallback(async (bairro: string) => {
+    if (!empresaId || !bairro) {
+      setTaxaEntregaDinamica(config?.taxa_entrega || 0);
+      return;
+    }
+    
+    try {
+      // Tentar buscar taxa específica do bairro
+      const { data: taxaBairro, error } = await supabase
+        .from('taxas_bairro')
+        .select('taxa')
+        .eq('empresa_id', empresaId)
+        .ilike('bairro_normalizado', bairro.toLowerCase().trim())
+        .eq('ativo', true)
+        .maybeSingle();
+      
+      if (!error && taxaBairro?.taxa !== undefined) {
+        setTaxaEntregaDinamica(taxaBairro.taxa);
+        setBairroAtual(bairro);
+      } else {
+        // Fallback para taxa padrão
+        setTaxaEntregaDinamica(config?.taxa_entrega || 0);
+        setBairroAtual(bairro);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar taxa por bairro:', err);
+      setTaxaEntregaDinamica(config?.taxa_entrega || 0);
+    }
+  }, [empresaId, config?.taxa_entrega]);
   // Calcular valor do desconto de pontos de fidelidade
   const descontoPontos = usarPontosFidelidade && fidelidadeData
     ? (pontosAUtilizar * (fidelidadeData.reais_por_ponto || 0.01))
@@ -186,6 +221,10 @@ export default function DeliveryRestaurant() {
       referencia: end.referencia || "",
     });
     setUsandoEnderecoSalvo(true);
+    // Buscar taxa do bairro
+    if (end.bairro) {
+      buscarTaxaBairro(end.bairro);
+    }
   };
 
   const handleEnderecoSelecionado = (enderecoId: string) => {
@@ -208,6 +247,9 @@ export default function DeliveryRestaurant() {
         referencia: "",
       });
       setUsandoEnderecoSalvo(false);
+      // Resetar para taxa padrão
+      setTaxaEntregaDinamica(config?.taxa_entrega || 0);
+      setBairroAtual("");
     }
   };
 
@@ -386,6 +428,13 @@ export default function DeliveryRestaurant() {
     checkAuth();
   }, [fetchData, checkAuth]);
 
+  // Inicializar taxa de entrega quando config é carregado
+  useEffect(() => {
+    if (config?.taxa_entrega !== undefined) {
+      setTaxaEntregaDinamica(config.taxa_entrega);
+    }
+  }, [config?.taxa_entrega]);
+
   // Polling para verificar confirmação do pagamento PIX
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
@@ -445,6 +494,10 @@ export default function DeliveryRestaurant() {
           cidade: addressData.cidade || prev.cidade,
           estado: addressData.estado || prev.estado,
         }));
+        // Buscar taxa do bairro quando CEP é preenchido
+        if (addressData.bairro) {
+          buscarTaxaBairro(addressData.bairro);
+        }
       }
     }
   };
@@ -511,7 +564,7 @@ export default function DeliveryRestaurant() {
         enderecoId: enderecoId,
         userId: user.id,
         subtotal: subtotal,
-        taxaEntrega: config?.taxa_entrega || 0,
+        taxaEntrega: taxaEntregaDinamica,
         desconto: desconto || 0,
         descontoPontos: descontoPontos || 0,
         descontoCupom: descontoCupom || 0,
@@ -549,7 +602,7 @@ export default function DeliveryRestaurant() {
             endereco_id: enderecoId,
             status: metodoPagamento === "pix" ? "pendente" : "pendente", // pendente até entrega
             subtotal: subtotal,
-            taxa_entrega: config?.taxa_entrega || 0,
+            taxa_entrega: taxaEntregaDinamica,
             desconto: desconto || null,
             total: totalComDesconto,
             forma_pagamento: formaPagamentoMap[metodoPagamento],
@@ -1243,9 +1296,11 @@ export default function DeliveryRestaurant() {
                   <span>R$ {subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Taxa de Entrega</span>
+                  <span className="text-muted-foreground">
+                    Taxa de Entrega{bairroAtual ? ` (${bairroAtual})` : ""}
+                  </span>
                   <span className="text-green-600 font-medium">
-                    {config?.taxa_entrega > 0 ? `R$ ${config.taxa_entrega.toFixed(2)}` : "Grátis"}
+                    {taxaEntregaDinamica > 0 ? `R$ ${taxaEntregaDinamica.toFixed(2)}` : "Grátis"}
                   </span>
                 </div>
                 {descontoPontos > 0 && (

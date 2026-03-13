@@ -43,6 +43,8 @@ import EntregadorPanel from "@/pages/admin/EntregadorPanel";
 import Marketing from "@/pages/admin/Marketing";
 import Assinatura from "@/pages/admin/Assinatura";
 import DiagnosticoStripe from "@/pages/admin/DiagnosticoStripe";
+import AdminDesempenho from "@/pages/admin/AdminDesempenho";
+import AdminAvaliacoes from "@/pages/admin/AdminAvaliacoes";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -110,6 +112,8 @@ const App = () => (
               <Route path="pedidos" element={<Pedidos />} />
               <Route path="delivery" element={<PedidosDelivery />} />
               <Route path="delivery/dashboard" element={<DeliveryDashboard />} />
+              <Route path="desempenho" element={<AdminDesempenho />} />
+              <Route path="avaliacoes" element={<AdminAvaliacoes />} />
               <Route path="entregador" element={<EntregadorPanel />} />
               <Route path="marketing" element={<Marketing />} />
               <Route path="caixa" element={<Caixa />} />

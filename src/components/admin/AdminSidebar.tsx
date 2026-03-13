@@ -34,6 +34,8 @@ import {
   Megaphone,
   CreditCard,
   Shield,
+  BarChart3,
+  Star,
 } from 'lucide-react';
 import UpgradeModal from '@/components/UpgradeModal';
 import { Button } from '@/components/ui/button';
@@ -58,7 +60,9 @@ type MenuItemKey =
   | 'configuracoes'
   | 'assinatura'
   | 'administracao'
-  | 'entregador';
+  | 'entregador'
+  | 'desempenho'
+  | 'avaliacoes';
 
 interface MenuItem {
   key: MenuItemKey;
@@ -75,6 +79,8 @@ const allMenuItems: MenuItem[] = [
   { key: 'entregador', title: 'Painel Entregador', url: '/admin/entregador', icon: Bike },
   { key: 'delivery', title: 'Delivery', url: '/admin/delivery', icon: Truck },
   { key: 'deliveryStats', title: 'Estatísticas Delivery', url: '/admin/delivery/dashboard', icon: Truck },
+  { key: 'desempenho', title: 'Desempenho', url: '/admin/desempenho', icon: BarChart3 },
+  { key: 'avaliacoes', title: 'Avaliações', url: '/admin/avaliacoes', icon: Star },
   { key: 'marketing', title: 'Marketing', url: '/admin/marketing', icon: Megaphone },
   { key: 'garcom', title: 'Garçom', url: '/admin/garcom', icon: UserCheck },
   { key: 'caixa', title: 'Caixa', url: '/admin/caixa', icon: Wallet },
@@ -161,6 +167,8 @@ export function AdminSidebar() {
     entregador: canAccessEntregador,
     delivery: canAccessDelivery,
     deliveryStats: canAccessDeliveryStats,
+    desempenho: canAccessDeliveryStats,
+    avaliacoes: canAccessDeliveryStats,
     marketing: canAccessMarketing,
     garcom: canAccessGarcom,
     caixa: canAccessCaixa,

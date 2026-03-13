@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Truck, Clock, DollarSign, Loader2, Save, QrCode } from 'lucide-react';
+import TaxasBairroManager from './TaxasBairroManager';
 
 type DeliveryConfig = {
   id?: string;
@@ -161,7 +162,7 @@ export default function DeliveryConfigSection() {
         <div className="space-y-2">
           <Label className="flex items-center gap-2">
             <DollarSign className="w-4 h-4" />
-            Taxa de Entrega (R$)
+            Taxa de Entrega Padrão (R$)
           </Label>
           <Input
             type="number"
@@ -171,7 +172,14 @@ export default function DeliveryConfigSection() {
             onChange={(e) => handleChange('taxa_entrega', parseFloat(e.target.value) || 0)}
             placeholder="0.00"
           />
+          <p className="text-xs text-muted-foreground">
+            Esta taxa será usada quando o bairro do cliente não tiver taxa específica cadastrada.
+          </p>
         </div>
+
+        {/* Taxas por Bairro */}
+        <Separator />
+        <TaxasBairroManager />
 
         <div className="space-y-2">
           <Label className="flex items-center gap-2">
