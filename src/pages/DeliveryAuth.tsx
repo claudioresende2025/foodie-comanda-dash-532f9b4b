@@ -263,8 +263,24 @@ export default function DeliveryAuth() {
 
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error, data } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      
+      // Verificar se é super admin
+      if (data?.user?.id) {
+        const { data: superAdmin } = await supabase
+          .from('super_admins')
+          .select('id, ativo')
+          .eq('user_id', data.user.id)
+          .eq('ativo', true)
+          .maybeSingle();
+        
+        if (superAdmin?.ativo) {
+          toast.success('Login realizado!');
+          navigate('/super-admin', { replace: true });
+          return;
+        }
+      }
       
       toast.success('Login realizado!');
       const redirectTo = location.state?.from || '/delivery';

@@ -98,7 +98,7 @@ export default function AuthCliente() {
     if (!validateLogin()) return;
     
     setIsLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error, data } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -111,6 +111,22 @@ export default function AuthCliente() {
         toast.error('Erro ao fazer login. Tente novamente.');
       }
     } else {
+      // Verificar se é super admin
+      if (data?.user?.id) {
+        const { data: superAdmin } = await supabase
+          .from('super_admins')
+          .select('id, ativo')
+          .eq('user_id', data.user.id)
+          .eq('ativo', true)
+          .maybeSingle();
+        
+        if (superAdmin?.ativo) {
+          toast.success('Login realizado com sucesso!');
+          navigate('/super-admin');
+          return;
+        }
+      }
+      
       toast.success('Login realizado com sucesso!');
       // Redirecionar para o cardápio da empresa ou delivery
       if (empresaId) {

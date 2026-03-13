@@ -84,6 +84,20 @@ export default function Auth() {
 
   // Função para verificar o role do usuário e redirecionar apropriadamente
   const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
+    // Verificar primeiro se é super admin
+    const { data: superAdmin } = await supabase
+      .from('super_admins')
+      .select('id, ativo')
+      .eq('user_id', userId)
+      .eq('ativo', true)
+      .maybeSingle();
+    
+    // Se for super admin ativo, redireciona para página de super admin
+    if (superAdmin?.ativo) {
+      navigate('/super-admin');
+      return;
+    }
+
     // Buscar todos os roles do usuário (pode ter em várias empresas)
     const { data: userRoles } = await supabase
       .from('user_roles')
