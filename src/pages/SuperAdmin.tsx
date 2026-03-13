@@ -51,7 +51,7 @@ import {
   Unlock,
   TrendingUp,
   Calendar,
-  ArrowLeft,
+  LogOut,
   Save,
   Key,
   Wallet,
@@ -113,6 +113,7 @@ interface DashboardStats {
 export default function SuperAdmin() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   
@@ -247,12 +248,28 @@ export default function SuperAdmin() {
   };
 
   const loadData = async () => {
-    await Promise.all([
-      loadStats(),
-      loadEmpresas(),
-      loadConfigs(),
-      loadReembolsos(),
-    ]);
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        loadStats(),
+        loadEmpresas(),
+        loadConfigs(),
+        loadReembolsos(),
+      ]);
+      toast.success('Dados atualizados!');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate('/auth', { replace: true });
+    } catch (error) {
+      console.error('Erro ao sair:', error);
+      navigate('/auth', { replace: true });
+    }
   };
 
   const loadStats = async () => {
@@ -523,10 +540,11 @@ export default function SuperAdmin() {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                onClick={() => navigate('/admin')}
+                onClick={handleLogout}
                 className="text-white hover:bg-white/20"
+                title="Sair"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <LogOut className="w-5 h-5" />
               </Button>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center">
@@ -542,9 +560,10 @@ export default function SuperAdmin() {
               variant="outline" 
               size="sm" 
               onClick={loadData}
+              disabled={isRefreshing}
               className="text-slate-900"
             >
-              <RefreshCw className="w-4 h-4 mr-2" />
+              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               Atualizar
             </Button>
           </div>

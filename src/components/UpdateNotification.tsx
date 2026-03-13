@@ -106,7 +106,7 @@ export const UpdateNotification = () => {
           if (reg) {
             await reg.update();
           }
-        }, 60 * 1000);
+        }, 10 * 1000);
 
         return () => clearInterval(interval);
       } catch (error) {
