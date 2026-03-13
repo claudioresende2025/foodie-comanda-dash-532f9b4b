@@ -1055,7 +1055,7 @@ export default function SuperAdmin() {
 
       {/* Dialog Detalhes Empresa */}
       <Dialog open={empresaDialogOpen} onOpenChange={setEmpresaDialogOpen}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedEmpresa?.nome_fantasia}</DialogTitle>
             <DialogDescription>Detalhes e ações da empresa</DialogDescription>
@@ -1069,7 +1069,7 @@ export default function SuperAdmin() {
               </TabsList>
 
               <TabsContent value="controles" className="flex-1 overflow-hidden">
-                <ScrollArea className="h-full max-h-[60vh] pr-4">
+                <ScrollArea className="h-full max-h-[70vh] pr-4">
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
@@ -1146,6 +1146,18 @@ export default function SuperAdmin() {
                         <div className="space-y-2">
                           <Label>Caixa</Label>
                           <Switch checked={empresaOverrides?.caixa || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, caixa: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Painel Entregador</Label>
+                          <Switch checked={empresaOverrides?.painel_entregador || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, painel_entregador: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Desempenho</Label>
+                          <Switch checked={empresaOverrides?.desempenho || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, desempenho: v })} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Avaliações</Label>
+                          <Switch checked={empresaOverrides?.avaliacoes || false} onCheckedChange={(v) => setEmpresaOverrides({ ...empresaOverrides, avaliacoes: v })} />
                         </div>
                       </div>
 
