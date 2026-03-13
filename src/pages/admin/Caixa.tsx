@@ -148,6 +148,7 @@ export default function Caixa() {
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('todas');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Estados para Monitoramento de Mesas Pendentes
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -887,12 +888,20 @@ export default function Caixa() {
     refetchHistorico();
   };
 
-  const handleRefreshAll = () => {
-    // invalida todas as queries desta página com a empresa_id atual
-    queryClient.invalidateQueries({ queryKey: ['empresa', profile?.empresa_id] });
-    queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
-    queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile?.empresa_id, filterStartDate, filterEndDate, filterPaymentMethod] });
-    queryClient.invalidateQueries({ queryKey: ['pedidos-delivery-caixa', profile?.empresa_id] });
+  const handleRefreshAll = async () => {
+    setIsRefreshing(true);
+    try {
+      // invalida todas as queries desta página com a empresa_id atual
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['empresa', profile?.empresa_id] }),
+        queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] }),
+        queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile?.empresa_id, filterStartDate, filterEndDate, filterPaymentMethod] }),
+        queryClient.invalidateQueries({ queryKey: ['pedidos-delivery-caixa', profile?.empresa_id] }),
+      ]);
+      toast.success('Dados atualizados!');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   /** --------- RENDER --------- */
@@ -1143,8 +1152,8 @@ export default function Caixa() {
               {alertasPendentes} pendente{alertasPendentes > 1 ? 's' : ''}
             </Badge>
           )}
-          <Button variant="outline" onClick={handleRefreshAll}>
-            <RefreshCw className="w-4 h-4 mr-2" />
+          <Button variant="outline" disabled={isRefreshing} onClick={handleRefreshAll}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
         </div>

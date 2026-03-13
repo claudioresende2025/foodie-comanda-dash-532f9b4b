@@ -60,6 +60,7 @@ export default function Mesas() {
   // QR Code Dialog
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedMesaForQR, setSelectedMesaForQR] = useState<Mesa | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const empresaId = profile?.empresa_id;
 
@@ -334,8 +335,20 @@ export default function Mesas() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="w-4 h-4 mr-2" />
+          <Button 
+            variant="outline" 
+            disabled={isRefreshing}
+            onClick={async () => {
+              setIsRefreshing(true);
+              try {
+                await refetch();
+                toast.success('Mesas atualizadas!');
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
           

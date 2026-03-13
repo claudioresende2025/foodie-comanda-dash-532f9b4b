@@ -10,6 +10,7 @@ import { RestaurantStaffBlock } from '@/components/delivery/RestaurantStaffBlock
 import AvaliacoesPendentes from '@/components/delivery/AvaliacoesPendentes';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 type DeliveryStatus = 'pendente' | 'pago' | 'confirmado' | 'em_preparo' | 'saiu_entrega' | 'entregue' | 'cancelado';
 
@@ -36,6 +37,7 @@ export default function DeliveryOrders() {
   const navigate = useNavigate();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [isRestaurantStaff, setIsRestaurantStaff] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
@@ -204,9 +206,20 @@ export default function DeliveryOrders() {
             variant="ghost" 
             size="icon" 
             className="text-primary-foreground hover:bg-primary-foreground/10"
-            onClick={() => user && fetchPedidos(user.id)}
+            disabled={isRefreshing}
+            onClick={async () => {
+              if (user) {
+                setIsRefreshing(true);
+                try {
+                  await fetchPedidos(user.id);
+                  toast.success('Pedidos atualizados!');
+                } finally {
+                  setIsRefreshing(false);
+                }
+              }
+            }}
           >
-            <RefreshCw className="w-5 h-5" />
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </header>

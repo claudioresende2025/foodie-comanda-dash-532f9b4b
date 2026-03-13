@@ -83,6 +83,7 @@ export default function Cardapio() {
   const [prodImageUrl, setProdImageUrl] = useState<string | null>(null); // URL da imagem buscada
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Estados para variações de tamanho
   const [possuiVariacoes, setPossuiVariacoes] = useState(false);
@@ -361,8 +362,20 @@ export default function Cardapio() {
           <h1 className="text-3xl font-bold text-foreground">Gestão do Cardápio</h1>
           <p className="text-muted-foreground">Gerencie categorias e produtos</p>
         </div>
-        <Button variant="outline" onClick={() => { refetchCat(); refetchProd(); }}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+        <Button 
+          variant="outline" 
+          disabled={isRefreshing}
+          onClick={async () => { 
+            setIsRefreshing(true);
+            try {
+              await Promise.all([refetchCat(), refetchProd()]);
+              toast.success('Cardápio atualizado!');
+            } finally {
+              setIsRefreshing(false);
+            }
+          }}
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </div>

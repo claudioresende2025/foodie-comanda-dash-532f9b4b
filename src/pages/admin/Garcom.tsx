@@ -113,6 +113,7 @@ export default function Garcom() {
   const [baixaObservacao, setBaixaObservacao] = useState('');
   const [isProcessingBaixa, setIsProcessingBaixa] = useState(false);
   const [baixaTotalValue, setBaixaTotalValue] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // ========== QUERIES ==========
 
@@ -395,10 +396,18 @@ export default function Garcom() {
     }
   };
 
-  const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
-    queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
-    queryClient.invalidateQueries({ queryKey: ['pedidos-garcom', profile?.empresa_id] });
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] }),
+        queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] }),
+        queryClient.invalidateQueries({ queryKey: ['pedidos-garcom', profile?.empresa_id] }),
+      ]);
+      toast.success('Dados atualizados!');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Abrir modal "Dar Baixa" - busca total da mesa
@@ -576,8 +585,8 @@ export default function Garcom() {
           <p className="text-muted-foreground">Visão otimizada para tablet</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleRefresh}>
-            <RefreshCw className="w-4 h-4 mr-2" />
+          <Button variant="outline" disabled={isRefreshing} onClick={handleRefresh}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
           <Button

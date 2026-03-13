@@ -63,6 +63,7 @@ export default function EntregadorPanel() {
   const [empresaNome, setEmpresaNome] = useState<string | null>(null);
   const [destinoCoords, setDestinoCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [showMap, setShowMap] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Ref para o watch do GPS
   const watchIdRef = useRef<number | null>(null);
@@ -679,8 +680,23 @@ export default function EntregadorPanel() {
             </p>
           )}
         </div>
-        <Button variant="outline" size="icon" onClick={() => refetch()}>
-          <RefreshCw className="w-4 h-4" />
+        <Button 
+          variant="outline" 
+          size="icon" 
+          disabled={isRefreshing}
+          onClick={async () => {
+            setIsRefreshing(true);
+            try {
+              await refetch();
+              toast.success('Pedidos atualizados!');
+            } catch (err) {
+              toast.error('Erro ao atualizar');
+            } finally {
+              setIsRefreshing(false);
+            }
+          }}
+        >
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 

@@ -79,6 +79,7 @@ export default function DeliveryTracking() {
   const navigate = useNavigate();
   const [pedido, setPedido] = useState<any>(null);
   const [empresa, setEmpresa] = useState<any>(null);
+  const [configDelivery, setConfigDelivery] = useState<{ tempo_estimado_min: number; tempo_estimado_max: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customerCoords, setCustomerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -194,6 +195,17 @@ export default function DeliveryTracking() {
         .single();
 
       setEmpresa(empresaData);
+      
+      // Fetch config_delivery para tempo estimado
+      const { data: configData } = await supabase
+        .from('config_delivery')
+        .select('tempo_estimado_min, tempo_estimado_max')
+        .eq('empresa_id', data.empresa_id)
+        .single();
+      
+      if (configData) {
+        setConfigDelivery(configData);
+      }
       
       // Geocoding do restaurante
       if (empresaData) {
@@ -362,7 +374,7 @@ export default function DeliveryTracking() {
                 />
               </div>
               
-              {/* Info de atualização */}
+              {/* Info de atualização e previsão */}
               {hasLocation && deliveryLocation && (
                 <div className="px-4 pb-4">
                   <div className="flex items-center justify-between p-3 bg-muted rounded-lg text-sm">
@@ -373,11 +385,29 @@ export default function DeliveryTracking() {
                         {new Date(deliveryLocation.updated_at).toLocaleTimeString('pt-BR')}
                       </span>
                     </div>
-                    {deliveryLocation.precisao && (
-                      <span className="text-xs text-muted-foreground">
-                        ±{Math.round(deliveryLocation.precisao)}m
-                      </span>
+                    {configDelivery && (
+                      <div className="flex items-center gap-2 text-primary">
+                        <span className="text-muted-foreground">Previsão:</span>
+                        <span className="font-semibold">
+                          {configDelivery.tempo_estimado_min}-{configDelivery.tempo_estimado_max}min
+                        </span>
+                      </div>
                     )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Previsão quando não tem GPS ativo ainda */}
+              {!hasLocation && configDelivery && pedido?.status !== 'entregue' && pedido?.status !== 'cancelado' && (
+                <div className="px-4 pb-4">
+                  <div className="flex items-center justify-center p-3 bg-muted rounded-lg text-sm">
+                    <div className="flex items-center gap-2 text-primary">
+                      <Clock className="w-4 h-4" />
+                      <span className="text-muted-foreground">Tempo estimado:</span>
+                      <span className="font-semibold">
+                        {configDelivery.tempo_estimado_min}-{configDelivery.tempo_estimado_max}min
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
