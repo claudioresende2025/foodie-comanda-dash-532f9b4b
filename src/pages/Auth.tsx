@@ -189,9 +189,9 @@ export default function Auth() {
     
     setIsLoading(true);
     const { error } = await signIn(email, password);
-    setIsLoading(false);
 
     if (error) {
+      setIsLoading(false);
       if (error.message.includes('Invalid login credentials')) {
         toast.error('E-mail ou senha incorretos');
       } else if (error.message.includes('Email not confirmed')) {
@@ -200,9 +200,29 @@ export default function Auth() {
         toast.error('Erro ao fazer login. Tente novamente.');
       }
     } else {
+      // Verificar imediatamente se é super admin para redirecionar
+      const { data: { user: loggedUser } } = await supabase.auth.getUser();
+      
+      if (loggedUser?.id) {
+        const { data: superAdmin } = await supabase
+          .from('super_admins')
+          .select('id, ativo')
+          .eq('user_id', loggedUser.id)
+          .eq('ativo', true)
+          .maybeSingle();
+        
+        if (superAdmin?.ativo) {
+          setIsLoading(false);
+          hasRedirected.current = true;
+          toast.success('Login realizado com sucesso!');
+          navigate('/super-admin');
+          return;
+        }
+      }
+      
+      setIsLoading(false);
       toast.success('Login realizado com sucesso!');
-      // O useEffect cuida do redirecionamento baseado no profile
-      // Não fazer navigate aqui para aguardar o profile ser carregado
+      // O useEffect cuida do redirecionamento baseado no profile para outros usuários
     }
   };
 
