@@ -204,20 +204,54 @@ export default function EntregadorPanel() {
   // Função para enviar localização para o servidor
   const sendLocationToServer = useCallback(async (position: GeolocationPosition, pedidoId: string) => {
     try {
-      const { error } = await supabase
+      console.log('Enviando localização:', {
+        pedido: pedidoId,
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      });
+
+      // Primeiro tentar UPDATE
+      const { data: existingData, error: selectError } = await supabase
         .from('delivery_locations')
-        .upsert({
-          pedido_delivery_id: pedidoId,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          precisao: position.coords.accuracy,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'pedido_delivery_id',
-        });
+        .select('id')
+        .eq('pedido_delivery_id', pedidoId)
+        .maybeSingle();
+
+      if (selectError) {
+        console.error('Erro ao buscar localização existente:', selectError);
+      }
+
+      let error;
+      if (existingData) {
+        // Já existe, fazer UPDATE
+        const result = await supabase
+          .from('delivery_locations')
+          .update({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            precisao: position.coords.accuracy,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('pedido_delivery_id', pedidoId);
+        error = result.error;
+      } else {
+        // Não existe, fazer INSERT
+        const result = await supabase
+          .from('delivery_locations')
+          .insert({
+            pedido_delivery_id: pedidoId,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            precisao: position.coords.accuracy,
+          });
+        error = result.error;
+      }
 
       if (error) {
-        console.error('Erro ao enviar localização:', error);
+        console.error('Erro ao salvar localização:', error);
+        toast.error('Erro ao enviar localização: ' + error.message);
+      } else {
+        console.log('Localização salva com sucesso!');
       }
     } catch (err) {
       console.error('Erro ao enviar localização:', err);
