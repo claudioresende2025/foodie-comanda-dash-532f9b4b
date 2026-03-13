@@ -109,22 +109,23 @@ export default function DeliveryProfile() {
 
   const handleLogout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Erro ao fazer logout:', error);
-        toast.error('Erro ao sair. Tente novamente.');
-        return;
-      }
-      
-      // Limpar storage local do Supabase
+      // Limpar storage local do Supabase ANTES do signOut
       localStorage.removeItem('sb-zlwpxflqtyhdwanmupgy-auth-token');
       sessionStorage.clear();
       
+      // Tentar fazer logout no Supabase (ignorar erro se já não houver sessão)
+      await supabase.auth.signOut().catch(() => {});
+      
       toast.success('Você saiu da conta');
-      window.location.href = '/delivery/auth';
+      
+      // Pequeno delay para o toast aparecer
+      setTimeout(() => {
+        window.location.href = '/delivery/auth';
+      }, 500);
     } catch (err) {
       console.error('Exceção no logout:', err);
-      toast.error('Erro ao sair. Tente novamente.');
+      // Mesmo com erro, redirecionar
+      window.location.href = '/delivery/auth';
     }
   };
 

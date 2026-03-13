@@ -32,19 +32,19 @@ export const DeliveryHeader = memo(function DeliveryHeader({
 
   const handleLogout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Erro ao fazer logout:', error);
-        return;
-      }
-      
-      // Limpar storage local do Supabase
+      // Limpar storage local do Supabase ANTES do signOut
       localStorage.removeItem('sb-zlwpxflqtyhdwanmupgy-auth-token');
       sessionStorage.clear();
       
+      // Tentar fazer logout no Supabase (ignorar erro se já não houver sessão)
+      await supabase.auth.signOut().catch(() => {});
+      
+      // Redirecionar
       window.location.href = '/delivery/auth';
     } catch (err) {
       console.error('Exceção no logout:', err);
+      // Mesmo com erro, redirecionar
+      window.location.href = '/delivery/auth';
     }
   };
 
@@ -71,7 +71,11 @@ export const DeliveryHeader = memo(function DeliveryHeader({
           
           {/* Ações à direita */}
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-            <NotificationToggle type="delivery" />
+            <NotificationToggle 
+              type="delivery" 
+              variant="ghost"
+              className="text-white hover:bg-white/20 [&>svg]:text-white"
+            />
             {isLoggedIn && (
               <Button 
                 variant="ghost" 

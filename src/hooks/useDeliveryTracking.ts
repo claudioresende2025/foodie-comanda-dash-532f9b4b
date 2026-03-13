@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface DeliveryLocation {
@@ -14,6 +14,7 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
   const [isLoading, setIsLoading] = useState(true);
   const [entregadorId, setEntregadorId] = useState<string | null>(null);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
+  const pollIntervalRef = useRef<number | null>(null);
 
   const fetchLocation = useCallback(async () => {
     if (!pedidoId) {
@@ -22,8 +23,20 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
     }
 
     try {
-      // Primeiro: buscar localização da tabela delivery_locations (sincronizada pelo trigger)
-      const { data, error } = await supabase
+      // Primeiro: buscar informações do pedido (entregador_id e empresa_id)
+      const { data: pedidoData } = await supabase
+        .from('pedidos_delivery')
+        .select('entregador_id, empresa_id, status')
+        .eq('id', pedidoId)
+        .maybeSingle();
+
+      if (pedidoData?.entregador_id && pedidoData?.empresa_id) {
+        setEntregadorId(pedidoData.entregador_id);
+        setEmpresaId(pedidoData.empresa_id);
+      }
+
+      // Segundo: buscar localização da tabela delivery_locations
+      const { data: deliveryLoc } = await supabase
         .from('delivery_locations')
         .select('*')
         .eq('pedido_delivery_id', pedidoId)
@@ -31,30 +44,20 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
         .limit(1)
         .maybeSingle();
 
-      if (!error && data && data.latitude && data.longitude) {
+      if (deliveryLoc && deliveryLoc.latitude && deliveryLoc.longitude) {
         setLocation({
-          latitude: Number(data.latitude),
-          longitude: Number(data.longitude),
-          updated_at: data.updated_at,
-          precisao: data.precisao ? Number(data.precisao) : undefined,
+          latitude: Number(deliveryLoc.latitude),
+          longitude: Number(deliveryLoc.longitude),
+          updated_at: deliveryLoc.updated_at,
+          precisao: deliveryLoc.precisao ? Number(deliveryLoc.precisao) : undefined,
         });
         setHasLocation(true);
         setIsLoading(false);
         return;
       }
 
-      // Segundo: se não encontrou, tentar buscar diretamente de entregador_locations
-      // Primeiro pegar o entregador_id do pedido
-      const { data: pedidoData } = await supabase
-        .from('pedidos_delivery')
-        .select('entregador_id, empresa_id')
-        .eq('id', pedidoId)
-        .maybeSingle();
-
+      // Terceiro: se não encontrou em delivery_locations, buscar diretamente de entregador_locations
       if (pedidoData?.entregador_id && pedidoData?.empresa_id) {
-        setEntregadorId(pedidoData.entregador_id);
-        setEmpresaId(pedidoData.empresa_id);
-
         const { data: entregadorLoc } = await supabase
           .from('entregador_locations')
           .select('*')
@@ -88,6 +91,21 @@ export function useDeliveryTracking(pedidoId: string | undefined) {
   useEffect(() => {
     fetchLocation();
   }, [fetchLocation]);
+
+  // Polling agressivo a cada 5 segundos para garantir atualização
+  useEffect(() => {
+    if (!pedidoId) return;
+
+    pollIntervalRef.current = window.setInterval(() => {
+      fetchLocation();
+    }, 5000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        window.clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [pedidoId, fetchLocation]);
 
   // Realtime subscription para atualizações de localização em delivery_locations
   useEffect(() => {

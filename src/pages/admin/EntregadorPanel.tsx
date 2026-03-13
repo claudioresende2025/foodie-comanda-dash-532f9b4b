@@ -281,11 +281,12 @@ export default function EntregadorPanel() {
 
       if (error) {
         console.error('Erro ao salvar localização do entregador:', error);
-        // Fallback: tentar salvar diretamente em delivery_locations para pedidos ativos
-        await syncLocationToPedidos(position);
       } else {
         console.log('Localização do entregador salva com sucesso!');
       }
+      
+      // SEMPRE sincronizar diretamente para delivery_locations também (não depender apenas do trigger)
+      await syncLocationToPedidos(position);
     } catch (err) {
       console.error('Erro ao enviar localização:', err);
     }
