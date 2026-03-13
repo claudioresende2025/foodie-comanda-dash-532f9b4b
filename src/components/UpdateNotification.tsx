@@ -9,12 +9,11 @@ export const UpdateNotification = () => {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const showTimerRef = useRef<number | null>(null);
-  // Não bloquear se já foi mostrado - apenas verificar se foi atualizado nesta sessão
   const hasUpdatedRef = useRef(sessionStorage.getItem('update_applied_this_session') === '1');
+  const checkIntervalRef = useRef<number | null>(null);
 
   // Função unificada para detectar atualização
   const markUpdateAvailable = (worker?: ServiceWorker) => {
-    // Se já atualizou nesta sessão, não mostrar de novo
     if (hasUpdatedRef.current) return;
     
     if (worker) {
@@ -23,7 +22,6 @@ export const UpdateNotification = () => {
     
     sessionStorage.setItem('update_available', '1');
     
-    // Limpa timer anterior se existir
     if (showTimerRef.current) {
       window.clearTimeout(showTimerRef.current);
     }
@@ -35,60 +33,72 @@ export const UpdateNotification = () => {
     }, 10000);
   };
 
+  // Verificação por fetch (funciona em desktop e mobile)
+  const checkVersionByFetch = async () => {
+    if (hasUpdatedRef.current) return;
+    
+    try {
+      // Busca o index.html com cache-bust para obter versão atual do servidor
+      const response = await fetch(`/index.html?_=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      
+      if (response.ok) {
+        const html = await response.text();
+        // Procura pelo hash do JS bundle no HTML
+        const match = html.match(/index-([A-Za-z0-9]+)\.js/);
+        const serverVersion = match ? match[1] : null;
+        const localVersion = localStorage.getItem('app_js_version');
+        
+        if (serverVersion && localVersion && serverVersion !== localVersion) {
+          console.log('[UpdateNotification] Nova versão detectada via fetch:', serverVersion, 'vs', localVersion);
+          markUpdateAvailable();
+        } else if (serverVersion && !localVersion) {
+          // Primeira vez: salvar versão atual
+          localStorage.setItem('app_js_version', serverVersion);
+        }
+      }
+    } catch (error) {
+      // Silenciar erros de fetch
+    }
+  };
+
   useEffect(() => {
-    // Verificação por build timestamp (funciona sem SW)
+    // Verificação por build timestamp
     const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
     const lastBuild = localStorage.getItem('app_build_version');
 
     if (currentBuild && lastBuild && lastBuild !== currentBuild) {
       markUpdateAvailable();
     } else if (currentBuild && !lastBuild) {
-      // Primeira vez: salva sem mostrar notificação
       localStorage.setItem('app_build_version', currentBuild);
     }
 
-    // Se já havia update disponível e ainda não foi mostrado
+    // Se já havia update disponível
     if (sessionStorage.getItem('update_available') === '1') {
       markUpdateAvailable();
     }
 
-    if (!('serviceWorker' in navigator)) {
-      return;
-    }
+    // Verificação periódica por fetch (funciona sem SW)
+    checkVersionByFetch();
+    checkIntervalRef.current = window.setInterval(checkVersionByFetch, 10 * 1000);
 
-    const checkForUpdates = async () => {
-      // Se já atualizou nesta sessão, não verifica mais
-      if (hasUpdatedRef.current) return;
-      
-      try {
-        const registration = await navigator.serviceWorker.getRegistration();
-        if (registration) {
-          if (registration.waiting) {
-            markUpdateAvailable(registration.waiting);
-            return;
-          }
-
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  markUpdateAvailable(newWorker);
-                }
-              });
-            }
-          });
-        }
-
-        navigator.serviceWorker.ready.then((reg) => {
-          if (hasUpdatedRef.current) return;
-          if (reg) {
-            if (reg.waiting) {
-              markUpdateAvailable(reg.waiting);
+    // Service Worker (se disponível)
+    if ('serviceWorker' in navigator) {
+      const checkForUpdates = async () => {
+        if (hasUpdatedRef.current) return;
+        
+        try {
+          const registration = await navigator.serviceWorker.getRegistration();
+          if (registration) {
+            if (registration.waiting) {
+              markUpdateAvailable(registration.waiting);
               return;
             }
-            reg.addEventListener('updatefound', () => {
-              const newWorker = reg.installing;
+
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
               if (newWorker) {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
@@ -97,45 +107,45 @@ export const UpdateNotification = () => {
                 });
               }
             });
+
+            // Força verificação de atualização do SW
+            await registration.update();
           }
-        }).catch(() => {});
+        } catch (error) {
+          console.error('Erro ao verificar SW:', error);
+        }
+      };
 
-        const interval = setInterval(async () => {
-          if (hasUpdatedRef.current) return;
-          const reg = await navigator.serviceWorker.getRegistration();
-          if (reg) {
-            await reg.update();
-          }
-        }, 10 * 1000);
+      const onMessage = (e: MessageEvent) => {
+        if (hasUpdatedRef.current) return;
+        if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
+          markUpdateAvailable();
+        }
+      };
+      
+      navigator.serviceWorker.addEventListener('message', onMessage as EventListener);
+      checkForUpdates();
 
-        return () => clearInterval(interval);
-      } catch (error) {
-        console.error('Erro ao verificar atualizações:', error);
-      }
-    };
+      const handleVisibilityChange = () => {
+        if (!document.hidden && !hasUpdatedRef.current) {
+          checkForUpdates();
+          checkVersionByFetch();
+        }
+      };
 
-    const onMessage = (e: MessageEvent) => {
-      if (hasUpdatedRef.current) return;
-      if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
-        markUpdateAvailable();
-      }
-    };
-    navigator.serviceWorker.addEventListener('message', onMessage as EventListener);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    checkForUpdates();
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden && !hasUpdatedRef.current) {
-        checkForUpdates();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
+        if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
+        if (checkIntervalRef.current) window.clearInterval(checkIntervalRef.current);
+      };
+    }
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
       if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
+      if (checkIntervalRef.current) window.clearInterval(checkIntervalRef.current);
     };
   }, []);
 
@@ -152,24 +162,37 @@ export const UpdateNotification = () => {
     if (currentBuild) {
       localStorage.setItem('app_build_version', currentBuild);
     }
+    
+    // Limpa versão JS para forçar nova verificação após reload
+    localStorage.removeItem('app_js_version');
 
     if (waitingWorker) {
       waitingWorker.postMessage({ type: 'SKIP_WAITING' });
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         window.location.reload();
       });
+      // Timeout de fallback caso controllerchange não dispare
+      setTimeout(() => window.location.reload(), 1000);
       return;
     }
-    navigator.serviceWorker.getRegistration().then((reg) => {
-      if (reg?.waiting) {
-        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
+    
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then((reg) => {
+        if (reg?.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            window.location.reload();
+          });
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
           window.location.reload();
-        });
-      } else {
+        }
+      }).catch(() => {
         window.location.reload();
-      }
-    });
+      });
+    } else {
+      window.location.reload();
+    }
   };
 
   const handleClose = () => {
