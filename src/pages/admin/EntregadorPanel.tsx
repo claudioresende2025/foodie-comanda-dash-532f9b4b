@@ -454,7 +454,53 @@ export default function EntregadorPanel() {
     setCurrentPosition(null);
   }, [resolvedEmpresaId, user?.id]);
 
-  // Cleanup ao desmontar
+  // Verificar se o GPS já estava ativo ao carregar a página (persistência de estado)
+  useEffect(() => {
+    const checkAndRestoreGPS = async () => {
+      if (!resolvedEmpresaId || !user?.id) return;
+
+      try {
+        // Verificar se existe um registro ativo de GPS para este entregador
+        const { data } = await supabase
+          .from('entregador_locations')
+          .select('is_active, latitude, longitude, updated_at')
+          .eq('user_id', user.id)
+          .eq('empresa_id', resolvedEmpresaId)
+          .maybeSingle();
+
+        // Se o GPS estava marcado como ativo (menos de 5 minutos atrás), restaurar
+        if (data?.is_active) {
+          const updatedAt = new Date(data.updated_at);
+          const now = new Date();
+          const minutesSinceUpdate = (now.getTime() - updatedAt.getTime()) / 1000 / 60;
+          
+          // Se foi atualizado nos últimos 5 minutos, considerar como ainda ativo
+          if (minutesSinceUpdate < 5) {
+            console.log('Restaurando GPS do entregador - estava ativo há', minutesSinceUpdate.toFixed(1), 'minutos');
+            // Reiniciar o tracking automaticamente
+            startGPSTracking();
+          } else {
+            console.log('GPS estava ativo mas há mais de 5 minutos sem atualização. Marcando como inativo.');
+            // Marcar como inativo no banco
+            await supabase
+              .from('entregador_locations')
+              .update({ is_active: false })
+              .eq('user_id', user.id)
+              .eq('empresa_id', resolvedEmpresaId);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao verificar estado do GPS:', err);
+      }
+    };
+
+    // Só executar após ter os IDs necessários
+    if (resolvedEmpresaId && user?.id) {
+      checkAndRestoreGPS();
+    }
+  }, [resolvedEmpresaId, user?.id, startGPSTracking]);
+
+  // Cleanup ao desmontar - NÃO desativar no banco, apenas parar o watch local
   useEffect(() => {
     return () => {
       if (watchIdRef.current !== null) {
@@ -463,6 +509,7 @@ export default function EntregadorPanel() {
       if (updateIntervalRef.current) {
         clearInterval(updateIntervalRef.current);
       }
+      // Não marcar como inativo no banco - queremos manter o estado para quando voltar
     };
   }, []);
 
@@ -903,7 +950,7 @@ export default function EntregadorPanel() {
                 <Button
                   className="w-full bg-purple-600 hover:bg-purple-700"
                   onClick={() => handleSaiuParaEntrega(pedido)}
-                  disabled={updateStatusMutation.isPending || (isGPSActive && pedidoEmEntrega !== pedido.id)}
+                  disabled={updateStatusMutation.isPending}
                 >
                   {updateStatusMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
