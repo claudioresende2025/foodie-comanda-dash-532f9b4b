@@ -90,6 +90,19 @@ const mapStyles = `
   .marker-container {
     position: relative;
   }
+  /* Garantir que o mapa não sobreponha o cabeçalho */
+  .leaflet-container {
+    z-index: 1 !important;
+  }
+  .leaflet-pane {
+    z-index: 1 !important;
+  }
+  .leaflet-top, .leaflet-bottom {
+    z-index: 10 !important;
+  }
+  .leaflet-control {
+    z-index: 10 !important;
+  }
 `;
 
 export function DeliveryMap({
@@ -328,7 +341,7 @@ export function DeliveryMap({
   const distance = getDistance();
 
   return (
-    <div className="relative rounded-xl overflow-hidden shadow-lg border-2 border-primary/20">
+    <div className="relative rounded-xl overflow-hidden shadow-lg border-2 border-primary/20" style={{ zIndex: 0 }}>
       {/* Loading overlay */}
       {isLoading && (
         <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm flex items-center justify-center">
@@ -343,7 +356,7 @@ export function DeliveryMap({
       <div
         ref={mapRef}
         className="w-full h-72 md:h-80"
-        style={{ minHeight: '288px' }}
+        style={{ minHeight: '288px', zIndex: 0 }}
       />
       
       {/* Badge de distância */}

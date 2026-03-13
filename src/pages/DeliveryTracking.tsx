@@ -288,7 +288,7 @@ export default function DeliveryTracking() {
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Map Card - Show when status is 'saiu_entrega' */}
         {currentStatus === 'saiu_entrega' && (
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden" style={{ zIndex: 0 }}>
             <CardContent className="p-0">
               {/* Header do mapa */}
               <div className={`${hasLocation ? 'bg-gradient-to-r from-purple-500 to-purple-600' : 'bg-gradient-to-r from-gray-500 to-gray-600'} text-white p-4`}>
@@ -322,7 +322,7 @@ export default function DeliveryTracking() {
               </div>
               
               {/* Mapa */}
-              <div className="p-4">
+              <div className="p-4" style={{ position: 'relative', zIndex: 0 }}>
                 <DeliveryMap
                   deliveryLocation={
                     deliveryLocation

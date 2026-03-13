@@ -702,7 +702,7 @@ export default function DeliveryRestaurant() {
             ? ` Troco para R$ ${trocoParaValor.toFixed(2)}.` 
             : '';
           toast.success(`Pedido #${ped.id.slice(0, 8).toUpperCase()} criado! Pagamento na entrega.${trocoMsg}`);
-          navigate('/delivery/pedidos');
+          navigate('/delivery/orders');
         }
       } else {
         // Para cartão: enviar dados para criar checkout do Stripe via Lovable Cloud
@@ -1290,7 +1290,7 @@ export default function DeliveryRestaurant() {
           if (!open && !pixConfirmado) {
             // Se fechou sem confirmar pagamento, ir para a lista de pedidos
             setShowPixModal(false);
-            navigate("/delivery/pedidos");
+            navigate("/delivery/orders");
           } else {
             setShowPixModal(open);
           }
@@ -1365,7 +1365,7 @@ export default function DeliveryRestaurant() {
                 if (pedidoId) {
                   navigate(`/delivery/tracking/${pedidoId}`);
                 } else {
-                  navigate("/delivery/pedidos");
+                  navigate("/delivery/orders");
                 }
               }}
             >
@@ -1378,7 +1378,7 @@ export default function DeliveryRestaurant() {
               className="w-full mt-2"
               onClick={() => {
                 setShowPixModal(false);
-                navigate("/delivery/pedidos");
+                navigate("/delivery/orders");
               }}
             >
               Ver Meus Pedidos

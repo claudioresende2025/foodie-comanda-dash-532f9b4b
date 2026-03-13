@@ -60,6 +60,7 @@ export default function EntregadorPanel() {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [pedidoEmEntrega, setPedidoEmEntrega] = useState<string | null>(null);
   const [resolvedEmpresaId, setResolvedEmpresaId] = useState<string | null>(null);
+  const [empresaNome, setEmpresaNome] = useState<string | null>(null);
   const [destinoCoords, setDestinoCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [showMap, setShowMap] = useState(false);
   
@@ -114,6 +115,25 @@ export default function EntregadorPanel() {
 
     resolveEmpresa();
   }, [profile?.empresa_id, user?.id]);
+
+  // Buscar nome da empresa quando empresa_id for resolvido
+  useEffect(() => {
+    const fetchEmpresaNome = async () => {
+      if (!resolvedEmpresaId) return;
+      
+      const { data } = await supabase
+        .from('empresas')
+        .select('nome_fantasia')
+        .eq('id', resolvedEmpresaId)
+        .maybeSingle();
+      
+      if (data?.nome_fantasia) {
+        setEmpresaNome(data.nome_fantasia);
+      }
+    };
+
+    fetchEmpresaNome();
+  }, [resolvedEmpresaId]);
 
   // Buscar pedidos para entrega (status: confirmado, em_preparo ou saiu_entrega)
   const { data: pedidos = [], isLoading, refetch } = useQuery({
@@ -202,19 +222,27 @@ export default function EntregadorPanel() {
   });
 
   // Função para enviar localização para o servidor
-  const sendLocationToServer = useCallback(async (position: GeolocationPosition, pedidoId: string) => {
+  // Agora salva em entregador_locations (global) em vez de delivery_locations (por pedido)
+  const sendLocationToServer = useCallback(async (position: GeolocationPosition) => {
+    if (!resolvedEmpresaId || !user?.id) {
+      console.log('Não é possível salvar localização: empresa ou user não disponível');
+      return;
+    }
+
     try {
-      console.log('Enviando localização:', {
-        pedido: pedidoId,
+      console.log('Enviando localização global do entregador:', {
+        userId: user.id,
+        empresaId: resolvedEmpresaId,
         lat: position.coords.latitude,
         lng: position.coords.longitude
       });
 
-      // Primeiro tentar UPDATE
+      // Salvar em entregador_locations (GPS global do entregador)
       const { data: existingData, error: selectError } = await supabase
-        .from('delivery_locations')
+        .from('entregador_locations')
         .select('id')
-        .eq('pedido_delivery_id', pedidoId)
+        .eq('user_id', user.id)
+        .eq('empresa_id', resolvedEmpresaId)
         .maybeSingle();
 
       if (selectError) {
@@ -225,43 +253,104 @@ export default function EntregadorPanel() {
       if (existingData) {
         // Já existe, fazer UPDATE
         const result = await supabase
-          .from('delivery_locations')
+          .from('entregador_locations')
           .update({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             precisao: position.coords.accuracy,
+            is_active: true,
             updated_at: new Date().toISOString(),
           })
-          .eq('pedido_delivery_id', pedidoId);
+          .eq('user_id', user.id)
+          .eq('empresa_id', resolvedEmpresaId);
         error = result.error;
       } else {
         // Não existe, fazer INSERT
         const result = await supabase
-          .from('delivery_locations')
+          .from('entregador_locations')
           .insert({
-            pedido_delivery_id: pedidoId,
+            user_id: user.id,
+            empresa_id: resolvedEmpresaId,
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             precisao: position.coords.accuracy,
+            is_active: true,
           });
         error = result.error;
       }
 
       if (error) {
-        console.error('Erro ao salvar localização:', error);
-        toast.error('Erro ao enviar localização: ' + error.message);
+        console.error('Erro ao salvar localização do entregador:', error);
+        // Fallback: tentar salvar diretamente em delivery_locations para pedidos ativos
+        await syncLocationToPedidos(position);
       } else {
-        console.log('Localização salva com sucesso!');
+        console.log('Localização do entregador salva com sucesso!');
       }
     } catch (err) {
       console.error('Erro ao enviar localização:', err);
     }
-  }, []);
+  }, [resolvedEmpresaId, user?.id]);
 
-  // Iniciar tracking de GPS
-  const startGPSTracking = useCallback((pedidoId: string) => {
+  // Função para sincronizar localização manualmente com todos os pedidos ativos
+  const syncLocationToPedidos = useCallback(async (position: GeolocationPosition) => {
+    if (!resolvedEmpresaId || !user?.id) return;
+
+    try {
+      // Buscar todos os pedidos do entregador com status "saiu_entrega"
+      const { data: pedidosAtivos } = await supabase
+        .from('pedidos_delivery')
+        .select('id')
+        .eq('empresa_id', resolvedEmpresaId)
+        .eq('entregador_id', user.id)
+        .eq('status', 'saiu_entrega');
+
+      if (!pedidosAtivos || pedidosAtivos.length === 0) return;
+
+      console.log(`Sincronizando localização para ${pedidosAtivos.length} pedidos ativos`);
+
+      // Atualizar delivery_locations para cada pedido
+      for (const pedido of pedidosAtivos) {
+        const { data: existingLoc } = await supabase
+          .from('delivery_locations')
+          .select('id')
+          .eq('pedido_delivery_id', pedido.id)
+          .maybeSingle();
+
+        if (existingLoc) {
+          await supabase
+            .from('delivery_locations')
+            .update({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              precisao: position.coords.accuracy,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('pedido_delivery_id', pedido.id);
+        } else {
+          await supabase
+            .from('delivery_locations')
+            .insert({
+              pedido_delivery_id: pedido.id,
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              precisao: position.coords.accuracy,
+            });
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao sincronizar localização com pedidos:', err);
+    }
+  }, [resolvedEmpresaId, user?.id]);
+
+  // Iniciar tracking de GPS (global - não vinculado a um pedido específico)
+  const startGPSTracking = useCallback(() => {
     if (!navigator.geolocation) {
       toast.error('Seu navegador não suporta geolocalização');
+      return false;
+    }
+
+    if (!resolvedEmpresaId || !user?.id) {
+      toast.error('Empresa ou usuário não identificado');
       return false;
     }
 
@@ -269,12 +358,11 @@ export default function EntregadorPanel() {
     const startWatch = (initialPosition?: GeolocationPosition) => {
       if (initialPosition) {
         setCurrentPosition(initialPosition);
-        sendLocationToServer(initialPosition, pedidoId);
+        sendLocationToServer(initialPosition);
       }
       
       setGpsError(null);
       setIsGPSActive(true);
-      setPedidoEmEntrega(pedidoId);
 
       // Iniciar watch contínuo - mais tolerante a erros
       watchIdRef.current = navigator.geolocation.watchPosition(
@@ -282,7 +370,7 @@ export default function EntregadorPanel() {
           setCurrentPosition(pos);
           setGpsError(null); // Limpar erro anterior
           // Enviar para o servidor a cada atualização
-          sendLocationToServer(pos, pedidoId);
+          sendLocationToServer(pos);
         },
         (error) => {
           console.error('Erro no GPS watch:', error);
@@ -304,14 +392,14 @@ export default function EntregadorPanel() {
           (pos) => {
             setCurrentPosition(pos);
             setGpsError(null);
-            sendLocationToServer(pos, pedidoId);
+            sendLocationToServer(pos);
           },
           () => {}, // Ignorar erros no backup
           { enableHighAccuracy: false, timeout: 20000, maximumAge: 15000 }
         );
       }, 15000);
 
-      toast.success('GPS ativado! Sua localização está sendo compartilhada.');
+      toast.success('GPS ativado! Sua localização está sendo compartilhada para todas as entregas.');
     };
 
     // Tentar obter posição inicial - com alta tolerância
@@ -338,7 +426,7 @@ export default function EntregadorPanel() {
     );
 
     return true;
-  }, [sendLocationToServer]);
+  }, [sendLocationToServer, resolvedEmpresaId, user?.id]);
 
   // Parar tracking de GPS
   const stopGPSTracking = useCallback(async () => {
@@ -352,18 +440,19 @@ export default function EntregadorPanel() {
       updateIntervalRef.current = null;
     }
 
-    // Remover localização final do entregador (entrega concluída)
-    if (pedidoEmEntrega) {
+    // Desativar localização do entregador (não deletar, apenas marcar como inativo)
+    if (resolvedEmpresaId && user?.id) {
       await supabase
-        .from('delivery_locations')
-        .delete()
-        .eq('pedido_delivery_id', pedidoEmEntrega);
+        .from('entregador_locations')
+        .update({ is_active: false })
+        .eq('user_id', user.id)
+        .eq('empresa_id', resolvedEmpresaId);
     }
 
     setIsGPSActive(false);
     setPedidoEmEntrega(null);
     setCurrentPosition(null);
-  }, [pedidoEmEntrega]);
+  }, [resolvedEmpresaId, user?.id]);
 
   // Cleanup ao desmontar
   useEffect(() => {
@@ -415,31 +504,86 @@ export default function EntregadorPanel() {
 
   // Handler para "Saiu para Entrega"
   const handleSaiuParaEntrega = async (pedido: PedidoEntrega) => {
-    // Primeiro ativar GPS
-    const gpsStarted = startGPSTracking(pedido.id);
-    
-    if (gpsStarted !== false) {
-      // Atualizar status do pedido
-      updateStatusMutation.mutate({ pedidoId: pedido.id, newStatus: 'saiu_entrega' });
-      
-      // Geocoding do destino para mostrar no mapa
-      if (pedido.endereco) {
-        geocodeDestino(pedido.endereco);
+    if (!user?.id) {
+      toast.error('Usuário não identificado');
+      return;
+    }
+
+    // Primeiro: vincular o entregador ao pedido
+    const { error: updateError } = await supabase
+      .from('pedidos_delivery')
+      .update({ entregador_id: user.id })
+      .eq('id', pedido.id);
+
+    if (updateError) {
+      console.error('Erro ao vincular entregador:', updateError);
+      toast.error('Erro ao vincular entregador ao pedido');
+      return;
+    }
+
+    // Segundo: ativar GPS se ainda não estiver ativo
+    if (!isGPSActive) {
+      const gpsStarted = startGPSTracking();
+      if (gpsStarted === false) {
+        toast.warning('GPS não disponível, mas o pedido será marcado como saiu para entrega');
       }
+    }
+    
+    // Terceiro: criar entrada em delivery_locations para esse pedido
+    if (currentPosition) {
+      await supabase
+        .from('delivery_locations')
+        .upsert({
+          pedido_delivery_id: pedido.id,
+          latitude: currentPosition.coords.latitude,
+          longitude: currentPosition.coords.longitude,
+          precisao: currentPosition.coords.accuracy,
+        }, { onConflict: 'pedido_delivery_id' });
+    }
+
+    // Atualizar status do pedido
+    updateStatusMutation.mutate({ pedidoId: pedido.id, newStatus: 'saiu_entrega' });
+    setPedidoEmEntrega(pedido.id);
+    
+    // Geocoding do destino para mostrar no mapa
+    if (pedido.endereco) {
+      geocodeDestino(pedido.endereco);
     }
   };
 
   // Handler para "Entregue"
   const handleEntregue = async (pedidoId: string) => {
-    // Parar GPS
-    await stopGPSTracking();
+    // Remover a localização deste pedido específico
+    await supabase
+      .from('delivery_locations')
+      .delete()
+      .eq('pedido_delivery_id', pedidoId);
     
-    // Limpar mapa
-    setDestinoCoords(null);
-    setShowMap(false);
+    // Limpar mapa se era o pedido em exibição
+    if (pedidoEmEntrega === pedidoId) {
+      setDestinoCoords(null);
+      setShowMap(false);
+      setPedidoEmEntrega(null);
+    }
     
     // Atualizar status
     updateStatusMutation.mutate({ pedidoId, newStatus: 'entregue' });
+
+    // Verificar se ainda há pedidos em entrega
+    const pedidosRestantes = pedidos.filter(p => p.status === 'saiu_entrega' && p.id !== pedidoId);
+    
+    if (pedidosRestantes.length === 0) {
+      // Se não há mais pedidos em entrega, perguntar se quer desativar GPS
+      toast.info('Última entrega! GPS ainda ativo para próximas entregas.');
+    } else {
+      // Se há mais pedidos, mostra o próximo no mapa
+      const proximoPedido = pedidosRestantes[0];
+      setPedidoEmEntrega(proximoPedido.id);
+      if (proximoPedido.endereco) {
+        geocodeDestino(proximoPedido.endereco);
+      }
+      toast.success(`Entrega confirmada! ${pedidosRestantes.length} entrega(s) restante(s).`);
+    }
   };
 
   // Função auxiliar para mensagem de erro de GPS
@@ -481,9 +625,9 @@ export default function EntregadorPanel() {
           <p className="text-muted-foreground text-sm">
             Gerencie suas entregas em tempo real
           </p>
-          {resolvedEmpresaId && (
+          {empresaNome && (
             <p className="text-xs text-muted-foreground mt-1">
-              Empresa: {resolvedEmpresaId.slice(0, 8)}...
+              {empresaNome}
             </p>
           )}
         </div>
@@ -637,7 +781,7 @@ export default function EntregadorPanel() {
 
                 {/* Mapa mostrando posição do entregador e destino */}
                 {(showMap || destinoCoords) && (
-                  <div className="rounded-xl overflow-hidden border">
+                  <div className="rounded-xl overflow-hidden border relative" style={{ zIndex: 0 }}>
                     <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-3">
                       <div className="flex items-center gap-2">
                         <Map className="w-4 h-4" />
