@@ -267,9 +267,9 @@ export default function DeliveryTracking() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
         <Receipt className="w-16 h-16 text-muted-foreground mb-4" />
         <h1 className="text-xl font-semibold text-foreground">{error || 'Pedido não encontrado'}</h1>
-        <Button onClick={() => navigate('/delivery')} className="mt-4">
+        <Button onClick={() => navigate('/delivery/orders')} className="mt-4">
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Voltar
+          Voltar aos Pedidos
         </Button>
       </div>
     );
@@ -288,7 +288,7 @@ export default function DeliveryTracking() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => navigate('/delivery')}
+              onClick={() => navigate('/delivery/orders')}
               className="text-primary-foreground hover:bg-primary-foreground/20"
             >
               <ArrowLeft className="w-5 h-5" />
