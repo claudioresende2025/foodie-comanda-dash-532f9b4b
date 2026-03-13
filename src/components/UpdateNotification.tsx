@@ -9,17 +9,13 @@ export const UpdateNotification = () => {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const showTimerRef = useRef<number | null>(null);
-  const updateDetectedRef = useRef(sessionStorage.getItem('update_notification_shown') === '1');
+  // Não bloquear se já foi mostrado - apenas verificar se foi atualizado nesta sessão
+  const hasUpdatedRef = useRef(sessionStorage.getItem('update_applied_this_session') === '1');
 
-  // Função unificada para detectar atualização - só dispara uma vez
+  // Função unificada para detectar atualização
   const markUpdateAvailable = (worker?: ServiceWorker) => {
-    // Se já detectou/mostrou nesta sessão, ignora
-    if (updateDetectedRef.current) return;
-    if (sessionStorage.getItem('update_notification_shown') === '1') {
-      updateDetectedRef.current = true;
-      return;
-    }
-    updateDetectedRef.current = true;
+    // Se já atualizou nesta sessão, não mostrar de novo
+    if (hasUpdatedRef.current) return;
     
     if (worker) {
       setWaitingWorker(worker);
@@ -61,19 +57,18 @@ export const UpdateNotification = () => {
     }
 
     const checkForUpdates = async () => {
-      // Se já detectou/mostrou, não verifica mais
-      if (updateDetectedRef.current) return;
+      // Se já atualizou nesta sessão, não verifica mais
+      if (hasUpdatedRef.current) return;
       
       try {
         const registration = await navigator.serviceWorker.getRegistration();
         if (registration) {
           if (registration.waiting) {
             markUpdateAvailable(registration.waiting);
-            return; // Para aqui, já detectou
+            return;
           }
 
           registration.addEventListener('updatefound', () => {
-            if (updateDetectedRef.current) return;
             const newWorker = registration.installing;
             if (newWorker) {
               newWorker.addEventListener('statechange', () => {
@@ -86,14 +81,13 @@ export const UpdateNotification = () => {
         }
 
         navigator.serviceWorker.ready.then((reg) => {
-          if (updateDetectedRef.current) return;
+          if (hasUpdatedRef.current) return;
           if (reg) {
             if (reg.waiting) {
               markUpdateAvailable(reg.waiting);
               return;
             }
             reg.addEventListener('updatefound', () => {
-              if (updateDetectedRef.current) return;
               const newWorker = reg.installing;
               if (newWorker) {
                 newWorker.addEventListener('statechange', () => {
@@ -107,7 +101,7 @@ export const UpdateNotification = () => {
         }).catch(() => {});
 
         const interval = setInterval(async () => {
-          if (updateDetectedRef.current) return;
+          if (hasUpdatedRef.current) return;
           const reg = await navigator.serviceWorker.getRegistration();
           if (reg) {
             await reg.update();
@@ -121,7 +115,7 @@ export const UpdateNotification = () => {
     };
 
     const onMessage = (e: MessageEvent) => {
-      if (updateDetectedRef.current) return;
+      if (hasUpdatedRef.current) return;
       if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
         markUpdateAvailable();
       }
@@ -131,7 +125,7 @@ export const UpdateNotification = () => {
     checkForUpdates();
 
     const handleVisibilityChange = () => {
-      if (!document.hidden && !updateDetectedRef.current) {
+      if (!document.hidden && !hasUpdatedRef.current) {
         checkForUpdates();
       }
     };
@@ -149,7 +143,8 @@ export const UpdateNotification = () => {
     if (isUpdating) return;
     setIsUpdating(true);
     sessionStorage.removeItem('update_available');
-    sessionStorage.setItem('update_notification_shown', '1');
+    sessionStorage.setItem('update_applied_this_session', '1');
+    hasUpdatedRef.current = true;
     setShowNotification(false);
 
     // Salva o build atual ao atualizar
@@ -179,8 +174,8 @@ export const UpdateNotification = () => {
 
   const handleClose = () => {
     setShowNotification(false);
+    // Não bloquear futuras notificações - apenas esconder esta
     sessionStorage.removeItem('update_available');
-    sessionStorage.setItem('update_notification_shown', '1');
   };
 
   if (!showNotification) {
