@@ -487,18 +487,25 @@ export default function DeliveryRestaurant() {
     
     setConfirmandoPagamento(true);
     try {
+      console.log('[PIX] Informando pagamento do pedido:', pedidoId);
+      
       // Buscar notas atuais do pedido
-      const { data: pedidoAtual } = await supabase
+      const { data: pedidoAtual, error: selectError } = await supabase
         .from('pedidos_delivery')
         .select('notas')
         .eq('id', pedidoId)
         .single();
+      
+      if (selectError) {
+        console.error('[PIX] Erro ao buscar pedido:', selectError);
+      }
       
       // Marca que o cliente informou o pagamento, mas NÃO muda o status
       // O restaurante precisa verificar no extrato e confirmar manualmente
       const notasAtuais = pedidoAtual?.notas || '';
       const novasMensagens = `${notasAtuais}\n[PIX] Cliente informou pagamento às ${new Date().toLocaleString('pt-BR')}`;
       
+      console.log('[PIX] Atualizando notas do pedido...');
       const { error: updateError } = await supabase
         .from('pedidos_delivery')
         .update({ 
@@ -506,7 +513,12 @@ export default function DeliveryRestaurant() {
         })
         .eq('id', pedidoId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('[PIX] Erro ao atualizar pedido:', updateError);
+        throw updateError;
+      }
+      
+      console.log('[PIX] Pagamento informado com sucesso!');
 
       // Mostra como "informado" mas não confirma
       setPixConfirmado(true);
@@ -515,9 +527,11 @@ export default function DeliveryRestaurant() {
       toast.success('Pagamento informado!', {
         description: 'O restaurante irá verificar o recebimento.'
       });
-    } catch (err) {
-      console.error('Erro ao informar pagamento:', err);
-      toast.error('Erro ao informar pagamento');
+    } catch (err: any) {
+      console.error('Erro completo ao informar pagamento:', err);
+      toast.error('Erro ao informar pagamento', {
+        description: err?.message || 'Tente novamente ou entre em contato com o restaurante.'
+      });
     } finally {
       setConfirmandoPagamento(false);
     }

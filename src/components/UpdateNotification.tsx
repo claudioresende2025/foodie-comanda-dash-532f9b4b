@@ -7,27 +7,18 @@ declare const __BUILD_TIMESTAMP__: string;
 export const UpdateNotification = () => {
   const [showNotification, setShowNotification] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
   const showTimerRef = useRef<number | null>(null);
   const checkIntervalRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
 
-  // Verificar se já atualizou nesta sessão
-  const hasUpdatedThisSession = () => {
-    return sessionStorage.getItem('update_applied_this_session') === '1';
-  };
-
   // Função para mostrar notificação após delay
   const scheduleNotification = (worker?: ServiceWorker) => {
-    if (hasUpdatedThisSession() || !mountedRef.current) return;
+    if (!mountedRef.current) return;
     if (showNotification) return; // Já está mostrando
     
     if (worker) {
       setWaitingWorker(worker);
     }
-    
-    // Marca que há update disponível
-    sessionStorage.setItem('update_available', '1');
     
     // Se já havia timer, não criar outro
     if (showTimerRef.current) return;
@@ -36,7 +27,7 @@ export const UpdateNotification = () => {
     
     // Mostra após 3 segundos
     showTimerRef.current = window.setTimeout(() => {
-      if (mountedRef.current && !hasUpdatedThisSession()) {
+      if (mountedRef.current) {
         console.log('[UpdateNotification] Mostrando notificação');
         setShowNotification(true);
       }
@@ -46,7 +37,7 @@ export const UpdateNotification = () => {
 
   // Verificação por fetch - funciona em desktop e mobile
   const checkVersionByFetch = async () => {
-    if (hasUpdatedThisSession() || !mountedRef.current) return;
+    if (!mountedRef.current) return;
     
     try {
       const response = await fetch(`/index.html?_=${Date.now()}`, {
@@ -79,12 +70,6 @@ export const UpdateNotification = () => {
   useEffect(() => {
     mountedRef.current = true;
     console.log('[UpdateNotification] Componente montado');
-    
-    // Se já havia update disponível na sessão, agendar notificação
-    if (sessionStorage.getItem('update_available') === '1' && !hasUpdatedThisSession()) {
-      console.log('[UpdateNotification] Update já disponível na sessão');
-      scheduleNotification();
-    }
 
     // Verificação por build timestamp
     const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
@@ -100,14 +85,12 @@ export const UpdateNotification = () => {
     // Verificação imediata por fetch
     checkVersionByFetch();
     
-    // Verificação periódica a cada 30 segundos (não precisa ser tão frequente)
+    // Verificação periódica a cada 30 segundos
     checkIntervalRef.current = window.setInterval(checkVersionByFetch, 30000);
 
     // Service Worker (se disponível)
     if ('serviceWorker' in navigator) {
       const checkSW = async () => {
-        if (hasUpdatedThisSession()) return;
-        
         try {
           const registration = await navigator.serviceWorker.getRegistration();
           if (registration) {
@@ -138,7 +121,6 @@ export const UpdateNotification = () => {
       };
 
       const onMessage = (e: MessageEvent) => {
-        if (hasUpdatedThisSession()) return;
         if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
           console.log('[UpdateNotification] Mensagem SW recebida:', e.data.type);
           scheduleNotification();
@@ -150,7 +132,7 @@ export const UpdateNotification = () => {
 
       // Verificar ao voltar para a aba
       const handleVisibility = () => {
-        if (!document.hidden && !hasUpdatedThisSession()) {
+        if (!document.hidden) {
           checkSW();
           checkVersionByFetch();
         }
@@ -175,10 +157,14 @@ export const UpdateNotification = () => {
   }, []);
 
   const handleUpdate = () => {
-    // Limpa estados para evitar loop
-    sessionStorage.removeItem('update_available');
-    sessionStorage.setItem('update_applied_this_session', '1');
+    // Atualiza versão local antes de recarregar
     localStorage.removeItem('app_js_version');
+    localStorage.removeItem('app_build_version');
+    
+    // Limpa cache do Service Worker se existir
+    if (waitingWorker) {
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+    }
     
     // Reload IMEDIATO
     window.location.reload();
@@ -186,8 +172,6 @@ export const UpdateNotification = () => {
 
   const handleClose = () => {
     setShowNotification(false);
-    // Não bloquear futuras notificações - apenas esconder esta
-    sessionStorage.removeItem('update_available');
   };
 
   if (!showNotification) {
