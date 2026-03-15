@@ -7,12 +7,13 @@ import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { 
   Loader2, ArrowLeft, Clock, CheckCircle2, Truck, Package, 
-  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard, QrCode
+  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard, QrCode, Check
 } from 'lucide-react';
 import { Database } from '@/integrations/supabase/types';
 import { DeliveryMap } from '@/components/delivery/DeliveryMap';
 import { useDeliveryTracking } from '@/hooks/useDeliveryTracking';
 import { PixQRCode } from '@/components/pix/PixQRCode';
+import { toast } from 'sonner';
 
 type DeliveryStatus = Database['public']['Enums']['delivery_status'];
 
@@ -87,9 +88,42 @@ export default function DeliveryTracking() {
   const [customerCoords, setCustomerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [restaurantCoords, setRestaurantCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [showPixModal, setShowPixModal] = useState(false);
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   
   // Hook para rastreamento em tempo real do MOTOBOY
   const { location: deliveryLocation, hasLocation } = useDeliveryTracking(pedidoId);
+
+  // Função para informar que realizou o pagamento (não confirma automaticamente)
+  const handleInformPayment = async () => {
+    if (!pedidoId || isConfirmingPayment) return;
+    
+    setIsConfirmingPayment(true);
+    try {
+      // Marca que o cliente informou o pagamento, mas NÃO muda o status para "pago"
+      // O restaurante precisa verificar e confirmar manualmente
+      const { error: updateError } = await supabase
+        .from('pedidos_delivery')
+        .update({ 
+          observacoes: `[PIX] Cliente informou pagamento às ${new Date().toLocaleString('pt-BR')}`,
+        })
+        .eq('id', pedidoId);
+
+      if (updateError) throw updateError;
+
+      setShowPixModal(false);
+      
+      toast.success('Pagamento informado!', {
+        description: 'O restaurante irá verificar o recebimento e confirmar seu pedido.'
+      });
+    } catch (err) {
+      console.error('Erro ao informar pagamento:', err);
+      toast.error('Erro ao informar pagamento', {
+        description: 'Tente novamente ou entre em contato com o restaurante.'
+      });
+    } finally {
+      setIsConfirmingPayment(false);
+    }
+  };
 
   // Geocoding do endereço do cliente
   const geocodeCustomerAddress = useCallback(async (endereco: any) => {
@@ -621,19 +655,59 @@ export default function DeliveryTracking() {
 
           <div className="w-full max-w-md mx-auto pb-6">
             {empresa?.chave_pix ? (
-              <PixQRCode
-                chavePix={empresa.chave_pix}
-                valor={pedido?.total || 0}
-                nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
-                cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
-                expiracaoMinutos={10}
-                onExpired={() => {
-                  console.log('[PIX] QR Code expirado');
-                }}
-                onRefresh={() => {
-                  console.log('[PIX] Novo código gerado');
-                }}
-              />
+              <>
+                <PixQRCode
+                  chavePix={empresa.chave_pix}
+                  valor={pedido?.total || 0}
+                  nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
+                  cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
+                  expiracaoMinutos={10}
+                  onExpired={() => {
+                    console.log('[PIX] QR Code expirado');
+                  }}
+                  onRefresh={() => {
+                    console.log('[PIX] Novo código gerado');
+                  }}
+                />
+
+                {/* Instruções de pagamento */}
+                <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
+                  <p>1. Abra o app do seu banco</p>
+                  <p>2. Escaneie o QR Code ou copie o código</p>
+                  <p>3. Confirme o pagamento no banco</p>
+                  <p>4. Clique no botão abaixo para notificar o restaurante</p>
+                </div>
+
+                {/* Botão de informar pagamento */}
+                <Button
+                  onClick={handleInformPayment}
+                  disabled={isConfirmingPayment}
+                  className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white"
+                  size="lg"
+                >
+                  {isConfirmingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-2" />
+                      Já Paguei - Notificar Restaurante
+                    </>
+                  )}
+                </Button>
+
+                {/* Aviso importante */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
+                  <p className="text-amber-700 text-sm font-medium">
+                    ⚠️ O restaurante irá verificar o recebimento
+                  </p>
+                  <p className="text-amber-600 text-xs mt-1">
+                    Seu pedido será confirmado após a verificação do pagamento no extrato
+                  </p>
+                </div>
+              </>
             ) : (
               <div className="bg-destructive/10 p-4 rounded-lg border border-destructive/20 mb-6 text-center">
                 <p className="text-destructive font-semibold">⚠️ Chave PIX não configurada</p>
@@ -642,23 +716,6 @@ export default function DeliveryTracking() {
                 </p>
               </div>
             )}
-
-            {/* Instruções de pagamento */}
-            <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
-              <p>1. Abra o app do seu banco</p>
-              <p>2. Escaneie o QR Code ou copie o código</p>
-              <p>3. Confirme o pagamento</p>
-            </div>
-
-            {/* Aviso de confirmação */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
-              <p className="text-amber-700 text-sm font-medium">
-                Aguardando confirmação do pagamento...
-              </p>
-              <p className="text-amber-600 text-xs">
-                O restaurante precisa confirmar o recebimento
-              </p>
-            </div>
           </div>
         </SheetContent>
       </Sheet>

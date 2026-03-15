@@ -94,6 +94,7 @@ export default function PedidosDelivery() {
           taxa_entrega,
           total,
           notas,
+          observacoes,
           forma_pagamento,
           created_at,
           enderecos_cliente!pedidos_delivery_endereco_id_fkey (
@@ -273,6 +274,14 @@ export default function PedidosDelivery() {
                               {statusEntry.label}
                           </Badge>
                         </div>
+                        {/* Indicador de PIX informado pelo cliente */}
+                        {pedido.status === 'pendente' && pedido.observacoes?.includes('[PIX]') && (
+                          <div className="mt-1 px-2 py-1 bg-orange-100 border border-orange-300 rounded-md">
+                            <p className="text-xs text-orange-700 font-medium">
+                              ⚠️ Cliente informou PIX - Verificar no extrato!
+                            </p>
+                          </div>
+                        )}
                         <p className="text-xs text-muted-foreground">
                           {format(new Date(pedido.created_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
                         </p>
@@ -306,7 +315,21 @@ export default function PedidosDelivery() {
                           >
                             Detalhes
                           </Button>
-                          {nextStatus && (
+                          {/* Botão especial para confirmar PIX */}
+                          {pedido.status === 'pendente' && pedido.observacoes?.includes('[PIX]') ? (
+                            <Button 
+                              size="sm" 
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              onClick={() => handleStatusChange(pedido.id, pedido.status)}
+                              disabled={updateStatusMutation.isPending}
+                            >
+                              {updateStatusMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                '✓ Confirmar PIX'
+                              )}
+                            </Button>
+                          ) : nextStatus && (
                             <Button 
                               size="sm" 
                               className="flex-1"

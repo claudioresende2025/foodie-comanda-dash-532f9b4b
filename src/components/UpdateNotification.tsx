@@ -9,36 +9,46 @@ export const UpdateNotification = () => {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const showTimerRef = useRef<number | null>(null);
-  const hasUpdatedRef = useRef(sessionStorage.getItem('update_applied_this_session') === '1');
   const checkIntervalRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
 
-  // Função unificada para detectar atualização
-  const markUpdateAvailable = (worker?: ServiceWorker) => {
-    if (hasUpdatedRef.current) return;
+  // Verificar se já atualizou nesta sessão
+  const hasUpdatedThisSession = () => {
+    return sessionStorage.getItem('update_applied_this_session') === '1';
+  };
+
+  // Função para mostrar notificação após delay
+  const scheduleNotification = (worker?: ServiceWorker) => {
+    if (hasUpdatedThisSession() || !mountedRef.current) return;
+    if (showNotification) return; // Já está mostrando
     
     if (worker) {
       setWaitingWorker(worker);
     }
     
+    // Marca que há update disponível
     sessionStorage.setItem('update_available', '1');
     
-    if (showTimerRef.current) {
-      window.clearTimeout(showTimerRef.current);
-    }
+    // Se já havia timer, não criar outro
+    if (showTimerRef.current) return;
     
-    // Mostra a notificação após 10 segundos
+    console.log('[UpdateNotification] Agendando notificação para 10 segundos');
+    
+    // Mostra após 10 segundos
     showTimerRef.current = window.setTimeout(() => {
-      setShowNotification(true);
+      if (mountedRef.current && !hasUpdatedThisSession()) {
+        console.log('[UpdateNotification] Mostrando notificação');
+        setShowNotification(true);
+      }
       showTimerRef.current = null;
     }, 10000);
   };
 
-  // Verificação por fetch (funciona em desktop e mobile)
+  // Verificação por fetch - funciona em desktop e mobile
   const checkVersionByFetch = async () => {
-    if (hasUpdatedRef.current) return;
+    if (hasUpdatedThisSession() || !mountedRef.current) return;
     
     try {
-      // Busca o index.html com cache-bust para obter versão atual do servidor
       const response = await fetch(`/index.html?_=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
@@ -46,54 +56,64 @@ export const UpdateNotification = () => {
       
       if (response.ok) {
         const html = await response.text();
-        // Procura pelo hash do JS bundle no HTML
         const match = html.match(/index-([A-Za-z0-9]+)\.js/);
         const serverVersion = match ? match[1] : null;
         const localVersion = localStorage.getItem('app_js_version');
         
+        console.log('[UpdateNotification] Versão local:', localVersion, '| Servidor:', serverVersion);
+        
         if (serverVersion && localVersion && serverVersion !== localVersion) {
-          console.log('[UpdateNotification] Nova versão detectada via fetch:', serverVersion, 'vs', localVersion);
-          markUpdateAvailable();
+          console.log('[UpdateNotification] Nova versão detectada!');
+          scheduleNotification();
         } else if (serverVersion && !localVersion) {
           // Primeira vez: salvar versão atual
           localStorage.setItem('app_js_version', serverVersion);
+          console.log('[UpdateNotification] Versão inicial salva:', serverVersion);
         }
       }
     } catch (error) {
-      // Silenciar erros de fetch
+      // Silenciar erros de rede
     }
   };
 
   useEffect(() => {
+    mountedRef.current = true;
+    console.log('[UpdateNotification] Componente montado');
+    
+    // Se já havia update disponível na sessão, agendar notificação
+    if (sessionStorage.getItem('update_available') === '1' && !hasUpdatedThisSession()) {
+      console.log('[UpdateNotification] Update já disponível na sessão');
+      scheduleNotification();
+    }
+
     // Verificação por build timestamp
     const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
     const lastBuild = localStorage.getItem('app_build_version');
 
     if (currentBuild && lastBuild && lastBuild !== currentBuild) {
-      markUpdateAvailable();
+      console.log('[UpdateNotification] Build diferente:', lastBuild, '->', currentBuild);
+      scheduleNotification();
     } else if (currentBuild && !lastBuild) {
       localStorage.setItem('app_build_version', currentBuild);
     }
 
-    // Se já havia update disponível
-    if (sessionStorage.getItem('update_available') === '1') {
-      markUpdateAvailable();
-    }
-
-    // Verificação periódica por fetch (funciona sem SW)
+    // Verificação imediata por fetch
     checkVersionByFetch();
-    checkIntervalRef.current = window.setInterval(checkVersionByFetch, 10 * 1000);
+    
+    // Verificação periódica a cada 30 segundos (não precisa ser tão frequente)
+    checkIntervalRef.current = window.setInterval(checkVersionByFetch, 30000);
 
     // Service Worker (se disponível)
     if ('serviceWorker' in navigator) {
-      const checkForUpdates = async () => {
-        if (hasUpdatedRef.current) return;
+      const checkSW = async () => {
+        if (hasUpdatedThisSession()) return;
         
         try {
           const registration = await navigator.serviceWorker.getRegistration();
           if (registration) {
             if (registration.waiting) {
-              markUpdateAvailable(registration.waiting);
+              console.log('[UpdateNotification] SW waiting encontrado');
+              scheduleNotification(registration.waiting);
               return;
             }
 
@@ -102,7 +122,8 @@ export const UpdateNotification = () => {
               if (newWorker) {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    markUpdateAvailable(newWorker);
+                    console.log('[UpdateNotification] Novo SW instalado');
+                    scheduleNotification(newWorker);
                   }
                 });
               }
@@ -112,31 +133,34 @@ export const UpdateNotification = () => {
             await registration.update();
           }
         } catch (error) {
-          console.error('Erro ao verificar SW:', error);
+          console.error('[UpdateNotification] Erro SW:', error);
         }
       };
 
       const onMessage = (e: MessageEvent) => {
-        if (hasUpdatedRef.current) return;
+        if (hasUpdatedThisSession()) return;
         if (e.data && (e.data.type === 'NEW_VERSION_AVAILABLE' || e.data.type === 'SW_UPDATED')) {
-          markUpdateAvailable();
+          console.log('[UpdateNotification] Mensagem SW recebida:', e.data.type);
+          scheduleNotification();
         }
       };
       
       navigator.serviceWorker.addEventListener('message', onMessage as EventListener);
-      checkForUpdates();
+      checkSW();
 
-      const handleVisibilityChange = () => {
-        if (!document.hidden && !hasUpdatedRef.current) {
-          checkForUpdates();
+      // Verificar ao voltar para a aba
+      const handleVisibility = () => {
+        if (!document.hidden && !hasUpdatedThisSession()) {
+          checkSW();
           checkVersionByFetch();
         }
       };
 
-      document.addEventListener('visibilitychange', handleVisibilityChange);
+      document.addEventListener('visibilitychange', handleVisibility);
 
       return () => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        mountedRef.current = false;
+        document.removeEventListener('visibilitychange', handleVisibility);
         navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
         if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
         if (checkIntervalRef.current) window.clearInterval(checkIntervalRef.current);
@@ -144,6 +168,7 @@ export const UpdateNotification = () => {
     }
 
     return () => {
+      mountedRef.current = false;
       if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
       if (checkIntervalRef.current) window.clearInterval(checkIntervalRef.current);
     };

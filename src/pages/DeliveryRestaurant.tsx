@@ -40,6 +40,7 @@ export default function DeliveryRestaurant() {
   const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [pixConfirmado, setPixConfirmado] = useState(false);
   const [verificandoPix, setVerificandoPix] = useState(false);
+  const [confirmandoPagamento, setConfirmandoPagamento] = useState(false);
 
   // Estados para endereços salvos
   const [enderecosSalvos, setEnderecosSalvos] = useState<any[]>([]);
@@ -479,6 +480,38 @@ export default function DeliveryRestaurant() {
       }
     };
   }, [showPixModal, pedidoId, pixConfirmado, permission, requestPermission, notifyPixConfirmed]);
+
+  // Função para informar que realizou o pagamento (não confirma automaticamente)
+  const handleInformPayment = async () => {
+    if (!pedidoId || confirmandoPagamento) return;
+    
+    setConfirmandoPagamento(true);
+    try {
+      // Marca que o cliente informou o pagamento, mas NÃO muda o status
+      // O restaurante precisa verificar no extrato e confirmar manualmente
+      const { error: updateError } = await supabase
+        .from('pedidos_delivery')
+        .update({ 
+          observacoes: `[PIX] Cliente informou pagamento às ${new Date().toLocaleString('pt-BR')}`,
+        })
+        .eq('id', pedidoId);
+
+      if (updateError) throw updateError;
+
+      // Mostra como "informado" mas não confirma
+      setPixConfirmado(true);
+      setVerificandoPix(false);
+      
+      toast.success('Pagamento informado!', {
+        description: 'O restaurante irá verificar o recebimento.'
+      });
+    } catch (err) {
+      console.error('Erro ao informar pagamento:', err);
+      toast.error('Erro ao informar pagamento');
+    } finally {
+      setConfirmandoPagamento(false);
+    }
+  };
 
   const handleCEPChange = async (value: string) => {
     const maskedCEP = maskCEP(value);
@@ -1308,83 +1341,113 @@ export default function DeliveryRestaurant() {
 
           <div className="w-full max-w-md mx-auto pb-6">
             {empresa?.chave_pix ? (
-              <PixQRCode
-                chavePix={empresa.chave_pix}
-                valor={valorPix}
-                nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
-                cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
-                expiracaoMinutos={5}
-                onExpired={() => {
-                  console.log('[PIX] QR Code expirado');
-                }}
-                onRefresh={() => {
-                  console.log('[PIX] Novo código gerado');
-                }}
-              />
+              <>
+                <PixQRCode
+                  chavePix={empresa.chave_pix}
+                  valor={valorPix}
+                  nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
+                  cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
+                  expiracaoMinutos={10}
+                  onExpired={() => {
+                    console.log('[PIX] QR Code expirado');
+                  }}
+                  onRefresh={() => {
+                    console.log('[PIX] Novo código gerado');
+                  }}
+                />
+
+                {/* Instruções de pagamento */}
+                <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
+                  <p>1. Abra o app do seu banco</p>
+                  <p>2. Escaneie o QR Code ou copie o código</p>
+                  <p>3. Confirme o pagamento no banco</p>
+                  <p>4. Clique em "Já Paguei" para notificar o restaurante</p>
+                </div>
+
+                {!pixConfirmado ? (
+                  <>
+                    {/* Botão Já Paguei - apenas notifica, não confirma automaticamente */}
+                    <Button
+                      onClick={handleInformPayment}
+                      disabled={confirmandoPagamento}
+                      className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white"
+                      size="lg"
+                    >
+                      {confirmandoPagamento ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          Já Paguei - Notificar Restaurante
+                        </>
+                      )}
+                    </Button>
+
+                    {/* Aviso importante */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
+                      <p className="text-amber-700 text-sm font-medium">
+                        ⚠️ O restaurante irá verificar o recebimento
+                      </p>
+                      <p className="text-amber-600 text-xs mt-1">
+                        Seu pedido será confirmado após a verificação do pagamento
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Confirmação de que foi notificado */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4 text-center">
+                      <Check className="w-6 h-6 text-blue-600 mx-auto mb-2" />
+                      <p className="text-blue-700 text-sm font-medium">
+                        Restaurante notificado!
+                      </p>
+                      <p className="text-blue-600 text-xs mt-1">
+                        Aguarde a verificação do pagamento no extrato
+                      </p>
+                    </div>
+
+                    {/* Botão Acompanhar Pedido */}
+                    <Button
+                      className="w-full mt-4"
+                      onClick={() => {
+                        setShowPixModal(false);
+                        if (pedidoId) {
+                          navigate(`/delivery/tracking/${pedidoId}`);
+                        } else {
+                          navigate("/delivery/orders");
+                        }
+                      }}
+                    >
+                      Acompanhar Pedido
+                    </Button>
+                  </>
+                )}
+
+                {/* Botão secundário para ver pedidos */}
+                {!pixConfirmado && (
+                  <Button
+                    variant="outline"
+                    className="w-full mt-2"
+                    onClick={() => {
+                      setShowPixModal(false);
+                      navigate("/delivery/orders");
+                    }}
+                  >
+                    Ver Meus Pedidos
+                  </Button>
+                )}
+              </>
             ) : (
               <div className="bg-destructive/10 p-4 rounded-lg border border-destructive/20 mb-6 text-center">
                 <p className="text-destructive font-semibold">⚠️ Chave PIX não configurada</p>
-              </div>
-            )}
-
-            {/* Instruções de pagamento */}
-            <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
-              <p>1. Abra o app do seu banco</p>
-              <p>2. Escaneie o QR Code ou copie o código</p>
-              <p>3. Confirme o pagamento</p>
-            </div>
-
-            {/* Status de verificação do pagamento */}
-            {!pixConfirmado && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  {verificandoPix && <Loader2 className="w-4 h-4 animate-spin text-amber-600" />}
-                  <p className="text-amber-700 text-sm font-medium">
-                    Aguardando confirmação do pagamento...
-                  </p>
-                </div>
-                <p className="text-amber-600 text-xs">
-                  O restaurante precisa confirmar o recebimento
+                <p className="text-sm text-muted-foreground mt-2">
+                  Entre em contato com o restaurante para concluir o pagamento.
                 </p>
               </div>
             )}
-
-            {pixConfirmado && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-4 text-center">
-                <Check className="w-6 h-6 text-green-600 mx-auto mb-2" />
-                <p className="text-green-700 text-sm font-medium">
-                  Pagamento confirmado!
-                </p>
-              </div>
-            )}
-
-            {/* Botão principal - desabilitado até confirmar */}
-            <Button
-              className="w-full mt-4"
-              disabled={!pixConfirmado}
-              onClick={() => {
-                setShowPixModal(false);
-                if (pedidoId) {
-                  navigate(`/delivery/tracking/${pedidoId}`);
-                } else {
-                  navigate("/delivery/orders");
-                }
-              }}
-            >
-              {pixConfirmado ? "Acompanhar Pedido" : "Aguardando Confirmação..."}
-            </Button>
-
-            {/* Botão secundário para voltar aos pedidos */}
-            <Button
-              variant="outline"
-              className="w-full mt-2"
-              onClick={() => {
-                setShowPixModal(false);
-                navigate("/delivery/orders");
-              }}
-            >
-              Ver Meus Pedidos
-            </Button>
           </div>
         </SheetContent>
       </Sheet>
