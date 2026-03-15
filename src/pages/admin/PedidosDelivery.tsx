@@ -94,7 +94,6 @@ export default function PedidosDelivery() {
           taxa_entrega,
           total,
           notas,
-          observacoes,
           forma_pagamento,
           created_at,
           enderecos_cliente!pedidos_delivery_endereco_id_fkey (
@@ -275,7 +274,7 @@ export default function PedidosDelivery() {
                           </Badge>
                         </div>
                         {/* Indicador de PIX informado pelo cliente */}
-                        {pedido.status === 'pendente' && pedido.observacoes?.includes('[PIX]') && (
+                        {pedido.status === 'pendente' && pedido.notas?.includes('[PIX]') && (
                           <div className="mt-1 px-2 py-1 bg-orange-100 border border-orange-300 rounded-md">
                             <p className="text-xs text-orange-700 font-medium">
                               ⚠️ Cliente informou PIX - Verificar no extrato!
@@ -316,7 +315,7 @@ export default function PedidosDelivery() {
                             Detalhes
                           </Button>
                           {/* Botão especial para confirmar PIX */}
-                          {pedido.status === 'pendente' && pedido.observacoes?.includes('[PIX]') ? (
+                          {pedido.status === 'pendente' && pedido.notas?.includes('[PIX]') ? (
                             <Button 
                               size="sm" 
                               className="flex-1 bg-green-600 hover:bg-green-700"

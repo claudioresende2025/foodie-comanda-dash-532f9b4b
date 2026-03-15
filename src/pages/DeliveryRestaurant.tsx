@@ -487,12 +487,22 @@ export default function DeliveryRestaurant() {
     
     setConfirmandoPagamento(true);
     try {
+      // Buscar notas atuais do pedido
+      const { data: pedidoAtual } = await supabase
+        .from('pedidos_delivery')
+        .select('notas')
+        .eq('id', pedidoId)
+        .single();
+      
       // Marca que o cliente informou o pagamento, mas NÃO muda o status
       // O restaurante precisa verificar no extrato e confirmar manualmente
+      const notasAtuais = pedidoAtual?.notas || '';
+      const novasMensagens = `${notasAtuais}\n[PIX] Cliente informou pagamento às ${new Date().toLocaleString('pt-BR')}`;
+      
       const { error: updateError } = await supabase
         .from('pedidos_delivery')
         .update({ 
-          observacoes: `[PIX] Cliente informou pagamento às ${new Date().toLocaleString('pt-BR')}`,
+          notas: novasMensagens.trim(),
         })
         .eq('id', pedidoId);
 
