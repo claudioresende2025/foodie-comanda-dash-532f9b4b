@@ -190,12 +190,19 @@ export default function DeliveryTracking() {
         geocodeCustomerAddress(data.endereco);
       }
 
-      // Fetch empresa com latitude, longitude e chave_pix
-      const { data: empresaData } = await supabase
+      // Fetch empresa com todos os dados (incluindo chave_pix)
+      const { data: empresaData, error: empresaError } = await supabase
         .from('empresas')
-        .select('nome_fantasia, logo_url, endereco_completo, latitude, longitude, chave_pix')
+        .select('*')
         .eq('id', data.empresa_id)
         .single();
+
+      console.log('[DeliveryTracking] Empresa data:', { 
+        empresa_id: data.empresa_id, 
+        empresaData, 
+        empresaError,
+        chave_pix: empresaData?.chave_pix 
+      });
 
       setEmpresa(empresaData);
       
@@ -598,7 +605,12 @@ export default function DeliveryTracking() {
       </main>
 
       {/* Modal de Pagamento PIX */}
-      <Sheet open={showPixModal} onOpenChange={setShowPixModal}>
+      <Sheet open={showPixModal} onOpenChange={(open) => {
+        if (open) {
+          console.log('[PIX Modal] Opening modal with empresa:', empresa);
+        }
+        setShowPixModal(open);
+      }}>
         <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-auto">
           <SheetHeader className="mb-6">
             <SheetTitle className="flex items-center gap-2 text-lg">
