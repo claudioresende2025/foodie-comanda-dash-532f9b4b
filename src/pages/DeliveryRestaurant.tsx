@@ -583,24 +583,33 @@ export default function DeliveryRestaurant() {
         })),
       };
 
-      if (metodoPagamento === "pix" || metodoPagamento === "debit" || metodoPagamento === "dinheiro") {
-        // Para PIX, Débito ou Dinheiro: criar pedido direto (pagamento na entrega ou PIX)
-        const formaPagamentoMap: Record<string, string> = {
-          pix: "pix",
-          debit: "cartao_debito",
-          dinheiro: "dinheiro",
-        };
+      // Todos os métodos agora são pagamento local (sem Stripe)
+      // PIX: cliente paga via PIX e confirma
+      // Dinheiro: pagamento na entrega
+      // Cartão na Entrega: maquininha do motoboy
+      const formaPagamentoMap: Record<string, string> = {
+        pix: "pix",
+        cartao_entrega: "cartao_debito", // Cartão na entrega (maquininha)
+        dinheiro: "dinheiro",
+      };
+      
+      if (true) { // Sempre criar pedido diretamente (sem Stripe)
         
         const trocoParaValor = metodoPagamento === "dinheiro" && trocoParaInput 
           ? parseFloat(trocoParaInput) 
           : null;
+        
+        // Status inicial baseado no método de pagamento:
+        // PIX: "pendente" (aguardando confirmação de pagamento)
+        // Dinheiro/Cartão na Entrega: "confirmado" (pagamento será na entrega)
+        const statusInicial = metodoPagamento === "pix" ? "pendente" : "confirmado";
         
         const { data: ped, error: pedErr } = await supabase
           .from("pedidos_delivery")
           .insert({
             empresa_id: empresaId,
             endereco_id: enderecoId,
-            status: metodoPagamento === "pix" ? "pendente" : "pendente", // pendente até entrega
+            status: statusInicial,
             subtotal: subtotal,
             taxa_entrega: taxaEntregaDinamica,
             desconto: desconto || null,
@@ -750,71 +759,14 @@ export default function DeliveryRestaurant() {
           setValorPix(totalComDesconto);
           setShowPixModal(true);
         } else {
-          // Débito ou Dinheiro: pedido criado para pagamento na entrega
+          // Dinheiro ou Cartão na Entrega: pedido criado para pagamento na entrega
           const trocoMsg = trocoParaValor && trocoParaValor > totalComDesconto 
             ? ` Troco para R$ ${trocoParaValor.toFixed(2)}.` 
             : '';
-          toast.success(`Pedido #${ped.id.slice(0, 8).toUpperCase()} criado! Pagamento na entrega.${trocoMsg}`);
+          const metodoLabel = metodoPagamento === "dinheiro" ? "Dinheiro" : "Cartão na Entrega";
+          toast.success(`Pedido #${ped.id.slice(0, 8).toUpperCase()} criado! ${metodoLabel} - Pagamento na entrega.${trocoMsg}`);
           navigate('/delivery/orders');
         }
-      } else {
-        // Para cartão: enviar dados para criar checkout do Stripe via Lovable Cloud
-        // O pedido só será criado APÓS o pagamento ser confirmado
-        console.log('[DeliveryRestaurant] Criando checkout session com orderData:', orderData);
-        
-        // Usar URL do Supabase configurado (zlwpxflqtyhdwanmupgy)
-        const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL || 'https://zlwpxflqtyhdwanmupgy.supabase.co'}/functions/v1`;
-        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsd3B4ZmxxdHloZHdhbm11cGd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4MTQxODcsImV4cCI6MjA4MDM5MDE4N30.XbfIkCWxeSOgJ3tECnuXvaXR2zMfJ2YwIGfItG8gQRw";
-        
-        const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-delivery-checkout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            orderData: orderData,
-            total: totalComDesconto,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || data.error) {
-          console.error('[DeliveryRestaurant] Erro ao criar checkout:', data);
-          
-          // Mensagens de erro mais específicas
-          let errorMessage = "Erro ao processar pagamento com cartão.";
-          
-          if (data.error?.includes("STRIPE_SECRET_KEY")) {
-            errorMessage = "Sistema de pagamento não configurado. Entre em contato com o restaurante.";
-          } else if (data.error?.includes("valor")) {
-            errorMessage = "Erro na validação do valor. Tente atualizar a página.";
-          } else if (data.error) {
-            errorMessage = data.error;
-          }
-          
-          throw new Error(errorMessage);
-        }
-
-        if (!data?.url) {
-          console.error('[DeliveryRestaurant] URL do checkout não retornada:', data);
-          throw new Error("Não foi possível gerar o link de pagamento. Tente novamente.");
-        }
-
-        console.log('[DeliveryRestaurant] Checkout session criado, redirecionando para:', data.url);
-        
-        // IMPORTANTE: Salvar items no sessionStorage para recuperar após o pagamento
-        // Isso é necessário porque o metadata do Stripe tem limite de 500 chars
-        sessionStorage.setItem('delivery_checkout_items', JSON.stringify(orderData.items));
-        sessionStorage.setItem('delivery_checkout_marca_cartao', marcaCartao || '');
-        
-        // Limpar carrinho antes de redirecionar
-        clearCart();
-        
-        // Redirecionar para o Stripe Checkout
-        window.location.href = data.url;
       }
     } catch (err: any) {
       console.error("Erro no Checkout:", err);
@@ -1246,7 +1198,7 @@ export default function DeliveryRestaurant() {
 
               <div className="space-y-4">
                 <h3 className="font-bold text-base text-primary">Forma de Pagamento</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <Button
                     variant={metodoPagamento === "pix" ? "default" : "outline"}
                     className="h-16 flex-col gap-1 rounded-xl border-2"
@@ -1255,25 +1207,19 @@ export default function DeliveryRestaurant() {
                     <QrCode className="h-5 w-5" /> PIX
                   </Button>
                   <Button
-                    variant={metodoPagamento === "card" ? "default" : "outline"}
-                    className="h-16 flex-col gap-1 rounded-xl border-2"
-                    onClick={() => setMetodoPagamento("card")}
-                  >
-                    <CreditCard className="h-5 w-5" /> Cartão
-                  </Button>
-                  <Button
-                    variant={metodoPagamento === "debit" ? "default" : "outline"}
-                    className="h-16 flex-col gap-1 rounded-xl border-2"
-                    onClick={() => setMetodoPagamento("debit")}
-                  >
-                    <CreditCard className="h-5 w-5" /> Débito
-                  </Button>
-                  <Button
                     variant={metodoPagamento === "dinheiro" ? "default" : "outline"}
                     className="h-16 flex-col gap-1 rounded-xl border-2"
                     onClick={() => setMetodoPagamento("dinheiro")}
                   >
                     <Banknote className="h-5 w-5" /> Dinheiro
+                  </Button>
+                  <Button
+                    variant={metodoPagamento === "cartao_entrega" ? "default" : "outline"}
+                    className="h-16 flex-col gap-1 rounded-xl border-2"
+                    onClick={() => setMetodoPagamento("cartao_entrega")}
+                  >
+                    <CreditCard className="h-5 w-5" /> Cartão
+                    <span className="text-[10px] text-muted-foreground">na entrega</span>
                   </Button>
                 </div>
                 {metodoPagamento === "dinheiro" && (

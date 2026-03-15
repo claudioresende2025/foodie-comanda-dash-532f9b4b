@@ -22,7 +22,10 @@ import {
   Bike,
   MapPinOff,
   RefreshCw,
-  Map
+  Map,
+  Banknote,
+  CreditCard,
+  QrCode
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -34,6 +37,8 @@ interface PedidoEntrega {
   status: string;
   total: number;
   created_at: string;
+  forma_pagamento: string | null;
+  troco_para: number | null;
   endereco: {
     nome_cliente: string;
     telefone: string;
@@ -164,6 +169,8 @@ export default function EntregadorPanel() {
           status,
           total,
           created_at,
+          forma_pagamento,
+          troco_para,
           endereco:enderecos_cliente(
             nome_cliente,
             telefone,
@@ -843,6 +850,35 @@ export default function EntregadorPanel() {
                   </a>
                 </div>
 
+                {/* Informações de Pagamento */}
+                <div className="p-3 rounded-lg bg-muted/50 border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {pedido.forma_pagamento === 'pix' && <QrCode className="w-4 h-4 text-green-600" />}
+                      {pedido.forma_pagamento === 'dinheiro' && <Banknote className="w-4 h-4 text-green-600" />}
+                      {(pedido.forma_pagamento === 'cartao_debito' || pedido.forma_pagamento === 'cartao_credito') && <CreditCard className="w-4 h-4 text-blue-600" />}
+                      <span className="font-medium text-sm">
+                        {pedido.forma_pagamento === 'pix' ? 'PIX (já pago)' : 
+                         pedido.forma_pagamento === 'dinheiro' ? 'Dinheiro' : 
+                         pedido.forma_pagamento === 'cartao_debito' || pedido.forma_pagamento === 'cartao_credito' ? 'Cartão (maquininha)' : 
+                         'Pagamento na entrega'}
+                      </span>
+                    </div>
+                    {pedido.forma_pagamento !== 'pix' && (
+                      <Badge variant="outline" className="text-amber-600 border-amber-400">
+                        Cobrar na entrega
+                      </Badge>
+                    )}
+                  </div>
+                  {pedido.troco_para && pedido.troco_para > pedido.total && (
+                    <div className="mt-2 text-sm text-amber-700 bg-amber-50 p-2 rounded flex items-center gap-2">
+                      <Banknote className="w-4 h-4" />
+                      <span>Levar troco para <strong>R$ {pedido.troco_para.toFixed(2)}</strong></span>
+                      <span className="ml-auto font-bold">= R$ {(pedido.troco_para - pedido.total).toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Mapa mostrando posição do entregador e destino */}
                 {(showMap || destinoCoords) && (
                   <div className="rounded-xl overflow-hidden border relative" style={{ zIndex: 0 }}>
@@ -916,7 +952,9 @@ export default function EntregadorPanel() {
                   ) : (
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                   )}
-                  Confirmar Entrega
+                  {pedido.forma_pagamento === 'pix' 
+                    ? 'Confirmar Entrega' 
+                    : `Confirmar Entrega + Pagamento (R$ ${pedido.total.toFixed(2)})`}
                 </Button>
               </CardContent>
             </Card>
@@ -962,6 +1000,34 @@ export default function EntregadorPanel() {
                       <p>{pedido.endereco?.bairro}</p>
                     </div>
                   </div>
+                </div>
+
+                {/* Informações de Pagamento */}
+                <div className="p-3 rounded-lg bg-muted/50 border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {pedido.forma_pagamento === 'pix' && <QrCode className="w-4 h-4 text-green-600" />}
+                      {pedido.forma_pagamento === 'dinheiro' && <Banknote className="w-4 h-4 text-green-600" />}
+                      {(pedido.forma_pagamento === 'cartao_debito' || pedido.forma_pagamento === 'cartao_credito') && <CreditCard className="w-4 h-4 text-blue-600" />}
+                      <span className="font-medium text-sm">
+                        {pedido.forma_pagamento === 'pix' ? 'PIX (já pago)' : 
+                         pedido.forma_pagamento === 'dinheiro' ? 'Dinheiro' : 
+                         pedido.forma_pagamento === 'cartao_debito' || pedido.forma_pagamento === 'cartao_credito' ? 'Cartão (maquininha)' : 
+                         'Pagamento na entrega'}
+                      </span>
+                    </div>
+                    {pedido.forma_pagamento !== 'pix' && (
+                      <Badge variant="outline" className="text-amber-600 border-amber-400">
+                        Cobrar
+                      </Badge>
+                    )}
+                  </div>
+                  {pedido.troco_para && pedido.troco_para > pedido.total && (
+                    <div className="mt-2 text-sm text-amber-700 bg-amber-50 p-2 rounded flex items-center gap-2">
+                      <Banknote className="w-4 h-4" />
+                      <span>Levar troco: <strong>R$ {(pedido.troco_para - pedido.total).toFixed(2)}</strong></span>
+                    </div>
+                  )}
                 </div>
 
                 <Button
