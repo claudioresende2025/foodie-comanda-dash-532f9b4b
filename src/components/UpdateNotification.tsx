@@ -32,16 +32,16 @@ export const UpdateNotification = () => {
     // Se já havia timer, não criar outro
     if (showTimerRef.current) return;
     
-    console.log('[UpdateNotification] Agendando notificação para 10 segundos');
+    console.log('[UpdateNotification] Agendando notificação para 3 segundos');
     
-    // Mostra após 10 segundos
+    // Mostra após 3 segundos
     showTimerRef.current = window.setTimeout(() => {
       if (mountedRef.current && !hasUpdatedThisSession()) {
         console.log('[UpdateNotification] Mostrando notificação');
         setShowNotification(true);
       }
       showTimerRef.current = null;
-    }, 10000);
+    }, 3000);
   };
 
   // Verificação por fetch - funciona em desktop e mobile
@@ -179,7 +179,6 @@ export const UpdateNotification = () => {
     setIsUpdating(true);
     sessionStorage.removeItem('update_available');
     sessionStorage.setItem('update_applied_this_session', '1');
-    hasUpdatedRef.current = true;
     setShowNotification(false);
 
     // Salva o build atual ao atualizar
@@ -191,33 +190,15 @@ export const UpdateNotification = () => {
     // Limpa versão JS para forçar nova verificação após reload
     localStorage.removeItem('app_js_version');
 
+    // Sempre fazer reload - simplificado para garantir funcionamento
     if (waitingWorker) {
       waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        window.location.reload();
-      });
-      // Timeout de fallback caso controllerchange não dispare
-      setTimeout(() => window.location.reload(), 1000);
-      return;
     }
     
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration().then((reg) => {
-        if (reg?.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            window.location.reload();
-          });
-          setTimeout(() => window.location.reload(), 1000);
-        } else {
-          window.location.reload();
-        }
-      }).catch(() => {
-        window.location.reload();
-      });
-    } else {
+    // Reload direto após 500ms
+    setTimeout(() => {
       window.location.reload();
-    }
+    }, 500);
   };
 
   const handleClose = () => {
