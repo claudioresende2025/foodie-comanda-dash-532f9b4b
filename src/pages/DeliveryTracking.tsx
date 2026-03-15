@@ -4,13 +4,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { 
   Loader2, ArrowLeft, Clock, CheckCircle2, Truck, Package, 
-  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard
+  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard, QrCode
 } from 'lucide-react';
 import { Database } from '@/integrations/supabase/types';
 import { DeliveryMap } from '@/components/delivery/DeliveryMap';
 import { useDeliveryTracking } from '@/hooks/useDeliveryTracking';
+import { PixQRCode } from '@/components/pix/PixQRCode';
 
 type DeliveryStatus = Database['public']['Enums']['delivery_status'];
 
@@ -84,6 +86,7 @@ export default function DeliveryTracking() {
   const [error, setError] = useState<string | null>(null);
   const [customerCoords, setCustomerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [restaurantCoords, setRestaurantCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [showPixModal, setShowPixModal] = useState(false);
   
   // Hook para rastreamento em tempo real do MOTOBOY
   const { location: deliveryLocation, hasLocation } = useDeliveryTracking(pedidoId);
@@ -187,10 +190,10 @@ export default function DeliveryTracking() {
         geocodeCustomerAddress(data.endereco);
       }
 
-      // Fetch empresa com latitude e longitude
+      // Fetch empresa com latitude, longitude e chave_pix
       const { data: empresaData } = await supabase
         .from('empresas')
-        .select('nome_fantasia, logo_url, endereco_completo, latitude, longitude')
+        .select('nome_fantasia, logo_url, endereco_completo, latitude, longitude, chave_pix')
         .eq('id', data.empresa_id)
         .single();
 
@@ -469,6 +472,30 @@ export default function DeliveryTracking() {
           </CardContent>
         </Card>
 
+        {/* Botão de Pagamento PIX para pedidos pendentes */}
+        {currentStatus === 'pendente' && pedido.forma_pagamento === 'pix' && (
+          <Card className="border-yellow-400 bg-yellow-50">
+            <CardContent className="p-4">
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex items-center gap-2 text-yellow-700">
+                  <QrCode className="w-6 h-6" />
+                  <span className="font-semibold">Pagamento Pendente</span>
+                </div>
+                <p className="text-sm text-yellow-600 text-center">
+                  Seu pedido está aguardando confirmação do pagamento PIX. Clique no botão abaixo para visualizar o QR Code e finalizar o pagamento.
+                </p>
+                <Button 
+                  onClick={() => setShowPixModal(true)}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white w-full"
+                >
+                  <QrCode className="w-4 h-4 mr-2" />
+                  Pagar com PIX
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Restaurant Info */}
         {empresa && (
           <Card>
@@ -569,6 +596,60 @@ export default function DeliveryTracking() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Modal de Pagamento PIX */}
+      <Sheet open={showPixModal} onOpenChange={setShowPixModal}>
+        <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2 text-lg">
+              <QrCode className="w-5 h-5 text-primary" />
+              Pagamento PIX
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="w-full max-w-md mx-auto pb-6">
+            {empresa?.chave_pix ? (
+              <PixQRCode
+                chavePix={empresa.chave_pix}
+                valor={pedido?.total || 0}
+                nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
+                cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
+                expiracaoMinutos={10}
+                onExpired={() => {
+                  console.log('[PIX] QR Code expirado');
+                }}
+                onRefresh={() => {
+                  console.log('[PIX] Novo código gerado');
+                }}
+              />
+            ) : (
+              <div className="bg-destructive/10 p-4 rounded-lg border border-destructive/20 mb-6 text-center">
+                <p className="text-destructive font-semibold">⚠️ Chave PIX não configurada</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Entre em contato com o restaurante para concluir o pagamento.
+                </p>
+              </div>
+            )}
+
+            {/* Instruções de pagamento */}
+            <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
+              <p>1. Abra o app do seu banco</p>
+              <p>2. Escaneie o QR Code ou copie o código</p>
+              <p>3. Confirme o pagamento</p>
+            </div>
+
+            {/* Aviso de confirmação */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
+              <p className="text-amber-700 text-sm font-medium">
+                Aguardando confirmação do pagamento...
+              </p>
+              <p className="text-amber-600 text-xs">
+                O restaurante precisa confirmar o recebimento
+              </p>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

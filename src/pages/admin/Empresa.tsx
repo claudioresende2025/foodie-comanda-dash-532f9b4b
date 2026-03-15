@@ -84,13 +84,10 @@ function formatPixKeyForStorage(key: string): { formatted: string; type: PixKeyT
       return { formatted: cleanKey, type: 'email', isValid: false, message: 'E-mail inválido' };
     
     case 'evp':
-      return { formatted: cleanKey.toLowerCase(), type: 'evp', isValid: true, message: 'Chave aleatória válida' };
+      return { formatted: cleanKey, type: 'evp', isValid: false, message: 'Chave aleatória não aceita. Use CNPJ ou E-mail.' };
     
     case 'cpf':
-      if (onlyDigits.length === 11) {
-        return { formatted: onlyDigits, type: 'cpf', isValid: true, message: 'CPF válido' };
-      }
-      return { formatted: onlyDigits, type: 'cpf', isValid: false, message: 'CPF deve ter 11 dígitos' };
+      return { formatted: onlyDigits, type: 'cpf', isValid: false, message: 'CPF não aceito. Use CNPJ ou E-mail.' };
     
     case 'cnpj':
       if (onlyDigits.length === 14) {
@@ -99,21 +96,7 @@ function formatPixKeyForStorage(key: string): { formatted: string; type: PixKeyT
       return { formatted: onlyDigits, type: 'cnpj', isValid: false, message: 'CNPJ deve ter 14 dígitos' };
     
     case 'phone':
-      // Formata telefone no padrão PIX: +55DDNNNNNNNNN
-      let phoneDigits = onlyDigits;
-      
-      // Remove 55 do início se existir
-      if (phoneDigits.startsWith('55') && phoneDigits.length >= 12) {
-        phoneDigits = phoneDigits.substring(2);
-      }
-      
-      // Deve ter 10 ou 11 dígitos (DDD + número)
-      if (phoneDigits.length === 10 || phoneDigits.length === 11) {
-        const formatted = '+55' + phoneDigits;
-        return { formatted, type: 'phone', isValid: true, message: `Telefone formatado: ${formatted}` };
-      }
-      
-      return { formatted: '+55' + phoneDigits, type: 'phone', isValid: false, message: 'Telefone deve ter DDD + 8 ou 9 dígitos' };
+      return { formatted: cleanKey, type: 'phone', isValid: false, message: 'Telefone não aceito. Use CNPJ ou E-mail.' };
     
     default:
       return { formatted: cleanKey, type: 'unknown', isValid: false, message: 'Tipo de chave não reconhecido' };
@@ -502,7 +485,7 @@ export default function Empresa() {
                     type="text"
                     value={formData.chave_pix}
                     onChange={(e) => setFormData({ ...formData, chave_pix: e.target.value })}
-                    placeholder="Ex: +5531999999999 ou email@exemplo.com"
+                    placeholder="Ex: 00.000.000/0001-00 ou email@exemplo.com"
                     disabled={!canEditPixKey}
                     autoComplete="off"
                     className={pixKeyValidation ? (pixKeyValidation.isValid ? 'border-green-500 pr-10' : 'border-red-500 pr-10') : ''}
