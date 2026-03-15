@@ -45,12 +45,20 @@ export default function Auth() {
       setActiveTab('signup');
     }
     
-    // Verificar se tem plano pendente no localStorage e exibir toast
+    // Verificar se tem plano pendente no localStorage e exibir toast (apenas uma vez)
     try {
       const pending = localStorage.getItem('post_subscribe_plan');
       if (pending) {
         const parsed = JSON.parse(pending);
-        if (parsed?.planoSlug) {
+        // Verificar se o plano foi selecionado há menos de 1 hora (timestamp válido)
+        const timestamp = parsed?.timestamp || 0;
+        const oneHourAgo = Date.now() - (60 * 60 * 1000);
+        
+        if (timestamp < oneHourAgo) {
+          // Plano pendente expirado, limpar
+          localStorage.removeItem('post_subscribe_plan');
+          sessionStorage.removeItem('plan_toast_shown');
+        } else if (parsed?.planoSlug && !sessionStorage.getItem('plan_toast_shown')) {
           const planoNomes: Record<string, string> = {
             'bronze': 'Bronze (Iniciante)',
             'prata': 'Prata (Intermediário)',
@@ -58,10 +66,12 @@ export default function Auth() {
           };
           const nomePlano = planoNomes[parsed.planoSlug] || parsed.planoSlug;
           toast.success(`Plano ${nomePlano} selecionado! Complete seu cadastro.`);
+          sessionStorage.setItem('plan_toast_shown', '1');
         }
       }
     } catch (e) {
-      // ignore
+      // ignore - limpar se houver erro ao parsear
+      localStorage.removeItem('post_subscribe_plan');
     }
   }, [searchParams]);
 
@@ -214,6 +224,9 @@ export default function Auth() {
         if (superAdmin?.ativo) {
           setIsLoading(false);
           hasRedirected.current = true;
+          // Limpar flags de plano pendente
+          localStorage.removeItem('post_subscribe_plan');
+          sessionStorage.removeItem('plan_toast_shown');
           toast.success('Login realizado com sucesso!');
           navigate('/super-admin');
           return;
@@ -221,6 +234,9 @@ export default function Auth() {
       }
       
       setIsLoading(false);
+      // Limpar flags de plano pendente após login bem-sucedido
+      localStorage.removeItem('post_subscribe_plan');
+      sessionStorage.removeItem('plan_toast_shown');
       toast.success('Login realizado com sucesso!');
       // O useEffect cuida do redirecionamento baseado no profile para outros usuários
     }
@@ -246,6 +262,9 @@ export default function Auth() {
         toast.error('Erro ao criar conta. Tente novamente.');
       }
     } else {
+      // Limpar flags de plano pendente após cadastro bem-sucedido
+      localStorage.removeItem('post_subscribe_plan');
+      sessionStorage.removeItem('plan_toast_shown');
       // Redirecionar para página de confirmação de email
       toast.success('Conta criada! Verifique seu e-mail para confirmar.');
       navigate(`/email-confirmation?email=${encodeURIComponent(email)}&type=proprietario`);

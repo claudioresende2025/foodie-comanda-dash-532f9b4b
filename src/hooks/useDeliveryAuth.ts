@@ -38,17 +38,19 @@ export function useDeliveryAuth(redirectOnNoAuth = true, currentPath = '/deliver
 
       setUser(session.user);
 
-      // Verifica se o usuário tem empresa_id (é funcionário de restaurante)
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('empresa_id')
-        .eq('id', session.user.id)
-        .single();
+      // Verifica se o usuário tem role ativo em user_roles (é funcionário de restaurante)
+      // Apenas considera "funcionário" se tiver role de proprietario, gerente, garcom, caixa ou motoboy
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
 
-      const hasEmpresa = !!profile?.empresa_id;
-      setIsRestaurantStaff(hasEmpresa);
+      const staffRoles = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
+      const hasStaffRole = userRole?.role && staffRoles.includes(userRole.role);
+      setIsRestaurantStaff(hasStaffRole);
 
-      console.log('[useDeliveryAuth] User:', session.user.id, 'isRestaurantStaff:', hasEmpresa);
+      console.log('[useDeliveryAuth] User:', session.user.id, 'isRestaurantStaff:', hasStaffRole, 'role:', userRole?.role);
     } catch (error) {
       console.error('[useDeliveryAuth] Error:', error);
       setUser(null);

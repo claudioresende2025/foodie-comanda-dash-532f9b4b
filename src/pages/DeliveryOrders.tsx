@@ -55,14 +55,15 @@ export default function DeliveryOrders() {
       return;
     }
     
-    // Verifica se é funcionário de restaurante
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('empresa_id')
-      .eq('id', session.user.id)
-      .single();
+    // Verifica se é funcionário de restaurante (tem role ativo em user_roles)
+    const { data: userRole } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
     
-    if (profile?.empresa_id) {
+    const staffRoles = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
+    if (userRole?.role && staffRoles.includes(userRole.role)) {
       setIsRestaurantStaff(true);
       setIsLoading(false);
       return;

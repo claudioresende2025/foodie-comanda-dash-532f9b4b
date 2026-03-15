@@ -140,15 +140,16 @@ export default function DeliveryRestaurant() {
     } = await supabase.auth.getSession();
     setUser(session?.user || null);
 
-    // Verificar se é funcionário de restaurante
+    // Verificar se é funcionário de restaurante (tem role ativo em user_roles)
     if (session?.user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", session.user.id)
-        .single();
+      const { data: userRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
       
-      setIsRestaurantStaff(!!profile?.empresa_id);
+      const staffRoles = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
+      setIsRestaurantStaff(userRole?.role && staffRoles.includes(userRole.role));
     } else {
       setIsRestaurantStaff(false);
     }

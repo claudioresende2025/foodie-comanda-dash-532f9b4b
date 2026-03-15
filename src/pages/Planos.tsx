@@ -286,7 +286,8 @@ export default function Planos() {
             planoSlug: (plano as any).slug || plano.nome.toLowerCase().replace(/[^a-z]/g, ''),
             periodo: isAnual ? 'anual' : 'mensal', 
             empresaId: null,
-            isUpgrade: false 
+            isUpgrade: false,
+            timestamp: Date.now()
           }));
         } catch (e) {
           // ignore localStorage errors
@@ -311,7 +312,8 @@ export default function Planos() {
           planoSlug: (plano as any).slug || plano.nome.toLowerCase().replace(/[^a-z]/g, ''),
           periodo: isAnual ? 'anual' : 'mensal', 
           empresaId,
-          isUpgrade: !!currentSubscription 
+          isUpgrade: !!currentSubscription,
+          timestamp: Date.now()
         }));
       } catch (e) {
         // ignore localStorage errors

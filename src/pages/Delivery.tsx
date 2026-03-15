@@ -8,6 +8,7 @@ import { RestaurantStaffBlock } from '@/components/delivery/RestaurantStaffBlock
 import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Delivery() {
   const { 
@@ -18,12 +19,41 @@ export default function Delivery() {
     refetch 
   } = useDeliveryRestaurants();
   
-  const { profile, user } = useAuth();
+  const { user } = useAuth();
 
   const [pageError, setPageError] = useState<string | null>(null);
+  const [isRestaurantStaff, setIsRestaurantStaff] = useState(false);
+  const [checkingStaff, setCheckingStaff] = useState(true);
 
-  // Verifica se o usuário logado é um proprietário/funcionário de restaurante
-  const isRestaurantStaff = user && profile?.empresa_id;
+  // Verifica se o usuário logado é um funcionário de restaurante (tem role ativo)
+  useEffect(() => {
+    const checkStaffRole = async () => {
+      if (!user?.id) {
+        setIsRestaurantStaff(false);
+        setCheckingStaff(false);
+        return;
+      }
+
+      try {
+        const { data: userRole } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        const staffRoles = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
+        const hasStaffRole = userRole?.role && staffRoles.includes(userRole.role);
+        setIsRestaurantStaff(hasStaffRole);
+      } catch (error) {
+        console.error('[Delivery] Error checking staff role:', error);
+        setIsRestaurantStaff(false);
+      } finally {
+        setCheckingStaff(false);
+      }
+    };
+
+    checkStaffRole();
+  }, [user?.id]);
 
   useEffect(() => {
     try {
@@ -35,8 +65,8 @@ export default function Delivery() {
     }
   }, [empresas]);
 
-  // Se estiver carregando, mostra o esqueleto
-  if (isLoading) {
+  // Se estiver carregando (empresas ou verificação de staff), mostra o esqueleto
+  if (isLoading || checkingStaff) {
     return <LoadingSkeleton />;
   }
 
