@@ -175,30 +175,13 @@ export const UpdateNotification = () => {
   }, []);
 
   const handleUpdate = () => {
-    if (isUpdating) return;
-    setIsUpdating(true);
+    // Limpa estados para evitar loop
     sessionStorage.removeItem('update_available');
     sessionStorage.setItem('update_applied_this_session', '1');
-    setShowNotification(false);
-
-    // Salva o build atual ao atualizar
-    const currentBuild = typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '';
-    if (currentBuild) {
-      localStorage.setItem('app_build_version', currentBuild);
-    }
-    
-    // Limpa versão JS para forçar nova verificação após reload
     localStorage.removeItem('app_js_version');
-
-    // Sempre fazer reload - simplificado para garantir funcionamento
-    if (waitingWorker) {
-      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-    }
     
-    // Reload direto após 500ms
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+    // Reload IMEDIATO
+    window.location.reload();
   };
 
   const handleClose = () => {
@@ -225,7 +208,6 @@ export const UpdateNotification = () => {
           <div className="flex items-center gap-2">
             <Button
               onClick={handleUpdate}
-              disabled={isUpdating}
               size="sm"
               variant="secondary"
               className="bg-white text-green-600 hover:bg-gray-100"
