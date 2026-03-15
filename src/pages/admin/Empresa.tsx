@@ -512,7 +512,7 @@ export default function Empresa() {
                 )}
                 <p className="text-xs text-muted-foreground">
                   {canEditPixKey 
-                    ? 'Formatos aceitos: CPF (apenas números), CNPJ (apenas números), E-mail, Telefone (+5531999999999) ou Chave Aleatória (UUID)'
+                    ? 'Formatos aceitos: CNPJ (apenas números) ou E-mail'
                     : 'Apenas o proprietário pode editar a chave PIX'}
                 </p>
               </div>

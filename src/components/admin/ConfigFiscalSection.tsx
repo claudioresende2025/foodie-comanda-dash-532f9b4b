@@ -125,16 +125,24 @@ export function ConfigFiscalSection() {
         certificado_senha: form.certificado_senha || null,
         csc: form.csc || null,
         csc_id: form.csc_id || null,
-        updated_at: new Date().toISOString(),
       };
 
-      if (configFiscal?.id) {
+      // Verificar se já existe registro para esta empresa
+      const { data: existing } = await supabase
+        .from('config_fiscal')
+        .select('id')
+        .eq('empresa_id', empresaId)
+        .maybeSingle();
+
+      if (existing?.id) {
+        // Update existente
         const { error } = await supabase
           .from('config_fiscal')
           .update(payload)
-          .eq('id', configFiscal.id);
+          .eq('id', existing.id);
         if (error) throw error;
       } else {
+        // Insert novo
         const { error } = await supabase
           .from('config_fiscal')
           .insert(payload);
