@@ -408,12 +408,12 @@ export default function Cardapio() {
                     Novo Produto
                   </Button>
                 </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
+              <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+                <DialogHeader className="flex-shrink-0">
                   <DialogTitle>{editingProd ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
                   <DialogDescription>Preencha os dados do produto</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
+                <div className="space-y-4 overflow-y-auto flex-1 pr-2">
                   {/* Image Upload */}
                   <div className="space-y-2">
                     <Label>Imagem do Produto</Label>
@@ -648,7 +648,10 @@ export default function Cardapio() {
                       ))}
                     </div>
                   </div>
-
+                </div>
+                
+                {/* Botão fixo no final do dialog */}
+                <div className="flex-shrink-0 pt-4 border-t">
                   <Button onClick={handleSaveProduto} className="w-full" disabled={isSaving}>
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     {editingProd ? 'Salvar Alterações' : 'Criar Produto'}
