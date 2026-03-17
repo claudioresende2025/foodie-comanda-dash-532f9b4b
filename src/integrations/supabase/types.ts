@@ -755,50 +755,6 @@ export type Database = {
           },
         ]
       }
-      entregador_locations: {
-        Row: {
-          created_at: string
-          empresa_id: string
-          id: string
-          is_active: boolean
-          latitude: number
-          longitude: number
-          precisao: number | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          empresa_id: string
-          id?: string
-          is_active?: boolean
-          latitude: number
-          longitude: number
-          precisao?: number | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          empresa_id?: string
-          id?: string
-          is_active?: boolean
-          latitude?: number
-          longitude?: number
-          precisao?: number | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "entregador_locations_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       empresa_overrides: {
         Row: {
           created_at: string | null
@@ -1514,7 +1470,6 @@ export type Database = {
           desconto: number | null
           empresa_id: string
           endereco_id: string | null
-          entregador_id: string | null
           forma_pagamento: Database["public"]["Enums"]["forma_pagamento"] | null
           id: string
           metodo_pagamento: string | null
@@ -1537,7 +1492,6 @@ export type Database = {
           desconto?: number | null
           empresa_id: string
           endereco_id?: string | null
-          entregador_id?: string | null
           forma_pagamento?:
             | Database["public"]["Enums"]["forma_pagamento"]
             | null
@@ -1562,7 +1516,6 @@ export type Database = {
           desconto?: number | null
           empresa_id?: string
           endereco_id?: string | null
-          entregador_id?: string | null
           forma_pagamento?:
             | Database["public"]["Enums"]["forma_pagamento"]
             | null
