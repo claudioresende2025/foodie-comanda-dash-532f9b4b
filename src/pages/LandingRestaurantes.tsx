@@ -72,7 +72,7 @@ export default function LandingRestaurantes() {
       {/* Navbar */}
       <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-primary">Food Comanda</h1>
+          <h1 className="text-xl font-bold text-primary">Food Comanda Pro</h1>
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => navigate('/planos')}>Preços</Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/auth')}>Entrar</Button>
