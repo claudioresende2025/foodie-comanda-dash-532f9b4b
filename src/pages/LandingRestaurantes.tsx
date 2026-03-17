@@ -272,7 +272,7 @@ export default function LandingRestaurantes() {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-8">
             <div>
-              <h3 className="font-bold text-lg mb-3 text-primary">Food Comanda</h3>
+              <h3 className="font-bold text-lg mb-3 text-primary">Food Comanda Pro</h3>
               <p className="text-sm text-muted-foreground">A plataforma completa para gestão de restaurantes.</p>
             </div>
             <div>
