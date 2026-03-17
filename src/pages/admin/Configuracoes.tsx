@@ -149,7 +149,7 @@ export default function Configuracoes() {
             TESTE DE IMPRESSÃO
       ================================
       
-      FoodComanda - Sistema de Gestão
+      Food Comanda Pro - Sistema de Gestão
       
       Data: ${new Date().toLocaleDateString("pt-BR")}
       Hora: ${new Date().toLocaleTimeString("pt-BR")}

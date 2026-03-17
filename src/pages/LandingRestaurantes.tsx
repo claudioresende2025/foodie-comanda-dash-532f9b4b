@@ -292,7 +292,7 @@ export default function LandingRestaurantes() {
             </div>
           </div>
           <div className="mt-8 pt-8 border-t text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Food Comanda. Todos os direitos reservados.
+            © {new Date().getFullYear()} Food Comanda Pro. Todos os direitos reservados.
           </div>
         </div>
       </footer>
