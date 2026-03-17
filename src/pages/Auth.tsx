@@ -397,7 +397,7 @@ export default function Auth() {
             </div>
           )}
           <h1 className="text-3xl font-bold text-foreground">
-            {empresaUrl?.nome_fantasia || (<>Food<span className="text-accent">Comanda</span></>)}
+            {empresaUrl?.nome_fantasia || (<>Food <span className="text-accent">Comanda</span> Pro</>)}
           </h1>
           <p className="text-muted-foreground mt-2">
             {empresaUrl ? 'Acesse sua conta' : 'Sistema Digital de Comandas'}

@@ -201,7 +201,7 @@ export function AdminSidebar() {
               <Utensils className="w-5 h-5 text-sidebar-accent-foreground" />
             </div>
             <div>
-              <h2 className="font-bold text-sidebar-foreground">FoodComanda</h2>
+              <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
               <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
             </div>
           </div>
@@ -226,7 +226,7 @@ export function AdminSidebar() {
             <Utensils className="w-5 h-5 text-sidebar-accent-foreground" />
           </div>
           <div>
-            <h2 className="font-bold text-sidebar-foreground">FoodComanda</h2>
+            <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
             <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
           </div>
         </div>
