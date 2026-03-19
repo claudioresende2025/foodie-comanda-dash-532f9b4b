@@ -1,16 +1,25 @@
 
 
-# Correção: Filtrar restaurantes com delivery desativado
+# Mover API Token e Ambiente para Super Admin com Tabs no Dialog
 
-## Problema
-No `useDeliveryRestaurants.ts`, todas as empresas são exibidas independentemente do `delivery_ativo`. Além disso, o default quando não há config é `delivery_ativo: true`, fazendo restaurantes sem configuração aparecerem como ativos.
+## Resumo
+Ao clicar no restaurante no Super Admin, o dialog atual passará a ter **duas abas (Tabs)**: "Controles do Menu" (overrides existentes) e "Config. API Fiscal" (API Token + Ambiente). Isso é mais limpo que dropdowns com popups encadeados.
 
-## Solução
-Adicionar filtro na mesclagem (linha 48) para excluir restaurantes onde `config.delivery_ativo === false`. Restaurantes sem `config_delivery` cadastrada também devem ser ocultados (inverter o default de `true` para `false`).
+## Implementação
 
-### Arquivo: `src/hooks/useDeliveryRestaurants.ts`
-- Alterar o default de `delivery_ativo` de `true` para `false` (linha 39) — restaurante sem config não aparece
-- Após o `merged`, filtrar apenas os que têm `config.delivery_ativo === true` antes de chamar `setEmpresas`
+### 1. Adicionar Tabs no dialog de empresa (`SuperAdmin.tsx`)
+- Adicionar estado para a aba ativa do dialog e estados para os campos fiscais (`apiTokenNfe`, `modoProducao`)
+- Ao abrir o dialog, buscar o `config_fiscal` da empresa selecionada
+- Substituir o conteúdo atual do dialog por um componente `Tabs` com duas abas:
+  - **"Controles"**: conteúdo atual (info da empresa + overrides + limites + botão salvar)
+  - **"API Fiscal"**: campos API Token (Focus NFe) + Switch Homologação/Produção + botão salvar
+- O save da aba "API Fiscal" faz upsert na tabela `config_fiscal` (apenas `api_token_nfe` e `modo_producao`)
 
-Mudança de ~2 linhas, sem impacto em outras partes do sistema.
+### 2. Remover campos API Token e Ambiente da página Empresa (`ConfigFiscalSection.tsx`)
+- Remover os campos `api_token_nfe` e o switch `modo_producao` do formulário do proprietário
+- Manter os demais campos fiscais (Regime Tributário, IBGE, Endereço, Certificado, CSC) no `ConfigFiscalSection` conforme preferência do usuário
+
+### 3. RLS: Permitir Super Admin acessar `config_fiscal`
+- Migração SQL: adicionar política SELECT e ALL para super_admins na tabela `config_fiscal`
+- `USING (EXISTS (SELECT 1 FROM super_admins WHERE user_id = auth.uid() AND ativo = true))`
 

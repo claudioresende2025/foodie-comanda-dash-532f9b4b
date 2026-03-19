@@ -36,14 +36,14 @@ export function useDeliveryRestaurants() {
           nome_fantasia: empresa.nome_fantasia || "Restaurante sem nome",
           // Se não tiver config, criamos um objeto com valores padrão
           config: configReal || { 
-            delivery_ativo: true, 
+            delivery_ativo: false, 
             taxa_entrega: 0,
             tempo_estimado_min: 30,
             tempo_estimado_max: 60,
-            icon: 'Store' // Valor padrão para evitar o erro de 'reading icon'
+            icon: 'Store'
           }
         };
-      });
+      }).filter(e => e.config.delivery_ativo === true);
 
       setEmpresas(merged);
     } catch (err: any) {
