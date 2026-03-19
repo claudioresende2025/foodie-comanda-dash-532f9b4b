@@ -195,16 +195,18 @@ export function AdminSidebar() {
 
   if (isRoleLoading) {
     return (
-      <Sidebar>
+      <Sidebar collapsible="icon">
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-sidebar-accent">
               <Utensils className="w-5 h-5 text-sidebar-accent-foreground" />
             </div>
-            <div>
-              <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
-              <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
-            </div>
+            {!collapsed && (
+              <div>
+                <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
+                <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
+              </div>
+            )}
           </div>
         </SidebarHeader>
         <SidebarContent className="flex items-center justify-center">
