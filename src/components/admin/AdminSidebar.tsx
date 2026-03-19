@@ -95,7 +95,8 @@ export function AdminSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user, profile } = useAuth();
-  const { setOpenMobile, isMobile } = useSidebar();
+  const { setOpenMobile, isMobile, state } = useSidebar();
+  const collapsed = state === 'collapsed';
   const {
     role,
     isLoading: isRoleLoading,
