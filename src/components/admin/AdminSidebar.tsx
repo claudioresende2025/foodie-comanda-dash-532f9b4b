@@ -95,7 +95,8 @@ export function AdminSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user, profile } = useAuth();
-  const { setOpenMobile, isMobile } = useSidebar();
+  const { setOpenMobile, isMobile, state } = useSidebar();
+  const collapsed = state === 'collapsed';
   const {
     role,
     isLoading: isRoleLoading,
@@ -194,16 +195,18 @@ export function AdminSidebar() {
 
   if (isRoleLoading) {
     return (
-      <Sidebar>
+      <Sidebar collapsible="icon">
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-sidebar-accent">
               <Utensils className="w-5 h-5 text-sidebar-accent-foreground" />
             </div>
-            <div>
-              <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
-              <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
-            </div>
+            {!collapsed && (
+              <div>
+                <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
+                <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
+              </div>
+            )}
           </div>
         </SidebarHeader>
         <SidebarContent className="flex items-center justify-center">
@@ -219,16 +222,18 @@ export function AdminSidebar() {
   }
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-sidebar-accent">
             <Utensils className="w-5 h-5 text-sidebar-accent-foreground" />
           </div>
-          <div>
-            <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
-            <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
-          </div>
+          {!collapsed && (
+            <div>
+              <h2 className="font-bold text-sidebar-foreground">Food Comanda Pro</h2>
+              <p className="text-xs text-sidebar-foreground/70">Painel Admin</p>
+            </div>
+          )}
         </div>
       </SidebarHeader>
 
@@ -243,7 +248,7 @@ export function AdminSidebar() {
                 const allowed = permissionMap[item.key];
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                    <SidebarMenuButton asChild isActive={location.pathname === item.url} tooltip={item.title}>
                       {allowed ? (
                         <NavLink 
                           to={item.url} 
@@ -255,7 +260,6 @@ export function AdminSidebar() {
                           <span>{item.title}</span>
                         </NavLink>
                       ) : isStaff ? (
-                        // Staff sem permissão: apenas toast (não modal de upgrade)
                         <button
                           onClick={() => toast.error('Seu perfil não tem permissão para acessar esta página')}
                           className="flex items-center gap-3 text-sidebar-foreground opacity-50 cursor-not-allowed"
@@ -264,7 +268,6 @@ export function AdminSidebar() {
                           <span>{item.title}</span>
                         </button>
                       ) : (
-                        // Proprietário/Gerente sem permissão por plano: modal de upgrade
                         <button
                           onClick={() => { setUpgradeFeature(item.title); setUpgradeOpen(true); }}
                           className="flex items-center gap-3 text-sidebar-foreground"
@@ -272,7 +275,7 @@ export function AdminSidebar() {
                         >
                           <item.icon className="w-5 h-5 opacity-60" />
                           <span>{item.title}</span>
-                          <span className="ml-auto text-xs text-muted-foreground">🔒</span>
+                          {!collapsed && <span className="ml-auto text-xs text-muted-foreground">🔒</span>}
                         </button>
                       )}
                     </SidebarMenuButton>
@@ -288,44 +291,63 @@ export function AdminSidebar() {
       <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} feature={upgradeFeature} />
 
       <SidebarFooter className="p-4">
-        <div className="flex flex-col gap-2 p-3 rounded-lg bg-sidebar-accent/50">
-          <div className="flex items-center gap-3">
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-2">
             <div className="w-10 h-10 rounded-full bg-sidebar-accent flex items-center justify-center">
               <span className="text-sm font-medium text-sidebar-accent-foreground">
                 {user?.email?.charAt(0).toUpperCase()}
               </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-sidebar-foreground truncate">
-                {user?.email}
-              </p>
-              {isSuperAdmin ? (
-                <Badge variant="default" className="text-xs mt-1 bg-purple-600 hover:bg-purple-700">
-                  Administrador
-                </Badge>
-              ) : role ? (
-                <Badge variant="secondary" className="text-xs mt-1">
-                  {roleLabels[role] || role}
-                </Badge>
-              ) : null}
-            </div>
-          </div>
-          <div className="flex items-center justify-between pt-2 border-t border-sidebar-border">
-            <div className="flex items-center gap-1">
-              <NotificationToggle type="admin" />
-              <ThemeToggle />
-            </div>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={handleLogout}
               className="text-sidebar-foreground hover:bg-sidebar-accent"
+              title="Sair"
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              Sair
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-2 p-3 rounded-lg bg-sidebar-accent/50">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-sidebar-accent flex items-center justify-center">
+                <span className="text-sm font-medium text-sidebar-accent-foreground">
+                  {user?.email?.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">
+                  {user?.email}
+                </p>
+                {isSuperAdmin ? (
+                  <Badge variant="default" className="text-xs mt-1 bg-primary hover:bg-primary/90">
+                    Administrador
+                  </Badge>
+                ) : role ? (
+                  <Badge variant="secondary" className="text-xs mt-1">
+                    {roleLabels[role] || role}
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-sidebar-border">
+              <div className="flex items-center gap-1">
+                <NotificationToggle type="admin" />
+                <ThemeToggle />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-sidebar-foreground hover:bg-sidebar-accent"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sair
+              </Button>
+            </div>
+          </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
