@@ -83,8 +83,10 @@ export const UpdateNotification = () => {
 
     if (currentBuild && lastBuild && lastBuild !== currentBuild) {
       console.log('[UpdateNotification] Build diferente:', lastBuild, '->', currentBuild);
+      localStorage.setItem('app_build_version', currentBuild);
       scheduleNotification();
-    } else if (currentBuild && !lastBuild) {
+    } else if (currentBuild) {
+      // Sempre atualizar para o build atual
       localStorage.setItem('app_build_version', currentBuild);
     }
 
