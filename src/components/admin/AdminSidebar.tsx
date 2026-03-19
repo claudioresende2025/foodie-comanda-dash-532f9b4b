@@ -248,7 +248,7 @@ export function AdminSidebar() {
                 const allowed = permissionMap[item.key];
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                    <SidebarMenuButton asChild isActive={location.pathname === item.url} tooltip={item.title}>
                       {allowed ? (
                         <NavLink 
                           to={item.url} 
@@ -260,7 +260,6 @@ export function AdminSidebar() {
                           <span>{item.title}</span>
                         </NavLink>
                       ) : isStaff ? (
-                        // Staff sem permissão: apenas toast (não modal de upgrade)
                         <button
                           onClick={() => toast.error('Seu perfil não tem permissão para acessar esta página')}
                           className="flex items-center gap-3 text-sidebar-foreground opacity-50 cursor-not-allowed"
@@ -269,7 +268,6 @@ export function AdminSidebar() {
                           <span>{item.title}</span>
                         </button>
                       ) : (
-                        // Proprietário/Gerente sem permissão por plano: modal de upgrade
                         <button
                           onClick={() => { setUpgradeFeature(item.title); setUpgradeOpen(true); }}
                           className="flex items-center gap-3 text-sidebar-foreground"
@@ -277,7 +275,7 @@ export function AdminSidebar() {
                         >
                           <item.icon className="w-5 h-5 opacity-60" />
                           <span>{item.title}</span>
-                          <span className="ml-auto text-xs text-muted-foreground">🔒</span>
+                          {!collapsed && <span className="ml-auto text-xs text-muted-foreground">🔒</span>}
                         </button>
                       )}
                     </SidebarMenuButton>
