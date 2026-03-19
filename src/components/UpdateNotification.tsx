@@ -40,21 +40,27 @@ export const UpdateNotification = () => {
     if (!mountedRef.current) return;
     
     try {
-      const response = await fetch(`/index.html?_=${Date.now()}`, {
+      const response = await fetch(`/index.html?_nocache=${Date.now()}`, {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
       });
       
       if (response.ok) {
         const html = await response.text();
-        const match = html.match(/index-([A-Za-z0-9]+)\.js/);
+        // Busca qualquer asset com hash (js ou css)
+        const match = html.match(/assets\/index-([A-Za-z0-9_-]+)\.(js|css)/);
         const serverVersion = match ? match[1] : null;
         const localVersion = localStorage.getItem('app_js_version');
         
         console.log('[UpdateNotification] Versão local:', localVersion, '| Servidor:', serverVersion);
         
         if (serverVersion && localVersion && serverVersion !== localVersion) {
-          console.log('[UpdateNotification] Nova versão detectada!');
+          console.log('[UpdateNotification] Nova versão detectada via fetch!');
+          localStorage.setItem('app_js_version', serverVersion);
           scheduleNotification();
         } else if (serverVersion && !localVersion) {
           // Primeira vez: salvar versão atual
@@ -77,8 +83,10 @@ export const UpdateNotification = () => {
 
     if (currentBuild && lastBuild && lastBuild !== currentBuild) {
       console.log('[UpdateNotification] Build diferente:', lastBuild, '->', currentBuild);
+      localStorage.setItem('app_build_version', currentBuild);
       scheduleNotification();
-    } else if (currentBuild && !lastBuild) {
+    } else if (currentBuild) {
+      // Sempre atualizar para o build atual
       localStorage.setItem('app_build_version', currentBuild);
     }
 
