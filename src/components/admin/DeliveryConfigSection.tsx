@@ -115,6 +115,34 @@ export default function DeliveryConfigSection() {
     setHasChanges(true);
   };
 
+  const handleDeliveryToggle = async (checked: boolean) => {
+    setConfig(prev => ({ ...prev, delivery_ativo: checked }));
+
+    if (!profile?.empresa_id) return;
+
+    try {
+      if (existingConfig?.id) {
+        const { error } = await supabase
+          .from('config_delivery')
+          .update({ delivery_ativo: checked })
+          .eq('id', existingConfig.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('config_delivery')
+          .insert({ empresa_id: profile.empresa_id, delivery_ativo: checked });
+        if (error) throw error;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['delivery-config'] });
+      toast.success(checked ? 'Delivery ativado!' : 'Delivery desativado!');
+    } catch (error) {
+      console.error('Error toggling delivery:', error);
+      setConfig(prev => ({ ...prev, delivery_ativo: !checked }));
+      toast.error('Erro ao alterar status do delivery.');
+    }
+  };
+
   const handleSave = () => {
     if (!profile?.empresa_id) {
       toast.error('Empresa não identificada');
@@ -153,7 +181,7 @@ export default function DeliveryConfigSection() {
           </div>
           <Switch
             checked={config.delivery_ativo}
-            onCheckedChange={(v) => handleChange('delivery_ativo', v)}
+            onCheckedChange={handleDeliveryToggle}
           />
         </div>
 
