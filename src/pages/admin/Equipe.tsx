@@ -188,7 +188,7 @@ export default function Equipe() {
       if (profileError) throw profileError;
 
       // Remover usuário do Auth via Edge Function (usa service role internamente)
-      const supabaseUrl = 'https://zlwpxflqtyhdwanmupgy.supabase.co';
+      const { SUPABASE_URL: supabaseUrl } = await import('@/config/supabase');
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
         method: "POST",

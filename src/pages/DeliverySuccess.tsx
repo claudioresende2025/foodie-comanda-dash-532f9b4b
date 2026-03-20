@@ -42,9 +42,8 @@ export default function DeliverySuccess() {
         console.warn('[DeliverySuccess] Erro ao recuperar items do sessionStorage:', e);
       }
       
-      // Credenciais fixas do projeto de produção (zlwpxflqtyhdwanmupgy)
-      const SUPABASE_FUNCTIONS_URL = 'https://zlwpxflqtyhdwanmupgy.supabase.co/functions/v1';
-      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpsd3B4ZmxxdHloZHdhbm11cGd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4MTQxODcsImV4cCI6MjA4MDM5MDE4N30.XbfIkCWxeSOgJ3tECnuXvaXR2zMfJ2YwIGfItG8gQRw";
+      // Usar configuração centralizada
+      const { SUPABASE_FUNCTIONS_URL, SUPABASE_ANON_KEY } = await import('@/config/supabase');
       
       const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/complete-delivery-order`, {
         method: 'POST',
