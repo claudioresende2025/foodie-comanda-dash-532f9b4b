@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export function useDeliveryRestaurants() {
@@ -6,6 +6,7 @@ export function useDeliveryRestaurants() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const fetchEmpresas = useCallback(async () => {
     try {
@@ -19,7 +20,8 @@ export function useDeliveryRestaurants() {
 
       if (empErr) throw empErr;
 
-      // 2. Busca as configurações
+      // 2. Busca as configurações de delivery ativas
+      // A RLS já filtra apenas delivery_ativo = true para usuários públicos
       const { data: configs } = await supabase
         .from('config_delivery')
         .select('*');
@@ -56,6 +58,32 @@ export function useDeliveryRestaurants() {
 
   useEffect(() => {
     fetchEmpresas();
+
+    // Subscription para mudanças em config_delivery (realtime)
+    // Quando admin ativa/desativa delivery, a lista atualiza automaticamente
+    subscriptionRef.current = supabase
+      .channel('config_delivery_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'config_delivery',
+        },
+        (payload) => {
+          console.log('[useDeliveryRestaurants] config_delivery changed:', payload);
+          // Refetch quando houver mudanças no config_delivery
+          fetchEmpresas();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      // Cleanup subscription on unmount
+      if (subscriptionRef.current) {
+        supabase.removeChannel(subscriptionRef.current);
+      }
+    };
   }, [fetchEmpresas]);
 
   const filteredEmpresas = useMemo(() => {
