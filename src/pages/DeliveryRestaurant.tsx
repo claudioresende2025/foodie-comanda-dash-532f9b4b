@@ -834,12 +834,28 @@ export default function DeliveryRestaurant() {
     }
   };
 
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
           <p className="text-muted-foreground mt-3">Carregando cardápio...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Se o delivery estiver desativado, exibe mensagem e bloqueia pedidos
+  if (config && config.delivery_ativo === false) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md mx-auto">
+          <RestaurantHeader empresa={empresa} config={config} onBack={() => navigate(-1)} />
+          <div className="mt-8 p-6 rounded-lg bg-muted">
+            <h2 className="text-xl font-semibold mb-2">Delivery indisponível</h2>
+            <p className="text-muted-foreground">Este restaurante não está aceitando pedidos de delivery no momento.</p>
+          </div>
         </div>
       </div>
     );
