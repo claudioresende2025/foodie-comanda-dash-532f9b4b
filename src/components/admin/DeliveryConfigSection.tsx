@@ -181,7 +181,7 @@ export default function DeliveryConfigSection() {
           </div>
           <Switch
             checked={config.delivery_ativo}
-            onCheckedChange={(v) => handleChange('delivery_ativo', v)}
+            onCheckedChange={handleDeliveryToggle}
           />
         </div>
 
