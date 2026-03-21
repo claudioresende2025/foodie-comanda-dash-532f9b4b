@@ -25,8 +25,9 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Loader2, Upload, Pencil, Trash2, ChefHat, FolderOpen, RefreshCw, X, Search } from 'lucide-react';
+import { Plus, Loader2, Upload, Pencil, Trash2, ChefHat, FolderOpen, RefreshCw, X, Search, ScanLine } from 'lucide-react';
 import { ImageSearchModal } from '@/components/admin/ImageSearchModal';
+import { MenuScannerModal } from '@/components/admin/MenuScannerModal';
 
 // Tipo para variações de tamanho
 export interface VariacaoTamanho {
@@ -88,6 +89,10 @@ export default function Cardapio() {
   // Estados para variações de tamanho
   const [possuiVariacoes, setPossuiVariacoes] = useState(false);
   const [variacoes, setVariacoes] = useState<VariacaoTamanho[]>([]);
+  
+  // Scanner de cardápio
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Fetch categorias
   const { data: categorias = [], isLoading: isLoadingCat, refetch: refetchCat } = useQuery({
@@ -317,6 +322,89 @@ export default function Cardapio() {
     }
   };
 
+  // Importar produtos do scanner de cardápio
+  const handleImportProducts = async (produtos: Array<{ nome: string; descricao: string; preco: number; imagemUrl?: string }>) => {
+    if (!empresaId || produtos.length === 0) return;
+    
+    setIsImporting(true);
+    let sucessos = 0;
+    let falhas = 0;
+    
+    try {
+      for (const produto of produtos) {
+        try {
+          let imagem_url: string | null = null;
+          
+          // Se tem imagem em base64, fazer upload para o storage
+          if (produto.imagemUrl && produto.imagemUrl.startsWith('data:image/')) {
+            try {
+              // Converter base64 para blob
+              const response = await fetch(produto.imagemUrl);
+              const blob = await response.blob();
+              
+              // Gerar nome único para o arquivo
+              const fileExt = produto.imagemUrl.includes('image/png') ? 'png' : 'jpg';
+              const fileName = `${empresaId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+              
+              // Upload para o storage
+              const { error: uploadError } = await supabase.storage
+                .from('produtos')
+                .upload(fileName, blob, {
+                  contentType: blob.type,
+                  cacheControl: '3600',
+                });
+              
+              if (!uploadError) {
+                const { data: { publicUrl } } = supabase.storage
+                  .from('produtos')
+                  .getPublicUrl(fileName);
+                imagem_url = publicUrl;
+              }
+            } catch (uploadErr) {
+              console.error('Erro ao fazer upload da imagem:', uploadErr);
+              // Continua sem imagem se o upload falhar
+            }
+          }
+          
+          const { error } = await supabase.from('produtos').insert({
+            empresa_id: empresaId,
+            nome: produto.nome,
+            descricao: produto.descricao || null,
+            preco: produto.preco,
+            imagem_url,
+            ativo: true,
+          });
+          
+          if (error) {
+            console.error('Erro ao cadastrar produto:', produto.nome, error);
+            falhas++;
+          } else {
+            sucessos++;
+          }
+        } catch (err) {
+          console.error('Erro ao cadastrar produto:', produto.nome, err);
+          falhas++;
+        }
+      }
+      
+      // Atualizar lista de produtos
+      queryClient.invalidateQueries({ queryKey: ['produtos'] });
+      
+      if (falhas === 0) {
+        toast.success(`${sucessos} produto(s) cadastrado(s) com sucesso!`);
+      } else if (sucessos > 0) {
+        toast.warning(`${sucessos} produto(s) cadastrado(s), ${falhas} falha(s)`);
+      } else {
+        toast.error('Não foi possível cadastrar os produtos');
+      }
+    } catch (error) {
+      console.error('Erro na importação:', error);
+      toast.error('Erro ao importar produtos');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const openEditProduto = (produto: Produto) => {
     setEditingProd(produto);
     setProdForm({
@@ -389,7 +477,23 @@ export default function Cardapio() {
         {/* PRODUTOS TAB */}
         <TabsContent value="produtos" className="space-y-4">
           {canEditCardapio && (
-            <div className="flex justify-end">
+            <div className="flex flex-wrap gap-2 justify-end">
+              {/* Botão Escanear Cardápio - ideal para celular */}
+              <Button 
+                variant="outline"
+                onClick={() => setIsScannerOpen(true)}
+                disabled={isImporting}
+                className="gap-2"
+              >
+                {isImporting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ScanLine className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">Escanear Cardápio</span>
+                <span className="sm:hidden">Escanear</span>
+              </Button>
+              
               <Dialog open={isProdDialogOpen} onOpenChange={(open) => {
                 setIsProdDialogOpen(open);
                 if (!open) {
@@ -831,6 +935,13 @@ export default function Cardapio() {
           )}
         </TabsContent>
       </Tabs>
+      
+      {/* Modal Scanner de Cardápio */}
+      <MenuScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onImportProducts={handleImportProducts}
+      />
     </div>
   );
 }
