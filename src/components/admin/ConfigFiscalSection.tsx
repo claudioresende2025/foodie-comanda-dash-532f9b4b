@@ -34,6 +34,7 @@ type ConfigFiscalForm = {
   certificado_senha: string;
   csc: string;
   csc_id: string;
+  api_token_nfe: string;
 };
 
 const emptyForm: ConfigFiscalForm = {
@@ -47,6 +48,7 @@ const emptyForm: ConfigFiscalForm = {
   certificado_senha: '',
   csc: '',
   csc_id: '',
+  api_token_nfe: '',
 };
 
 export function ConfigFiscalSection() {
@@ -86,6 +88,7 @@ export function ConfigFiscalSection() {
         certificado_senha: configFiscal.certificado_senha || '',
         csc: configFiscal.csc || '',
         csc_id: configFiscal.csc_id || '',
+        api_token_nfe: configFiscal.api_token_nfe || '',
       });
       if (configFiscal.certificado_path) {
         setCertFileName(configFiscal.certificado_path.split('/').pop() || 'certificado.pfx');
@@ -125,6 +128,7 @@ export function ConfigFiscalSection() {
         certificado_senha: form.certificado_senha || null,
         csc: form.csc || null,
         csc_id: form.csc_id || null,
+        api_token_nfe: form.api_token_nfe || null,
       };
 
       // Verificar se já existe registro para esta empresa
@@ -303,6 +307,21 @@ export function ConfigFiscalSection() {
               onChange={(e) => setForm({ ...form, csc_id: e.target.value })}
             />
           </div>
+        </div>
+
+        {/* Token API Focus NFe */}
+        <div className="space-y-2">
+          <Label>Token API Focus NFe</Label>
+          <Input
+            placeholder="Cole aqui o token da API Focus NFe"
+            value={form.api_token_nfe}
+            onChange={(e) => setForm({ ...form, api_token_nfe: e.target.value })}
+            type="password"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            Obtenha o token em <a href="https://focusnfe.com.br" target="_blank" rel="noopener noreferrer" className="text-primary underline">focusnfe.com.br</a>
+          </p>
         </div>
 
         <Button

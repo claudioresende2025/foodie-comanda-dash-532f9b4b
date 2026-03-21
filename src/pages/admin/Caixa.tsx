@@ -209,14 +209,14 @@ export default function Caixa() {
     refetchOnWindowFocus: true,
   });
 
-  // Verificar se NFC-e está configurado (tem api_token_nfe na config_fiscal)
+  // Verificar se NFC-e está totalmente configurado (todos os campos fiscais preenchidos)
   const { data: configFiscal } = useQuery({
     queryKey: ['config-fiscal-nfce', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return null;
       const { data, error } = await supabase
         .from('config_fiscal')
-        .select('id, api_token_nfe, modo_producao')
+        .select('id, api_token_nfe, modo_producao, regime_tributario, codigo_ibge_cidade, logradouro, numero, bairro, cep, uf, certificado_path, certificado_senha, csc, csc_id')
         .eq('empresa_id', profile.empresa_id)
         .maybeSingle();
       if (error) throw error;
@@ -225,8 +225,21 @@ export default function Caixa() {
     enabled: !!profile?.empresa_id,
   });
 
-  // NFC-e está habilitado apenas se tiver api_token_nfe configurado
-  const nfceHabilitado = !!configFiscal?.api_token_nfe;
+  // NFC-e está habilitado apenas se TODOS os campos obrigatórios estiverem preenchidos
+  const nfceHabilitado = !!(
+    configFiscal?.api_token_nfe &&
+    configFiscal?.regime_tributario &&
+    configFiscal?.codigo_ibge_cidade &&
+    configFiscal?.logradouro &&
+    configFiscal?.numero &&
+    configFiscal?.bairro &&
+    configFiscal?.cep &&
+    configFiscal?.uf &&
+    configFiscal?.certificado_path &&
+    configFiscal?.certificado_senha &&
+    configFiscal?.csc &&
+    configFiscal?.csc_id
+  );
 
   // Comandas abertas (Mesas)
   const {
