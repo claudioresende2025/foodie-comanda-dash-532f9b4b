@@ -24,15 +24,111 @@ const PADROES_PRECO = [
 ];
 
 /**
+ * Correções comuns de OCR - caracteres que são frequentemente confundidos
+ */
+const CORRECOES_OCR: Record<string, string> = {
+  '\u00A9': 'C', // Copyright por C
+  '\u00AE': 'R', // Registered por R
+  '\u2122': 'TM', // Trademark
+  '\u00AB': '"', // Aspas «
+  '\u00BB': '"', // Aspas »
+  '\u2018': "'", // Apóstrofo '
+  '\u2019': "'", // Apóstrofo '
+  '\u201C': '"', // Aspas "
+  '\u201D': '"', // Aspas "
+  '\u2013': '-', // Travessão –
+  '\u2014': '-', // Travessão longo —
+  '\u2026': '...', // Reticências …
+  '\u2010': '-', // Hífen ‐
+  '\u00AD': '', // Soft hyphen
+  '\u00A0': ' ', // Non-breaking space
+  '\u200B': '', // Zero-width space
+  '\u200C': '', // Zero-width non-joiner
+  '\u200D': '', // Zero-width joiner
+  '\uFEFF': '', // BOM
+};
+
+/**
+ * Caracteres de ruído comum do OCR que devem ser removidos
+ */
+const RUIDO_OCR = /[\u005E\u0060\u007E\u00AC\u00A8\u00B4\u00B0\u00AA\u00BA\u00B9\u00B2\u00B3\u00B1\u00D7\u00F7\u00B6\u00A7\u00A4\u00A2\u00A3\u00A5\u20AC\u00A1\u00BF\u00B7\u2022\u25E6\u25AA\u25B8\u25BA\u25C6\u25C7\u25CB\u25CF\u25A1\u25A0\u25B2\u25B3\u25BC\u25BD\u25C1\u25C0\u2666\u2663\u2660\u2665\u2605\u2606\u2713\u2714\u2715\u2716\u2717\u2718\u2726\u2727\u2729\u272A\u272B\u272C\u272D\u272E\u272F\u2730]/g;
+
+/**
+ * Corrige erros comuns de OCR em texto
+ */
+function corrigirErrosOCR(texto: string): string {
+  let resultado = texto;
+  
+  // Remover caracteres de ruído
+  resultado = resultado.replace(RUIDO_OCR, '');
+  
+  // Aplicar correções de caracteres
+  for (const [errado, correto] of Object.entries(CORRECOES_OCR)) {
+    resultado = resultado.split(errado).join(correto);
+  }
+  
+  // Corrigir números no meio de palavras (exceto em preços)
+  // Ex: "PIZZ4" -> "PIZZA", "HAMBÚRGU3R" -> "HAMBÚRGUER"
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ])0([A-Za-zÀ-ÿ])/g, '$1O$2');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ])1([A-Za-zÀ-ÿ])/g, '$1I$2');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ])3([A-Za-zÀ-ÿ])/g, '$1E$2');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ])4([A-Za-zÀ-ÿ])/g, '$1A$2');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ])5([A-Za-zÀ-ÿ])/g, '$1S$2');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ])6([A-Za-zÀ-ÿ])/g, '$1G$2');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ])8([A-Za-zÀ-ÿ])/g, '$1B$2');
+  
+  // Corrigir sequências problemáticas comuns
+  resultado = resultado.replace(/rn/g, 'm'); // rn -> m (quando parece m)
+  resultado = resultado.replace(/lI/g, 'U'); // lI -> U
+  resultado = resultado.replace(/II/g, 'U'); // II -> U (em alguns casos)
+  
+  return resultado;
+}
+
+/**
+ * Limpa nome do produto removendo caracteres inválidos
+ */
+function limparNomeProduto(nome: string): string {
+  let resultado = nome
+    // Remover caracteres especiais no início e fim
+    .replace(/^[^A-Za-zÀ-ÿ0-9]+/, '')
+    .replace(/[^A-Za-zÀ-ÿ0-9]+$/, '')
+    // Remover múltiplos espaços
+    .replace(/\s{2,}/g, ' ')
+    // Remover caracteres de controle
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    // Manter apenas caracteres válidos para nome de produto
+    .replace(/[^\w\sÀ-ÿ\-.,&()'"/]+/g, '')
+    .trim();
+  
+  // Capitalizar corretamente (primeira letra maiúscula de cada palavra principal)
+  resultado = resultado
+    .toLowerCase()
+    .replace(/(?:^|\s)([a-zà-ÿ])/g, (_, letra) => _.toUpperCase());
+  
+  // Manter palavras como "de", "da", "do", "com", "e" em minúsculo
+  resultado = resultado
+    .replace(/\s(De|Da|Do|Dos|Das|Com|E|À|Ao|Em)\s/g, (match) => match.toLowerCase());
+  
+  return resultado;
+}
+
+/**
  * Limpa e normaliza o texto OCR
  */
 function limparTexto(texto: string): string {
-  return texto
+  let resultado = texto
     .replace(/[\r\n]+/g, '\n') // Normalizar quebras de linha
-    .replace(/[|¦│┃]/g, '') // Remover caracteres de borda de tabela
+    .replace(/[|¦│┃║]/g, ' ') // Caracteres de borda de tabela viram espaço
     .replace(/[-_=]{3,}/g, '\n') // Separadores viram quebras de linha
+    .replace(/\t+/g, ' ') // Tabs viram espaços
     .replace(/\s{2,}/g, ' ') // Múltiplos espaços viram um
     .trim();
+  
+  // Aplicar correções de OCR
+  resultado = corrigirErrosOCR(resultado);
+  
+  return resultado;
 }
 
 /**
@@ -108,7 +204,10 @@ function extrairNomeDescricao(texto: string, posicaoPreco?: number): { nome: str
   }
   
   // Remover símbolos e números do início
-  textoLimpo = textoLimpo.replace(/^[\d\.\)\-*•]+\s*/, '').trim();
+  textoLimpo = textoLimpo.replace(/^[\d\.\)\-*•#]+\s*/, '').trim();
+  
+  // Corrigir erros de OCR no texto
+  textoLimpo = corrigirErrosOCR(textoLimpo);
   
   // Procurar por separadores comuns entre nome e descrição
   const separadores = [' - ', ': ', ' – ', ' | ', '\n', '. '];
@@ -116,10 +215,11 @@ function extrairNomeDescricao(texto: string, posicaoPreco?: number): { nome: str
   for (const sep of separadores) {
     const idx = textoLimpo.indexOf(sep);
     if (idx > 3 && idx < textoLimpo.length - 3) {
-      return {
-        nome: textoLimpo.substring(0, idx).trim(),
-        descricao: textoLimpo.substring(idx + sep.length).trim(),
-      };
+      const nome = limparNomeProduto(textoLimpo.substring(0, idx));
+      const descricao = textoLimpo.substring(idx + sep.length).trim()
+        .replace(/[^\w\sÀ-ÿ\-.,&()'"/]+/g, '') // Limpar caracteres especiais
+        .trim();
+      return { nome, descricao };
     }
   }
   
@@ -128,13 +228,14 @@ function extrairNomeDescricao(texto: string, posicaoPreco?: number): { nome: str
   if (textoLimpo.length > 50) {
     const palavras = textoLimpo.split(' ');
     const meio = Math.min(4, Math.floor(palavras.length / 2));
-    return {
-      nome: palavras.slice(0, meio).join(' '),
-      descricao: palavras.slice(meio).join(' '),
-    };
+    const nome = limparNomeProduto(palavras.slice(0, meio).join(' '));
+    const descricao = palavras.slice(meio).join(' ')
+      .replace(/[^\w\sÀ-ÿ\-.,&()'"/]+/g, '')
+      .trim();
+    return { nome, descricao };
   }
   
-  return { nome: textoLimpo, descricao: '' };
+  return { nome: limparNomeProduto(textoLimpo), descricao: '' };
 }
 
 /**
