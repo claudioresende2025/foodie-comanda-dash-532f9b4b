@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import Tesseract from 'tesseract.js';
+// tesseract.js is loaded dynamically to avoid build errors
 import {
   Dialog,
   DialogContent,
@@ -258,7 +258,8 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
     setProgressoOCR(0);
     
     try {
-      const result = await Tesseract.recognize(imageData, 'por', {
+      const TesseractModule = await import('tesseract.js');
+      const result = await TesseractModule.default.recognize(imageData, 'por', {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             setProgressoOCR(Math.round(m.progress * 100));
