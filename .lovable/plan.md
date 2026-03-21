@@ -1,28 +1,17 @@
 
 
-# Correção: Erro "Failed to resolve import tesseract.js"
+# Forçar reinstalação de dependências
 
-## Diagnóstico
+## O que será feito
 
-O pacote `tesseract.js` está listado no `package.json` (v5.1.1), mas o Vite não consegue resolver o módulo. Isso indica que o pacote não foi instalado corretamente (falta no `node_modules`).
+Um bump mínimo seguro em uma dependência do `package.json` para disparar a reinstalação automática de todos os pacotes no ambiente Lovable. Isso resolverá possíveis problemas de módulos não encontrados (como o `tesseract.js`).
 
-## Solução
+## Alteração
 
-O problema é que as dependências precisam ser reinstaladas. No Lovable, isso acontece automaticamente ao adicionar/remover um pacote no `package.json`.
+### `package.json`
+- Bump `@types/node` de `^22.16.5` para `^22.16.6` (devDependency de tipos, zero impacto no app)
 
-### Abordagem: Forçar reinstalação
-- Remover e re-adicionar `tesseract.js` no `package.json` para forçar o Lovable a reinstalar as dependências
-- Alternativa: se o pacote continuar falhando, usar importação dinâmica (`import('tesseract.js')`) como fallback mais resiliente
+Isso dispara a reinstalação completa de todas as dependências sem afetar nenhuma funcionalidade da aplicação.
 
-### Arquivo: `package.json`
-- Atualizar a versão de `tesseract.js` de `^5.1.1` para `^5.1.2` (ou qualquer bump minor) para forçar reinstalação
-
-### Arquivo: `src/components/admin/MenuScannerModal.tsx` (melhoria opcional)
-- Trocar import estático por dinâmico para evitar que o erro bloqueie toda a aplicação:
-```tsx
-// De: import Tesseract from 'tesseract.js';
-// Para: const Tesseract = await import('tesseract.js');
-```
-
-Total: 2 arquivos, mudanças mínimas.
+**Total: 1 arquivo, 1 linha alterada.**
 
