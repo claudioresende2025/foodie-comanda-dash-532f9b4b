@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import Tesseract from 'tesseract.js';
+// tesseract.js is loaded dynamically to avoid build errors
 import {
   Dialog,
   DialogContent,
