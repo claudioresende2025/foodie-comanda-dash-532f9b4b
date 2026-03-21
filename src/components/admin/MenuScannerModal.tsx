@@ -251,6 +251,55 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
     setProdutosExtraidos(novosProdutos);
   };
 
+  // Pré-processar imagem para melhorar OCR
+  const preprocessarImagem = async (imageData: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(imageData);
+          return;
+        }
+
+        // Aumentar resolução para melhor OCR
+        const scale = Math.max(1, 2000 / Math.max(img.width, img.height));
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+
+        // Desenhar imagem escalada
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Aplicar filtros para melhorar contraste
+        const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageDataObj.data;
+
+        // Converter para escala de cinza e aumentar contraste
+        for (let i = 0; i < data.length; i += 4) {
+          // Média ponderada para escala de cinza
+          const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+          
+          // Aumentar contraste
+          let newGray = ((gray - 128) * 1.5) + 128;
+          newGray = Math.max(0, Math.min(255, newGray));
+          
+          // Binarização adaptativa (preto ou branco)
+          const threshold = 140;
+          const finalValue = newGray > threshold ? 255 : 0;
+          
+          data[i] = finalValue;
+          data[i + 1] = finalValue;
+          data[i + 2] = finalValue;
+        }
+
+        ctx.putImageData(imageDataObj, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = imageData;
+    });
+  };
+
   // Processar imagem com OCR
   const processarImagem = async (imageData: string) => {
     setEtapa('processando');
@@ -258,11 +307,16 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
     setProgressoOCR(0);
     
     try {
+      // Pré-processar imagem para melhorar qualidade
+      setProgressoOCR(5);
+      const imagemProcessada = await preprocessarImagem(imageData);
+      setProgressoOCR(10);
+      
       const TesseractModule = await import('tesseract.js');
-      const result = await TesseractModule.default.recognize(imageData, 'por', {
+      const result = await TesseractModule.default.recognize(imagemProcessada, 'por', {
         logger: (m) => {
           if (m.status === 'recognizing text') {
-            setProgressoOCR(Math.round(m.progress * 100));
+            setProgressoOCR(10 + Math.round(m.progress * 85));
           }
         },
       });

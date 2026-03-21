@@ -62,25 +62,21 @@ function corrigirErrosOCR(texto: string): string {
   // Remover caracteres de ruído
   resultado = resultado.replace(RUIDO_OCR, '');
   
-  // Aplicar correções de caracteres
+  // Aplicar correções de caracteres especiais
   for (const [errado, correto] of Object.entries(CORRECOES_OCR)) {
     resultado = resultado.split(errado).join(correto);
   }
   
-  // Corrigir números no meio de palavras (exceto em preços)
-  // Ex: "PIZZ4" -> "PIZZA", "HAMBÚRGU3R" -> "HAMBÚRGUER"
-  resultado = resultado.replace(/([A-Za-zÀ-ÿ])0([A-Za-zÀ-ÿ])/g, '$1O$2');
-  resultado = resultado.replace(/([A-Za-zÀ-ÿ])1([A-Za-zÀ-ÿ])/g, '$1I$2');
-  resultado = resultado.replace(/([A-Za-zÀ-ÿ])3([A-Za-zÀ-ÿ])/g, '$1E$2');
-  resultado = resultado.replace(/([A-Za-zÀ-ÿ])4([A-Za-zÀ-ÿ])/g, '$1A$2');
-  resultado = resultado.replace(/([A-Za-zÀ-ÿ])5([A-Za-zÀ-ÿ])/g, '$1S$2');
-  resultado = resultado.replace(/([A-Za-zÀ-ÿ])6([A-Za-zÀ-ÿ])/g, '$1G$2');
-  resultado = resultado.replace(/([A-Za-zÀ-ÿ])8([A-Za-zÀ-ÿ])/g, '$1B$2');
+  // Corrigir números no meio de palavras (quando claramente está errado)
+  // Ex: "PIZZ4" -> "PIZZA" (número no final de palavra)
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ]{2,})0$/g, '$1O');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ]{2,})1$/g, '$1I');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ]{2,})4$/g, '$1A');
+  resultado = resultado.replace(/([A-Za-zÀ-ÿ]{2,})5$/g, '$1S');
   
-  // Corrigir sequências problemáticas comuns
-  resultado = resultado.replace(/rn/g, 'm'); // rn -> m (quando parece m)
-  resultado = resultado.replace(/lI/g, 'U'); // lI -> U
-  resultado = resultado.replace(/II/g, 'U'); // II -> U (em alguns casos)
+  // Corrigir números no início de palavras
+  resultado = resultado.replace(/^0([A-Za-zÀ-ÿ]{2,})/g, 'O$1');
+  resultado = resultado.replace(/^1([A-Za-zÀ-ÿ]{2,})/g, 'I$1');
   
   return resultado;
 }
@@ -121,6 +117,7 @@ function limparTexto(texto: string): string {
     .replace(/[\r\n]+/g, '\n') // Normalizar quebras de linha
     .replace(/[|¦│┃║]/g, ' ') // Caracteres de borda de tabela viram espaço
     .replace(/[-_=]{3,}/g, '\n') // Separadores viram quebras de linha
+    .replace(/\.{3,}/g, ' ') // Sequência de pontos (......) vira espaço
     .replace(/\t+/g, ' ') // Tabs viram espaços
     .replace(/\s{2,}/g, ' ') // Múltiplos espaços viram um
     .trim();
@@ -136,30 +133,40 @@ function limparTexto(texto: string): string {
  * Retorna o preço como número ou null se não encontrar
  */
 function extrairPreco(linha: string): { preco: number; posicao: number } | null {
-  // Procurar por padrão R$ primeiro
-  const matchComR = linha.match(/R\$\s*(\d{1,4})[,.](\d{2})/i);
+  // Limpar a linha de sequências de pontos antes de procurar preços
+  const linhaLimpa = linha.replace(/\.{2,}/g, ' ').replace(/\s{2,}/g, ' ');
+  
+  // Procurar por padrão R$ primeiro (mais confiável)
+  const matchComR = linhaLimpa.match(/R\$\s*(\d{1,4})[,.](\d{2})/i);
   if (matchComR) {
     const preco = parseFloat(`${matchComR[1]}.${matchComR[2]}`);
-    return { preco, posicao: matchComR.index || 0 };
+    // Encontrar a posição real no texto original
+    const posicaoR = linha.search(/R\$/i);
+    return { preco, posicao: posicaoR >= 0 ? posicaoR : (matchComR.index || 0) };
   }
 
   // Procurar por número no formato XX,XX ou XX.XX no final da linha
-  const matchSemR = linha.match(/(\d{1,4})[,.](\d{2})\s*$/);
+  const matchSemR = linhaLimpa.match(/(\d{1,4})[,.](\d{2})\s*$/);
   if (matchSemR) {
     const preco = parseFloat(`${matchSemR[1]}.${matchSemR[2]}`);
     // Verificar se é um preço razoável (entre R$ 1,00 e R$ 999,99)
     if (preco >= 1 && preco <= 999.99) {
-      return { preco, posicao: matchSemR.index || 0 };
+      // Encontrar a posição do preço no texto original
+      const regexPreco = new RegExp(`${matchSemR[1]}[,.]${matchSemR[2]}`);
+      const matchOriginal = linha.match(regexPreco);
+      return { preco, posicao: matchOriginal?.index || 0 };
     }
   }
 
   // Procurar por qualquer número no formato de preço na linha
-  const matchQualquer = linha.match(/(\d{1,4})[,.](\d{2})/);
+  const matchQualquer = linhaLimpa.match(/(\d{1,4})[,.](\d{2})/);
   if (matchQualquer) {
     const preco = parseFloat(`${matchQualquer[1]}.${matchQualquer[2]}`);
     // Ser mais restritivo para preços sem R$
-    if (preco >= 5 && preco <= 500) {
-      return { preco, posicao: matchQualquer.index || 0 };
+    if (preco >= 2 && preco <= 500) {
+      const regexPreco = new RegExp(`${matchQualquer[1]}[,.]${matchQualquer[2]}`);
+      const matchOriginal = linha.match(regexPreco);
+      return { preco, posicao: matchOriginal?.index || 0 };
     }
   }
 
@@ -171,18 +178,22 @@ function extrairPreco(linha: string): { preco: number; posicao: number } | null 
  */
 function ehItemCardapio(linha: string): boolean {
   // Ignorar linhas muito curtas
-  if (linha.length < 5) return false;
+  if (linha.length < 4) return false;
   
   // Ignorar linhas que são apenas números ou preços
   if (/^\s*[R$]?\s*\d+[,.]?\d*\s*$/.test(linha)) return false;
   
+  // Ignorar categorias/cabeçalhos (terminam com ":")
+  if (/^[A-Za-zÀ-ÿ\s]+:\s*$/.test(linha.trim())) return false;
+  
   // Ignorar cabeçalhos comuns
   const ignorar = [
-    /^(cardápio|menu|bebidas|lanches|pratos|sobremesas|combos|porções|pizzas?)$/i,
+    /^(cardápio|menu|bebidas|lanches|pratos|sobremesas|combos|porções|pizzas?|cervejas?|aperitivos?|entradas?|sobremesas?|massas?|carnes?|peixes?|saladas?)$/i,
     /^(categoria|item|preço|valor|descrição|obs|observação)$/i,
     /^(delivery|peça|encomendas?|contato|telefone|whatsapp)/i,
     /^\d+\s*$/,
     /^[*\-•]+\s*$/,
+    /^(artesanais?|especiais?|tradicionais?)$/i,
   ];
   
   for (const padrao of ignorar) {
@@ -203,24 +214,44 @@ function extrairNomeDescricao(texto: string, posicaoPreco?: number): { nome: str
     textoLimpo = texto.substring(0, posicaoPreco).trim();
   }
   
+  // Remover sequências de pontos (formato: "Produto....... R$ XX,XX")
+  textoLimpo = textoLimpo.replace(/\.{2,}/g, ' ').trim();
+  
   // Remover símbolos e números do início
   textoLimpo = textoLimpo.replace(/^[\d\.\)\-*•#]+\s*/, '').trim();
+  
+  // Remover "R$" e valores no final que sobraram
+  textoLimpo = textoLimpo.replace(/R\$\s*\d+[,.]?\d*\s*$/i, '').trim();
   
   // Corrigir erros de OCR no texto
   textoLimpo = corrigirErrosOCR(textoLimpo);
   
+  // Remover caracteres especiais problemáticos
+  textoLimpo = textoLimpo.replace(/[^\w\sÀ-ÿ\-.,&()'"/]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  
   // Procurar por separadores comuns entre nome e descrição
-  const separadores = [' - ', ': ', ' – ', ' | ', '\n', '. '];
+  const separadores = [' - ', ': ', ' – ', ' | ', '\n'];
   
   for (const sep of separadores) {
     const idx = textoLimpo.indexOf(sep);
     if (idx > 3 && idx < textoLimpo.length - 3) {
       const nome = limparNomeProduto(textoLimpo.substring(0, idx));
       const descricao = textoLimpo.substring(idx + sep.length).trim()
-        .replace(/[^\w\sÀ-ÿ\-.,&()'"/]+/g, '') // Limpar caracteres especiais
+        .replace(/[^\w\sÀ-ÿ\-.,&()'"/]+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
         .trim();
       return { nome, descricao };
     }
+  }
+  
+  // Se texto tem parênteses, pode ser nome + descrição
+  // Ex: "Caipirinha (copo)" -> nome: "Caipirinha", desc: "copo"
+  const matchParenteses = textoLimpo.match(/^([^(]+)\(([^)]+)\)/);
+  if (matchParenteses) {
+    return {
+      nome: limparNomeProduto(matchParenteses[1]),
+      descricao: matchParenteses[2].trim(),
+    };
   }
   
   // Se não encontrou separador, usar tudo como nome
@@ -230,7 +261,8 @@ function extrairNomeDescricao(texto: string, posicaoPreco?: number): { nome: str
     const meio = Math.min(4, Math.floor(palavras.length / 2));
     const nome = limparNomeProduto(palavras.slice(0, meio).join(' '));
     const descricao = palavras.slice(meio).join(' ')
-      .replace(/[^\w\sÀ-ÿ\-.,&()'"/]+/g, '')
+      .replace(/[^\w\sÀ-ÿ\-.,&()'"/]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
       .trim();
     return { nome, descricao };
   }
