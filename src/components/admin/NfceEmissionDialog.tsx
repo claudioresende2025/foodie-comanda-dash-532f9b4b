@@ -54,7 +54,21 @@ export function NfceEmissionDialog({ open, onOpenChange, data }: NfceEmissionDia
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Tratar erros específicos da Edge Function
+        if (error.message?.includes('Failed to send a request') || error.message?.includes('FunctionsHttpError')) {
+          throw new Error('Serviço de NFC-e indisponível. Verifique se a função está deployada no Supabase.');
+        }
+        if (error.message?.includes('Unauthorized') || error.message?.includes('401')) {
+          throw new Error('Sessão expirada. Faça login novamente.');
+        }
+        throw error;
+      }
+
+      // Tratar erros retornados pela função
+      if (response?.error) {
+        throw new Error(response.error);
+      }
 
       setResult(response);
 
@@ -63,12 +77,14 @@ export function NfceEmissionDialog({ open, onOpenChange, data }: NfceEmissionDia
       } else if (response.status === 'processando') {
         toast.info('NFC-e em processamento na SEFAZ...');
       } else {
-        toast.error('Erro ao emitir NFC-e');
+        const erroMsg = response.erro_sefaz || 'Erro ao emitir NFC-e';
+        toast.error(erroMsg);
       }
     } catch (err: any) {
       console.error('Erro ao emitir NFC-e:', err);
-      toast.error(err.message || 'Erro ao emitir NFC-e');
-      setResult({ success: false, status: 'erro', erro_sefaz: err.message });
+      const mensagem = err.message || 'Erro ao emitir NFC-e. Tente novamente.';
+      toast.error(mensagem);
+      setResult({ success: false, status: 'erro', erro_sefaz: mensagem });
     } finally {
       setIsEmitting(false);
     }

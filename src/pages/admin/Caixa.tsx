@@ -209,6 +209,25 @@ export default function Caixa() {
     refetchOnWindowFocus: true,
   });
 
+  // Verificar se NFC-e está configurado (tem api_token_nfe na config_fiscal)
+  const { data: configFiscal } = useQuery({
+    queryKey: ['config-fiscal-nfce', profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return null;
+      const { data, error } = await supabase
+        .from('config_fiscal')
+        .select('id, api_token_nfe, modo_producao')
+        .eq('empresa_id', profile.empresa_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.empresa_id,
+  });
+
+  // NFC-e está habilitado apenas se tiver api_token_nfe configurado
+  const nfceHabilitado = !!configFiscal?.api_token_nfe;
+
   // Comandas abertas (Mesas)
   const {
     data: comandas = [],
@@ -442,8 +461,8 @@ export default function Caixa() {
         toast.success('Comanda fechada com sucesso!');
       }
 
-      // Offer NFC-e emission
-      if (result.printData && profile?.empresa_id) {
+      // Offer NFC-e emission only if configured
+      if (nfceHabilitado && result.printData && profile?.empresa_id) {
         const itensNfce = result.printData.itens.map((item: any) => ({
           nome: item.nome,
           ncm: '', // Will be fetched from product data
