@@ -1,17 +1,19 @@
 
 
-# Forçar reinstalação de dependências
+# Correção: "Enviar Imagem" abrindo câmera em vez da galeria
 
-## O que será feito
+## Problema
 
-Um bump mínimo seguro em uma dependência do `package.json` para disparar a reinstalação automática de todos os pacotes no ambiente Lovable. Isso resolverá possíveis problemas de módulos não encontrados (como o `tesseract.js`).
+O `<input>` de upload de arquivo possui o atributo `capture="environment"` (linha 503), que em dispositivos móveis força a abertura da câmera ao invés da galeria de fotos.
 
-## Alteração
+## Solução
 
-### `package.json`
-- Bump `@types/node` de `^22.16.5` para `^22.16.6` (devDependency de tipos, zero impacto no app)
+Remover o atributo `capture="environment"` do input de upload de arquivo. Sem esse atributo, o navegador móvel abrirá o seletor padrão que permite escolher imagens da galeria.
 
-Isso dispara a reinstalação completa de todas as dependências sem afetar nenhuma funcionalidade da aplicação.
+O atributo `capture` deve existir apenas no input usado para a funcionalidade "Usar Câmera", não no "Enviar Imagem".
 
-**Total: 1 arquivo, 1 linha alterada.**
+### `src/components/admin/MenuScannerModal.tsx`
+- Linha 503: remover `capture="environment"` do input referenciado por `fileInputRef`
+
+**Total: 1 arquivo, 1 linha removida.**
 
