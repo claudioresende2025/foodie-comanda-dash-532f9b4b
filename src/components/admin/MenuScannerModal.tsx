@@ -251,100 +251,56 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
     setProdutosExtraidos(novosProdutos);
   };
 
-  // Pré-processar imagem para melhorar OCR
-  const preprocessarImagem = async (imageData: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(imageData);
-          return;
-        }
-
-        // Aumentar resolução para melhor OCR
-        const scale = Math.max(1, 2000 / Math.max(img.width, img.height));
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-
-        // Desenhar imagem escalada
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Aplicar filtros para melhorar contraste
-        const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageDataObj.data;
-
-        // Converter para escala de cinza e aumentar contraste
-        for (let i = 0; i < data.length; i += 4) {
-          // Média ponderada para escala de cinza
-          const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-          
-          // Aumentar contraste
-          let newGray = ((gray - 128) * 1.5) + 128;
-          newGray = Math.max(0, Math.min(255, newGray));
-          
-          // Binarização adaptativa (preto ou branco)
-          const threshold = 140;
-          const finalValue = newGray > threshold ? 255 : 0;
-          
-          data[i] = finalValue;
-          data[i + 1] = finalValue;
-          data[i + 2] = finalValue;
-        }
-
-        ctx.putImageData(imageDataObj, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      img.src = imageData;
-    });
-  };
-
-  // Processar imagem com OCR
+  // Processar imagem com IA (visão computacional)
   const processarImagem = async (imageData: string) => {
     setEtapa('processando');
     setIsProcessing(true);
     setProgressoOCR(0);
     
     try {
-      // Pré-processar imagem para melhorar qualidade
-      setProgressoOCR(5);
-      const imagemProcessada = await preprocessarImagem(imageData);
       setProgressoOCR(10);
       
-      const TesseractModule = await import('tesseract.js');
-      const result = await TesseractModule.default.recognize(imagemProcessada, 'por', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setProgressoOCR(10 + Math.round(m.progress * 85));
-          }
-        },
+      // Simular progresso enquanto a IA processa
+      const progressInterval = setInterval(() => {
+        setProgressoOCR(prev => Math.min(prev + 5, 85));
+      }, 500);
+      
+      const { data, error } = await supabase.functions.invoke('scan-menu', {
+        body: { imageBase64: imageData },
       });
       
-      const textoExtraido = result.data.text;
-      console.log('Texto OCR extraído:', textoExtraido);
+      clearInterval(progressInterval);
+      setProgressoOCR(95);
       
-      // Extrair produtos do texto
-      const produtos = extrairProdutosDeTexto(textoExtraido);
+      if (error) {
+        console.error('Erro na edge function:', error);
+        throw new Error(error.message || 'Erro ao processar imagem');
+      }
+      
+      const produtos: Array<{ nome: string; descricao: string; preco: number }> = data?.produtos || [];
+      
+      console.log('Produtos extraídos pela IA:', produtos);
+      
+      setProgressoOCR(100);
       
       if (produtos.length === 0) {
         toast.warning('Nenhum produto identificado. Tente uma imagem mais clara ou com texto legível.');
         setEtapa('selecao');
         setImagemCapturada(null);
       } else {
-        // Converter para ProdutoComImagem
         const produtosComImagem: ProdutoComImagem[] = produtos.map(p => ({
-          ...p,
+          nome: p.nome,
+          descricao: p.descricao || '',
+          preco: Number(p.preco) || 0,
           imagemUrl: undefined,
         }));
         setProdutosExtraidos(produtosComImagem);
-        // Selecionar todos por padrão
         setProdutosSelecionados(new Set(produtos.map((_, i) => i)));
         setEtapa('revisao');
-        toast.success(`${produtos.length} produto(s) identificado(s)! Adicione as fotos.`);
+        toast.success(`${produtos.length} produto(s) identificado(s)! Revise e adicione as fotos.`);
       }
     } catch (err) {
-      console.error('Erro no OCR:', err);
+      console.error('Erro ao processar cardápio:', err);
       toast.error('Erro ao processar imagem. Tente novamente.');
       setEtapa('selecao');
       setImagemCapturada(null);
