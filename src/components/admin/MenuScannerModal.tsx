@@ -500,7 +500,6 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 className="hidden"
                 onChange={handleFileUpload}
               />
