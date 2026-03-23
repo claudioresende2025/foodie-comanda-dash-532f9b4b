@@ -1,56 +1,44 @@
 
-## Objetivo
 
-Corrigir o fluxo para que **“Enviar Imagem” abra a galeria/arquivos de fotos**, sem acionar a câmera no Android/mobile.
+# Correção: Leitura de Cardápio com IA em vez de OCR
 
-## Diagnóstico provável
+## Problema
 
-Embora o `capture` já tenha sido removido, o input ainda usa `accept="image/*"`. Em alguns navegadores mobile/PWAs isso ainda pode priorizar ou sugerir a câmera. Além disso, há **dois inputs de imagem** no modal:
-- upload principal do cardápio
-- upload da foto de cada produto na revisão
+O Tesseract.js (OCR local no navegador) tem baixa precisão com cardápios reais que possuem:
+- Múltiplas colunas e seções
+- Fontes decorativas e variadas
+- Imagens misturadas com texto
+- Preços em formatos variados (ex: "27.99 • 30.99")
 
-Hoje ambos usam `accept="image/*"`.
+O parser de texto (`menuTextParser.ts`) também não lida bem com esses layouts complexos.
 
-## Implementação proposta
+## Solução
 
-### 1. Ajustar os inputs de galeria no `MenuScannerModal`
-Arquivo: `src/components/admin/MenuScannerModal.tsx`
+Substituir o Tesseract.js por **Lovable AI com modelo de visão** (Gemini), que entende layouts visuais complexos e extrai dados estruturados com alta precisão.
 
-Trocar os inputs usados para **galeria** de:
-- `accept="image/*"`
+### 1. Criar Edge Function `scan-menu`
+**Arquivo:** `supabase/functions/scan-menu/index.ts`
 
-para algo mais explícito, por exemplo:
-- `accept="image/png,image/jpeg,image/jpg,image/webp"`
+- Recebe a imagem em base64
+- Envia para o Lovable AI Gateway usando modelo `google/gemini-2.5-flash` com a imagem
+- Usa tool calling para extrair dados estruturados: `{ produtos: [{ nome, descricao, preco }] }`
+- Prompt instrui o modelo a identificar todos os itens com nomes e preços exatos do cardápio
 
-Aplicar nos dois pontos:
-- input do botão **“Enviar Imagem”**
-- input do botão **“Galeria”** de cada produto
+### 2. Atualizar `MenuScannerModal.tsx`
+- Remover import dinâmico de `tesseract.js`
+- Remover função `preprocessarImagem` (não mais necessária)
+- Na função `processarImagem`, chamar a edge function `scan-menu` via `supabase.functions.invoke`
+- Manter todo o fluxo de UI (seleção, câmera, revisão, imagens de produto)
 
-Isso reduz o comportamento de o navegador abrir a câmera por padrão e força melhor o seletor de arquivos/fotos.
-
-### 2. Manter câmera separada
-Preservar o fluxo atual de câmera apenas nos botões:
-- **Usar Câmera**
-- **Tirar Foto**
-
-Ou seja:
-- galeria = `input type="file"`
-- câmera = `getUserMedia()` / captura própria já existente
-
-### 3. Validar o texto da UI
-Se necessário, reforçar na interface que:
-- “Enviar Imagem” = galeria/arquivos
-- “Usar Câmera” = foto ao vivo
-
-Isso evita ambiguidade para o usuário.
+### 3. Manter `menuTextParser.ts` como fallback
+- Não remover, mas o fluxo principal usará a IA
+- Se a edge function falhar, pode cair no parser local
 
 ## Resultado esperado
 
-Após a correção:
-- tocar em **Enviar Imagem** deve abrir o seletor de fotos/arquivos
-- tocar em **Galeria** na revisão deve abrir o mesmo seletor
-- a câmera só deve abrir nos botões específicos de câmera
+- Leitura precisa de nomes, descrições e preços exatamente como aparecem no cardápio
+- Suporte a layouts complexos com múltiplas colunas e seções
+- Preços com variações (ex: "27.99 • 30.99") corretamente identificados
 
-## Detalhe técnico
+**Total: 2 arquivos (1 novo edge function + 1 atualização do modal)**
 
-No Android/Chrome, `accept="image/*"` pode continuar abrindo fluxos ligados à câmera mesmo sem `capture`. Usar uma lista explícita de MIME types costuma ser mais confiável quando a intenção é abrir a galeria.
