@@ -292,6 +292,8 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
           nome: p.nome,
           descricao: p.descricao || '',
           preco: Number(p.preco) || 0,
+          confianca: 95,
+          linhaOriginal: '',
           imagemUrl: undefined,
         }));
         setProdutosExtraidos(produtosComImagem);
