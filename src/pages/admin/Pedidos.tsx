@@ -78,9 +78,10 @@ const playNotificationSound = () => {
 export default function Pedidos() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<PedidoStatus>("pendente");
+  const [activeTab, setActiveTab] = useState<PedidoStatus>("preparando"); // Iniciar em "preparando" já que pendentes são auto-movidos
   const [soundEnabled, setSoundEnabled] = useState(true);
   const soundIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const processedPedidosRef = useRef<Set<string>>(new Set()); // Evitar processar o mesmo pedido múltiplas vezes
 
   // ===============================
   // QUERY ÚNICA → SUPER PERFORMÁTICA
@@ -160,6 +161,82 @@ export default function Pedidos() {
   };
 
   // ===============================
+  // AUTO-ATUALIZAÇÃO DE STATUS DOS PEDIDOS
+  // Pendente → Preparando (automático imediato)
+  // Preparando → Pronto (automático após 3 segundos)
+  // Pronto → Entregue (manual pelo garçom)
+  // ===============================
+  useEffect(() => {
+    if (!pedidos || pedidos.length === 0 || !profile?.empresa_id) return;
+
+    const autoUpdatePedidos = async () => {
+      for (const pedido of pedidos) {
+        const pedidoId = pedido.id;
+        const statusAtual = pedido.status_cozinha as PedidoStatus;
+        
+        // Evitar processar pedidos já processados
+        if (processedPedidosRef.current.has(`${pedidoId}-${statusAtual}`)) continue;
+
+        // Pendente → Preparando (imediato)
+        if (statusAtual === "pendente") {
+          processedPedidosRef.current.add(`${pedidoId}-pendente`);
+          
+          try {
+            const { error } = await supabase
+              .from("pedidos")
+              .update({ status_cozinha: "preparando" })
+              .eq("id", pedidoId);
+            
+            if (!error) {
+              console.log(`[KDS] Pedido ${pedidoId} movido: pendente → preparando`);
+              queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
+            }
+          } catch (e) {
+            console.error("Erro ao auto-atualizar pendente → preparando:", e);
+          }
+        }
+        
+        // Preparando → Pronto (após 3 segundos)
+        if (statusAtual === "preparando") {
+          const alreadyScheduled = processedPedidosRef.current.has(`${pedidoId}-preparando`);
+          if (!alreadyScheduled) {
+            processedPedidosRef.current.add(`${pedidoId}-preparando`);
+            
+            setTimeout(async () => {
+              try {
+                // Verificar se ainda está "preparando" antes de atualizar
+                const { data: pedidoAtual } = await supabase
+                  .from("pedidos")
+                  .select("status_cozinha")
+                  .eq("id", pedidoId)
+                  .single();
+                
+                if (pedidoAtual?.status_cozinha === "preparando") {
+                  const { error } = await supabase
+                    .from("pedidos")
+                    .update({ status_cozinha: "pronto" })
+                    .eq("id", pedidoId);
+                  
+                  if (!error) {
+                    console.log(`[KDS] Pedido ${pedidoId} movido: preparando → pronto`);
+                    queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
+                    playNotificationSound(); // Tocar som quando pronto
+                    toast.success("✅ Pedido pronto para entrega!", { duration: 4000 });
+                  }
+                }
+              } catch (e) {
+                console.error("Erro ao auto-atualizar preparando → pronto:", e);
+              }
+            }, 3000); // 3 segundos para simular preparo
+          }
+        }
+      }
+    };
+
+    autoUpdatePedidos();
+  }, [pedidos, profile?.empresa_id, queryClient]);
+
+  // ===============================
   // SOM CONTÍNUO PARA CHAMADAS PENDENTES
   // ===============================
   useEffect(() => {
@@ -195,33 +272,12 @@ export default function Pedidos() {
           schema: "public",
           table: "pedidos",
         },
-        async (payload) => {
+        (payload) => {
           queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
 
           if (payload.eventType === "INSERT") {
             playNotificationSound();
             toast.info("🍽️ Novo pedido recebido!", { duration: 5000 });
-            
-            // Auto-atualizar status de pendente para preparando
-            const novoPedido = payload.new as { id: string; status_cozinha: string };
-            if (novoPedido.status_cozinha === "pendente") {
-              // Aguardar um breve momento para garantir que a UI atualize primeiro
-              setTimeout(async () => {
-                try {
-                  const { error } = await supabase
-                    .from("pedidos")
-                    .update({ status_cozinha: "preparando" })
-                    .eq("id", novoPedido.id);
-                  
-                  if (!error) {
-                    queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
-                    toast.success("🔄 Pedido movido para preparo automaticamente!", { duration: 3000 });
-                  }
-                } catch (e) {
-                  console.error("Erro ao auto-atualizar status:", e);
-                }
-              }, 1500);
-            }
           }
         },
       )
