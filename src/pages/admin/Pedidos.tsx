@@ -75,6 +75,106 @@ const playNotificationSound = () => {
   }
 };
 
+// ===============================
+// TEMPO DE PREPARO DINÂMICO (em milissegundos)
+// Baseado no nome do produto e/ou categoria
+// ===============================
+const getTempoPreparoMs = (nomeProduto?: string, nomeCategoria?: string): number => {
+  const produto = (nomeProduto || "").toLowerCase();
+  const categoria = (nomeCategoria || "").toLowerCase();
+
+  // Bebidas rápidas - 1 minuto (60.000ms)
+  if (
+    categoria.includes("bebida") ||
+    categoria.includes("drink") ||
+    produto.includes("água") ||
+    produto.includes("refrigerante") ||
+    produto.includes("suco") ||
+    produto.includes("cerveja") ||
+    produto.includes("chopp")
+  ) {
+    return 60 * 1000; // 1 minuto
+  }
+
+  // Café e bebidas quentes - 3 minutos (180.000ms)
+  if (
+    produto.includes("café") ||
+    produto.includes("cappuccino") ||
+    produto.includes("chocolate quente") ||
+    produto.includes("chá")
+  ) {
+    return 3 * 60 * 1000; // 3 minutos
+  }
+
+  // Sobremesas - 5 minutos (300.000ms)
+  if (
+    categoria.includes("sobremesa") ||
+    categoria.includes("doce") ||
+    produto.includes("sorvete") ||
+    produto.includes("pudim") ||
+    produto.includes("torta")
+  ) {
+    return 5 * 60 * 1000; // 5 minutos
+  }
+
+  // Lanches e sanduíches - 8 minutos (480.000ms)
+  if (
+    categoria.includes("lanche") ||
+    categoria.includes("sanduíche") ||
+    categoria.includes("hamburguer") ||
+    categoria.includes("burger") ||
+    produto.includes("hamburguer") ||
+    produto.includes("burger") ||
+    produto.includes("x-") ||
+    produto.includes("hot dog")
+  ) {
+    return 8 * 60 * 1000; // 8 minutos
+  }
+
+  // Porções e petiscos - 10 minutos (600.000ms)
+  if (
+    categoria.includes("porção") ||
+    categoria.includes("porções") ||
+    categoria.includes("petisco") ||
+    categoria.includes("entrada") ||
+    produto.includes("batata frita") ||
+    produto.includes("onion") ||
+    produto.includes("isca")
+  ) {
+    return 10 * 60 * 1000; // 10 minutos
+  }
+
+  // Pratos principais / refeições - 15 minutos (900.000ms)
+  if (
+    categoria.includes("prato") ||
+    categoria.includes("refeição") ||
+    categoria.includes("almoço") ||
+    categoria.includes("jantar") ||
+    produto.includes("arroz") ||
+    produto.includes("feijão") ||
+    produto.includes("bife") ||
+    produto.includes("filé") ||
+    produto.includes("frango")
+  ) {
+    return 15 * 60 * 1000; // 15 minutos
+  }
+
+  // Pizzas e massas - 20 minutos (1.200.000ms)
+  if (
+    categoria.includes("pizza") ||
+    categoria.includes("massa") ||
+    produto.includes("pizza") ||
+    produto.includes("lasanha") ||
+    produto.includes("macarrão") ||
+    produto.includes("espaguete")
+  ) {
+    return 20 * 60 * 1000; // 20 minutos
+  }
+
+  // Default: 5 minutos para itens não identificados
+  return 5 * 60 * 1000; // 5 minutos
+};
+
 export default function Pedidos() {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
@@ -100,7 +200,7 @@ export default function Pedidos() {
         .select(
           `
           *,
-          produto:produtos(nome, preco),
+          produto:produtos(nome, preco, categoria:categorias(nome)),
           comanda:comandas!inner(
             id,
             nome_cliente,
@@ -163,7 +263,7 @@ export default function Pedidos() {
   // ===============================
   // AUTO-ATUALIZAÇÃO DE STATUS DOS PEDIDOS
   // Pendente → Preparando (automático imediato)
-  // Preparando → Pronto (automático após 3 segundos)
+  // Preparando → Pronto (automático após tempo de preparo dinâmico)
   // Pronto → Entregue (manual pelo garçom)
   // ===============================
   useEffect(() => {
@@ -196,11 +296,19 @@ export default function Pedidos() {
           }
         }
         
-        // Preparando → Pronto (após 3 segundos)
+        // Preparando → Pronto (após tempo de preparo dinâmico baseado no produto)
         if (statusAtual === "preparando") {
           const alreadyScheduled = processedPedidosRef.current.has(`${pedidoId}-preparando`);
           if (!alreadyScheduled) {
             processedPedidosRef.current.add(`${pedidoId}-preparando`);
+            
+            // Calcular tempo de preparo baseado no produto e categoria
+            const nomeProduto = (pedido as any).produto?.nome;
+            const nomeCategoria = (pedido as any).produto?.categoria?.nome;
+            const tempoPreparo = getTempoPreparoMs(nomeProduto, nomeCategoria);
+            const tempoMinutos = Math.round(tempoPreparo / 60000);
+            
+            console.log(`[KDS] Pedido ${pedidoId} (${nomeProduto || 'item'}) - Tempo de preparo: ${tempoMinutos} min`);
             
             setTimeout(async () => {
               try {
@@ -221,13 +329,13 @@ export default function Pedidos() {
                     console.log(`[KDS] Pedido ${pedidoId} movido: preparando → pronto`);
                     queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
                     playNotificationSound(); // Tocar som quando pronto
-                    toast.success("✅ Pedido pronto para entrega!", { duration: 4000 });
+                    toast.success(`✅ ${nomeProduto || 'Pedido'} pronto para entrega!`, { duration: 4000 });
                   }
                 }
               } catch (e) {
                 console.error("Erro ao auto-atualizar preparando → pronto:", e);
               }
-            }, 3000); // 3 segundos para simular preparo
+            }, tempoPreparo); // Tempo dinâmico baseado no tipo de produto
           }
         }
       }
