@@ -195,12 +195,33 @@ export default function Pedidos() {
           schema: "public",
           table: "pedidos",
         },
-        (payload) => {
+        async (payload) => {
           queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
 
           if (payload.eventType === "INSERT") {
             playNotificationSound();
             toast.info("🍽️ Novo pedido recebido!", { duration: 5000 });
+            
+            // Auto-atualizar status de pendente para preparando
+            const novoPedido = payload.new as { id: string; status_cozinha: string };
+            if (novoPedido.status_cozinha === "pendente") {
+              // Aguardar um breve momento para garantir que a UI atualize primeiro
+              setTimeout(async () => {
+                try {
+                  const { error } = await supabase
+                    .from("pedidos")
+                    .update({ status_cozinha: "preparando" })
+                    .eq("id", novoPedido.id);
+                  
+                  if (!error) {
+                    queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
+                    toast.success("🔄 Pedido movido para preparo automaticamente!", { duration: 3000 });
+                  }
+                } catch (e) {
+                  console.error("Erro ao auto-atualizar status:", e);
+                }
+              }, 1500);
+            }
           }
         },
       )
@@ -296,20 +317,22 @@ export default function Pedidos() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header responsivo para mobile */}
+      <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">KDS - Cozinha</h1>
-          <p className="text-muted-foreground">Gerencie os pedidos da cozinha</p>
+          <p className="text-muted-foreground mt-1">Gerencie os pedidos da cozinha</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant={soundEnabled ? "default" : "outline"}
             onClick={() => setSoundEnabled(!soundEnabled)}
+            className="flex-1 sm:flex-none"
           >
             {soundEnabled ? <Bell className="w-4 h-4 mr-2" /> : <Bell className="w-4 h-4 mr-2 opacity-50" />}
             Som {soundEnabled ? "Ativado" : "Desativado"}
           </Button>
-          <Button variant="outline" onClick={() => refetch()}>
+          <Button variant="outline" onClick={() => refetch()} className="flex-1 sm:flex-none">
             <RefreshCw className="w-4 h-4 mr-2" />
             Atualizar
           </Button>

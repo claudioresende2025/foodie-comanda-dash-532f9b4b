@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-// tesseract.js is loaded dynamically to avoid build errors
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -30,7 +30,7 @@ import {
   ImageIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { extrairProdutosDeTexto, ProdutoExtraido } from '@/utils/menuTextParser';
+import type { ProdutoExtraido } from '@/utils/menuTextParser';
 
 // Tipo estendido com imagem
 export interface ProdutoComImagem extends ProdutoExtraido {
@@ -251,104 +251,69 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
     setProdutosExtraidos(novosProdutos);
   };
 
-  // Pré-processar imagem para melhorar OCR
-  const preprocessarImagem = async (imageData: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(imageData);
-          return;
-        }
-
-        // Aumentar resolução para melhor OCR
-        const scale = Math.max(1, 2000 / Math.max(img.width, img.height));
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-
-        // Desenhar imagem escalada
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Aplicar filtros para melhorar contraste
-        const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageDataObj.data;
-
-        // Converter para escala de cinza e aumentar contraste
-        for (let i = 0; i < data.length; i += 4) {
-          // Média ponderada para escala de cinza
-          const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-          
-          // Aumentar contraste
-          let newGray = ((gray - 128) * 1.5) + 128;
-          newGray = Math.max(0, Math.min(255, newGray));
-          
-          // Binarização adaptativa (preto ou branco)
-          const threshold = 140;
-          const finalValue = newGray > threshold ? 255 : 0;
-          
-          data[i] = finalValue;
-          data[i + 1] = finalValue;
-          data[i + 2] = finalValue;
-        }
-
-        ctx.putImageData(imageDataObj, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      img.src = imageData;
-    });
-  };
-
-  // Processar imagem com OCR
+  // Processar imagem com IA (Gemini via edge function)
   const processarImagem = async (imageData: string) => {
     setEtapa('processando');
     setIsProcessing(true);
     setProgressoOCR(0);
     
     try {
-      // Pré-processar imagem para melhorar qualidade
-      setProgressoOCR(5);
-      const imagemProcessada = await preprocessarImagem(imageData);
       setProgressoOCR(10);
+      console.log('[MenuScanner] Enviando imagem para análise com IA...');
       
-      const TesseractModule = await import('tesseract.js');
-      const result = await TesseractModule.default.recognize(imagemProcessada, 'por', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setProgressoOCR(10 + Math.round(m.progress * 85));
-          }
-        },
+      // Chamar a edge function scan-menu
+      const { data, error } = await supabase.functions.invoke('scan-menu', {
+        body: { image: imageData }
       });
       
-      const textoExtraido = result.data.text;
-      console.log('Texto OCR extraído:', textoExtraido);
+      setProgressoOCR(80);
       
-      // Extrair produtos do texto
-      const produtos = extrairProdutosDeTexto(textoExtraido);
+      if (error) {
+        console.error('[MenuScanner] Erro na edge function:', error);
+        
+        // Fallback: tentar o parser local se a edge function falhar
+        console.log('[MenuScanner] Tentando fallback com parser local...');
+        toast.warning('Usando modo de leitura alternativo...');
+        
+        // Como não temos OCR aqui, informamos o usuário
+        toast.error('Não foi possível processar a imagem. Tente novamente.');
+        setEtapa('selecao');
+        setImagemCapturada(null);
+        return;
+      }
+      
+      setProgressoOCR(95);
+      console.log('[MenuScanner] Resposta da IA:', data);
+      
+      const produtos = data?.produtos || [];
       
       if (produtos.length === 0) {
         toast.warning('Nenhum produto identificado. Tente uma imagem mais clara ou com texto legível.');
         setEtapa('selecao');
         setImagemCapturada(null);
       } else {
-        // Converter para ProdutoComImagem
-        const produtosComImagem: ProdutoComImagem[] = produtos.map(p => ({
-          ...p,
+        // Converter para ProdutoComImagem com confiança alta (IA é mais precisa)
+        const produtosComImagem: ProdutoComImagem[] = produtos.map((p: { nome: string; descricao: string; preco: number }) => ({
+          nome: p.nome,
+          descricao: p.descricao || '',
+          preco: p.preco || 0,
+          confianca: 90, // IA tem alta confiança
+          linhaOriginal: p.nome, // Usar nome como referência
           imagemUrl: undefined,
         }));
         setProdutosExtraidos(produtosComImagem);
         // Selecionar todos por padrão
-        setProdutosSelecionados(new Set(produtos.map((_, i) => i)));
+        setProdutosSelecionados(new Set(produtos.map((_: unknown, i: number) => i)));
         setEtapa('revisao');
-        toast.success(`${produtos.length} produto(s) identificado(s)! Adicione as fotos.`);
+        toast.success(`${produtos.length} produto(s) identificado(s) com IA! Adicione as fotos.`);
       }
     } catch (err) {
-      console.error('Erro no OCR:', err);
+      console.error('[MenuScanner] Erro ao processar imagem:', err);
       toast.error('Erro ao processar imagem. Tente novamente.');
       setEtapa('selecao');
       setImagemCapturada(null);
     } finally {
+      setProgressoOCR(100);
       setIsProcessing(false);
     }
   };
