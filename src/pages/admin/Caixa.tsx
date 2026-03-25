@@ -1107,6 +1107,7 @@ export default function Caixa() {
           setVendaAvulsaBusca('');
           setVendaAvulsaManualNome('');
           setVendaAvulsaManualPreco('');
+          setVendaAvulsaShowPix(false);
         }
       }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
