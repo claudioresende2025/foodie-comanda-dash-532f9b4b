@@ -1274,13 +1274,38 @@ export default function Caixa() {
                     </Label>
                   </RadioGroup>
                 </div>
+
+                {/* PIX QR Code display */}
+                {vendaAvulsaShowPix && vendaAvulsaPagamento === 'pix' && empresa?.chave_pix && (
+                  <div className="space-y-2 pt-2">
+                    <PixQRCode
+                      chavePix={empresa.chave_pix}
+                      valor={vendaAvulsaTotal}
+                      nomeRecebedor={empresa.nome_fantasia || 'Restaurante'}
+                      cidadeRecebedor="Brasil"
+                    />
+                  </div>
+                )}
+
+                {vendaAvulsaShowPix && vendaAvulsaPagamento === 'pix' && !empresa?.chave_pix && (
+                  <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                    <span className="text-sm">Configure a chave PIX em Configurações &gt; Dados da Empresa para gerar o QR Code.</span>
+                  </div>
+                )}
               </>
             )}
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setVendaAvulsaOpen(false)} disabled={isProcessingVendaAvulsa}>
-              Cancelar
+            <Button variant="outline" onClick={() => {
+              if (vendaAvulsaShowPix) {
+                setVendaAvulsaShowPix(false);
+              } else {
+                setVendaAvulsaOpen(false);
+              }
+            }} disabled={isProcessingVendaAvulsa}>
+              {vendaAvulsaShowPix ? 'Voltar' : 'Cancelar'}
             </Button>
             <Button
               onClick={handleFinalizarVendaAvulsa}
@@ -1289,6 +1314,8 @@ export default function Caixa() {
             >
               {isProcessingVendaAvulsa ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
+              ) : vendaAvulsaShowPix ? (
+                <><Check className="w-4 h-4 mr-2" /> Entendido / Fechar</>
               ) : (
                 <><Check className="w-4 h-4 mr-2" /> Finalizar Venda</>
               )}
