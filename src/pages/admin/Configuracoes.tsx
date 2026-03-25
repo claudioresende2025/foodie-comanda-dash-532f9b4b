@@ -116,6 +116,14 @@ export default function Configuracoes() {
     toast.success("Configuração atualizada!");
   };
 
+  // Save string settings to localStorage
+  const updateStringSetting = (key: keyof ConfigSettings, value: string) => {
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
+    localStorage.setItem("fcd-settings", JSON.stringify(newSettings));
+    toast.success("Configuração atualizada!");
+  };
+
   const handleChangePassword = async () => {
     if (!passwords.new || !passwords.confirm) {
       toast.error("Preencha todos os campos");
