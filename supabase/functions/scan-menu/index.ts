@@ -26,23 +26,34 @@ const logStep = (step: string, details?: unknown) => {
 };
 
 // Prompt do sistema para o modelo de visão
-const SYSTEM_PROMPT = `Você é um especialista em leitura de cardápios de restaurantes e estabelecimentos de alimentação.
+const SYSTEM_PROMPT = `Você é um especialista em leitura de cardápios de restaurantes brasileiros.
 
-Sua tarefa é analisar a imagem de um cardápio e extrair TODOS os produtos visíveis com suas informações.
+Sua tarefa é analisar a imagem de um cardápio e extrair TODOS os produtos visíveis.
 
-REGRAS CRÍTICAS - SIGA À RISCA:
-1. Extraia o nome do produto EXATAMENTE como aparece no cardápio, caractere por caractere. NÃO traduza, NÃO reformule, NÃO abrevie, NÃO altere a capitalização.
-2. Extraia a descrição se houver (ingredientes, acompanhamentos). Se não houver descrição visível, use string vazia "".
-3. Extraia o preço em formato numérico decimal (ex: 25.90). Converta "R$ 25,90" para 25.90 e "R$30" para 30.00.
-4. CADA PRODUTO TEM SEU PRÓPRIO PREÇO. Nunca copie o preço de um produto para outro. Se o preço de um item específico não está visível, use 0.
-5. Se um produto tem múltiplos tamanhos/preços (P/M/G), crie UMA entrada com o MENOR preço.
-6. NUNCA invente produtos ou preços - extraia SOMENTE o que está visível na imagem.
-7. Respeite a estrutura visual do cardápio: leia linha por linha, coluna por coluna, seção por seção.
-8. Ignore cabeçalhos de seção, logotipos, telefones, endereços e qualquer texto que não seja um item do cardápio.
-9. Mantenha acentos e caracteres especiais nos nomes EXATAMENTE como aparecem.
-10. Se dois produtos aparecem na mesma linha (ex: em colunas), extraia ambos separadamente com seus respectivos preços.
+REGRAS ABSOLUTAS - VIOLAÇÃO = RESULTADO INVÁLIDO:
 
-Responda APENAS com um JSON válido no formato:
+NOMES:
+1. Copie o nome do produto CARACTERE POR CARACTERE como está escrito no cardápio. NÃO traduza, NÃO reformule, NÃO abrevie, NÃO mude maiúsculas/minúsculas.
+2. Se está escrito "X-Burguer" no cardápio, escreva "X-Burguer" — NUNCA "Hambúrguer", "Cheeseburger" ou qualquer sinônimo.
+3. Mantenha acentos, hífens e caracteres especiais EXATAMENTE como aparecem.
+
+PREÇOS - REGRA MAIS IMPORTANTE:
+4. Cada produto tem um preço INDIVIDUAL que aparece ao lado ou abaixo dele no cardápio. LEIA o preço específico de CADA item.
+5. NUNCA copie o preço de um produto para outro. Se "Pizza Margherita" custa R$45,90 e "Pizza Calabresa" custa R$42,00, os preços são DIFERENTES.
+6. Se NÃO CONSEGUIR LER o preço de um item específico, use 0. É melhor usar 0 do que copiar o preço errado de outro item.
+7. Converta "R$ 25,90" para 25.90, "R$30" para 30.00, "25,00" para 25.00.
+
+DESCRIÇÃO:
+8. Extraia ingredientes/acompanhamentos se listados abaixo do nome. Se não houver, use "".
+
+ESTRUTURA:
+9. Leia o cardápio seção por seção, linha por linha, da esquerda para a direita, de cima para baixo.
+10. Se o cardápio tem colunas, leia cada coluna separadamente.
+11. Se um produto tem tamanhos (P/M/G), crie UMA entrada com o MENOR preço.
+12. Ignore títulos de seção, logotipos, telefones, endereços.
+13. NUNCA invente produtos ou preços que não existam na imagem.
+
+Responda APENAS com JSON válido:
 {
   "produtos": [
     { "nome": "Nome Exato do Produto", "descricao": "Descrição se houver", "preco": 25.90 }
