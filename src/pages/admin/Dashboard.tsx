@@ -10,7 +10,9 @@ import {
   Clock,
   Loader2,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw,
+  Receipt
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,9 +23,9 @@ import WaiterNotifications from '@/components/admin/WaiterNotifications';
 import OnboardingChecklist from '@/components/admin/OnboardingChecklist';
 import TrialValueBanner from '@/components/admin/TrialValueBanner';
 import ValueMetrics from '@/components/admin/ValueMetrics';
-import { exportSalesReport, exportSalesReportPDF } from '@/utils/exportReports';
+import { exportSalesReport, exportSalesReportPDF, exportToCSV } from '@/utils/exportReports';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 type DailySales = {
   date: string;
@@ -33,6 +35,7 @@ type DailySales = {
 
 export default function Dashboard() {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const empresaId = profile?.empresa_id;
 
   // Fetch empresa data
@@ -256,6 +259,42 @@ export default function Dashboard() {
     exportSalesReportPDF(dailySales, empresa?.nome_fantasia || 'Empresa');
   };
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries();
+    toast.success('Dados atualizados!');
+  };
+
+  const handleExportVendasAvulsas = async () => {
+    if (!empresaId) return;
+    try {
+      const today = new Date();
+      const weekStart = startOfDay(subDays(today, 6)).toISOString();
+      const { data } = await supabase
+        .from('comandas')
+        .select('total, forma_pagamento, created_at')
+        .eq('empresa_id', empresaId)
+        .eq('status', 'fechada')
+        .is('mesa_id', null)
+        .gte('created_at', weekStart);
+
+      if (!data || data.length === 0) {
+        toast.error('Nenhuma venda avulsa nos últimos 7 dias');
+        return;
+      }
+
+      const reportData = data.map(v => ({
+        'Data': format(new Date(v.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
+        'Valor (R$)': v.total || 0,
+        'Forma de Pagamento': v.forma_pagamento || '-',
+      }));
+
+      exportToCSV(reportData, `vendas_avulsas_${format(today, 'yyyy-MM-dd')}`);
+      toast.success('Relatório de vendas avulsas exportado!');
+    } catch (e) {
+      toast.error('Erro ao exportar vendas avulsas');
+    }
+  };
+
   const statusConfig: Record<string, { label: string; color: string }> = {
     pendente: { label: 'Pendente', color: 'bg-yellow-500/10 text-yellow-600' },
     preparando: { label: 'Preparando', color: 'bg-blue-500/10 text-blue-600' },
@@ -335,7 +374,14 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Visão geral do seu restaurante</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="icon" onClick={handleRefresh} title="Atualizar">
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportVendasAvulsas}>
+            <Receipt className="w-4 h-4 mr-2" />
+            Vendas Avulsas
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <FileSpreadsheet className="w-4 h-4 mr-2" />
             Excel/CSV
