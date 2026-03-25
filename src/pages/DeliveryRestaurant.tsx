@@ -77,6 +77,8 @@ export default function DeliveryRestaurant() {
   // Estado para modal de seleção de tamanho
   const [sizeModalProduct, setSizeModalProduct] = useState<any>(null);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
+  const [showUpsellDialog, setShowUpsellDialog] = useState(false);
+  const [upsellShown, setUpsellShown] = useState(false);
 
   // Taxa de entrega dinâmica por bairro
   const [taxaEntregaDinamica, setTaxaEntregaDinamica] = useState<number>(0);
@@ -1248,27 +1250,6 @@ export default function DeliveryRestaurant() {
                 </div>
               )}
 
-              {/* Seção de Upsell - Sugestões de acompanhamentos */}
-              {empresaId && cart.length > 0 && (
-                <UpsellSection
-                  empresaId={empresaId}
-                  cartProductIds={cart.map(item => item.produto.id)}
-                  onAddToCart={(product) => {
-                    addToCart(
-                      {
-                        id: product.id,
-                        nome: product.nome,
-                        descricao: product.descricao,
-                        preco: product.preco,
-                        imagem_url: product.imagem_url,
-                      },
-                      1,
-                      null,
-                      product.preco
-                    );
-                  }}
-                />
-              )}
 
               <div className="space-y-4">
                 <h3 className="font-bold text-base text-primary">Forma de Pagamento</h3>
@@ -1349,7 +1330,14 @@ export default function DeliveryRestaurant() {
 
               <Button
                 className="w-full h-14 text-lg font-bold rounded-xl shadow-lg"
-                onClick={handleCheckout}
+                onClick={() => {
+                  if (!upsellShown && empresaId) {
+                    setShowUpsellDialog(true);
+                    setUpsellShown(true);
+                  } else {
+                    handleCheckout();
+                  }
+                }}
                 disabled={isProcessing || itemCount === 0}
               >
                 {isProcessing ? <Loader2 className="animate-spin mr-2" /> : `Pagar R$ ${totalComDesconto.toFixed(2)}`}
