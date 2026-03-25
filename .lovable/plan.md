@@ -1,81 +1,27 @@
 
 
-# Plano: 4 Funcionalidades (Auto-Print + Config Impressoras + Venda Avulsa + Fix Scanner)
+# Plano: Restaurar Upload da Galeria + Melhorar Precisão do Scanner
 
-## 1. Impressão automática na cozinha (KDS)
+## Problema
 
-**Arquivo:** `src/pages/admin/Pedidos.tsx`
+O input de arquivo existe no código (linha 472-478), mas em dispositivos móveis os MIME types específicos (`image/jpeg,image/png,image/webp,image/heic`) podem fazer o Android abrir a câmera por padrão ao invés de mostrar a opção de galeria.
 
-No bloco de realtime (linha ~386), quando `payload.eventType === "INSERT"`:
-- Ler configuração `autoPrint` do `localStorage` (key `config_settings`)
-- Se ativo, buscar dados completos do pedido novo (produto nome, quantidade, notas, mesa) via query
-- Importar e chamar `printKitchenOrder()` de `@/utils/kitchenPrinter`
-- O navegador abrirá o diálogo de impressão; para contornar, o operador configura a impressora como padrão no dispositivo
+## Alterações
 
----
+### 1. `src/components/admin/MenuScannerModal.tsx`
 
-## 2. Configuração de impressoras (Configurações)
+- **Trocar `accept`** de `"image/jpeg,image/png,image/webp,image/heic"` para `"image/*"` — isso garante que o Android/iOS mostre o seletor com opções "Câmera" e "Galeria" ao invés de ir direto para câmera
+- **Adicionar compressão de imagem** antes de enviar para a edge function — imagens da galeria podem ser muito grandes (4000x3000px+), causando timeout. Redimensionar para max 2048px e comprimir a 85% JPEG
+- **Manter o fluxo atual** do `handleFileUpload` que já funciona corretamente (leitura base64, validação de tipo e tamanho)
 
-**Arquivo:** `src/pages/admin/Configuracoes.tsx`
+### 2. `supabase/functions/scan-menu/index.ts`
 
-Expandir a seção "Impressão" existente com dois sub-blocos:
+- **Reforçar o prompt** com regras mais explícitas:
+  - Copiar nomes **caractere por caractere** como aparecem no cardápio
+  - Cada item tem preço **individual** — se não conseguir ler, usar `0`
+  - Nunca repetir o preço de um item para outro
+- **Adicionar validação pós-resposta**: se mais de 70% dos produtos têm o mesmo preço, marcar como suspeito e tentar reprocessar
+- **Aumentar `max_tokens`** para 16384 para cardápios grandes
 
-- **Impressora Cozinha (KDS):** Select de tipo de conexão (Wi-Fi / Bluetooth / USB / Padrão do sistema), campo nome/IP, toggle autoPrint (já existe), botão testar
-- **Impressora Caixa:** Select de tipo de conexão, campo nome/IP, toggle printLogo (já existe), botão testar
-
-Adicionar ao tipo `ConfigSettings`:
-- `printerKdsType`, `printerKdsName`, `printerCaixaType`, `printerCaixaName`
-
-Incluir texto explicativo de como configurar a impressora no dispositivo (definir como impressora padrão no Android/tablet para impressão sem diálogo).
-
----
-
-## 3. Venda avulsa no Caixa
-
-**Arquivo:** `src/pages/admin/Caixa.tsx`
-
-Adicionar botão "Venda Avulsa" no topo da página. Ao clicar, abre um Dialog com:
-- Busca de produtos do cardápio (query na tabela `produtos`)
-- Campo para adicionar item manual (nome + preço) para itens que não estão no cardápio
-- Lista de itens adicionados com quantidade editável
-- Seleção de forma de pagamento
-- Botão "Finalizar Venda"
-
-Ao finalizar:
-- Inserir registro na tabela `vendas_concluidas` com `comanda_id: null`, `mesa_id: null`
-- Se houver caixa aberto, registrar em `movimentacoes_caixa`
-- Imprimir cupom via `printCaixaReceipt`
-
----
-
-## 4. Correção do Scanner de Cardápio
-
-### 4a. Erro ao carregar imagem
-**Arquivo:** `src/components/admin/MenuScannerModal.tsx`
-
-Verificar e corrigir o fluxo de `handleFileUpload` — a imagem em base64 pode estar sendo enviada com o prefixo `data:image/...;base64,` duplicado ou o tamanho pode estar excedendo limites. Adicionar tratamento de erro mais robusto e feedback ao usuário.
-
-### 4b. Nomes e preços incorretos na extração
-**Arquivo:** `supabase/functions/scan-menu/index.ts`
-
-Melhorar o prompt do sistema para o modelo Gemini:
-- Reforçar que os nomes devem ser extraídos **exatamente** como escritos no cardápio
-- Reforçar que cada produto deve ter seu **próprio preço** — nunca repetir o preço de outro item
-- Adicionar instrução para respeitar a estrutura visual (colunas, seções)
-- Trocar o modelo para `google/gemini-2.5-pro` (melhor em visão complexa) em vez de `flash`
-- Aumentar `max_tokens` para cardápios grandes
-
----
-
-## Resumo de arquivos alterados
-
-| Arquivo | Alteração |
-|---|---|
-| `src/pages/admin/Pedidos.tsx` | Auto-print no INSERT realtime |
-| `src/pages/admin/Configuracoes.tsx` | Seção expandida de impressoras KDS + Caixa |
-| `src/pages/admin/Caixa.tsx` | Modal de venda avulsa |
-| `src/components/admin/MenuScannerModal.tsx` | Fix erro upload de imagem |
-| `supabase/functions/scan-menu/index.ts` | Prompt melhorado + modelo pro |
-
-**Total: 5 arquivos**
+**Total: 2 arquivos alterados**
 
