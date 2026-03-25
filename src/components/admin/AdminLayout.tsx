@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/s
 import { AdminSidebar } from './AdminSidebar';
 import { ThemeToggle } from './ThemeToggle';
 import { Loader2 } from 'lucide-react';
+import { OrderNotificationBadge } from './OrderNotificationBadge';
 import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';

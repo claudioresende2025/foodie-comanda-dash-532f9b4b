@@ -39,6 +39,48 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const empresaId = profile?.empresa_id;
 
+  // Realtime: auto-refresh when comandas change
+  useRealtimeSubscription(
+    `dashboard-comandas-${empresaId}`,
+    {
+      table: 'comandas',
+      onChange: () => {
+        queryClient.invalidateQueries({ queryKey: ['comandas-hoje'] });
+        queryClient.invalidateQueries({ queryKey: ['vendas-concluidas-hoje'] });
+        queryClient.invalidateQueries({ queryKey: ['daily-sales'] });
+        queryClient.invalidateQueries({ queryKey: ['recent-orders'] });
+        queryClient.invalidateQueries({ queryKey: ['pedidos-count-hoje'] });
+      },
+    },
+    !!empresaId
+  );
+
+  // Realtime: auto-refresh when pedidos change
+  useRealtimeSubscription(
+    `dashboard-pedidos-${empresaId}`,
+    {
+      table: 'pedidos',
+      onChange: () => {
+        queryClient.invalidateQueries({ queryKey: ['pedidos-count-hoje'] });
+        queryClient.invalidateQueries({ queryKey: ['recent-orders'] });
+      },
+    },
+    !!empresaId
+  );
+
+  // Realtime: auto-refresh when delivery orders change
+  useRealtimeSubscription(
+    `dashboard-delivery-${empresaId}`,
+    {
+      table: 'pedidos_delivery',
+      filter: `empresa_id=eq.${empresaId}`,
+      onChange: () => {
+        queryClient.invalidateQueries({ queryKey: ['daily-sales'] });
+      },
+    },
+    !!empresaId
+  );
+
   // Fetch empresa data
   const { data: empresa } = useQuery({
     queryKey: ['empresa', empresaId],
