@@ -1329,7 +1329,9 @@ export default function Menu() {
                           descricao: product.descricao,
                           preco: product.preco,
                           imagem_url: product.imagem_url,
-                        });
+                          categoria_id: '',
+                          ativo: true,
+                        } as any);
                       }}
                     />
                   )}
