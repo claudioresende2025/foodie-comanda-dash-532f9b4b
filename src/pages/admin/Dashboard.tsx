@@ -23,9 +23,9 @@ import WaiterNotifications from '@/components/admin/WaiterNotifications';
 import OnboardingChecklist from '@/components/admin/OnboardingChecklist';
 import TrialValueBanner from '@/components/admin/TrialValueBanner';
 import ValueMetrics from '@/components/admin/ValueMetrics';
-import { exportSalesReport, exportSalesReportPDF } from '@/utils/exportReports';
+import { exportSalesReport, exportSalesReportPDF, exportToCSV } from '@/utils/exportReports';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 type DailySales = {
   date: string;
@@ -35,6 +35,7 @@ type DailySales = {
 
 export default function Dashboard() {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const empresaId = profile?.empresa_id;
 
   // Fetch empresa data
