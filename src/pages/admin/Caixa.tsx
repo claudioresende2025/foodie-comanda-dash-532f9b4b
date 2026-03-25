@@ -32,6 +32,10 @@ import {
   CreditCard,
   Banknote,
   X,
+  ShoppingBag,
+  Plus,
+  Minus,
+  Trash2,
 } from 'lucide-react';
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
@@ -169,6 +173,138 @@ export default function Caixa() {
     valorTotal: number;
     formaPagamento: string;
   } | null>(null);
+
+  // Venda Avulsa
+  const [vendaAvulsaOpen, setVendaAvulsaOpen] = useState(false);
+  const [vendaAvulsaItens, setVendaAvulsaItens] = useState<{ nome: string; preco: number; quantidade: number; produtoId?: string }[]>([]);
+  const [vendaAvulsaPagamento, setVendaAvulsaPagamento] = useState<PaymentMethod>('dinheiro');
+  const [vendaAvulsaBusca, setVendaAvulsaBusca] = useState('');
+  const [vendaAvulsaManualNome, setVendaAvulsaManualNome] = useState('');
+  const [vendaAvulsaManualPreco, setVendaAvulsaManualPreco] = useState('');
+  const [isProcessingVendaAvulsa, setIsProcessingVendaAvulsa] = useState(false);
+
+  // Produtos para venda avulsa
+  const { data: produtosCardapio = [] } = useQuery({
+    queryKey: ['produtos-venda-avulsa', profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return [];
+      const { data, error } = await supabase
+        .from('produtos')
+        .select('id, nome, preco')
+        .eq('empresa_id', profile.empresa_id)
+        .eq('ativo', true)
+        .order('nome');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.empresa_id && vendaAvulsaOpen,
+  });
+
+  const produtosFiltrados = produtosCardapio.filter((p: any) =>
+    p.nome.toLowerCase().includes(vendaAvulsaBusca.toLowerCase())
+  );
+
+  const vendaAvulsaTotal = vendaAvulsaItens.reduce((acc, item) => acc + item.preco * item.quantidade, 0);
+
+  const adicionarProdutoAvulso = (produto: { id?: string; nome: string; preco: number }) => {
+    const existente = vendaAvulsaItens.findIndex(i => i.nome === produto.nome);
+    if (existente >= 0) {
+      const novos = [...vendaAvulsaItens];
+      novos[existente].quantidade += 1;
+      setVendaAvulsaItens(novos);
+    } else {
+      setVendaAvulsaItens([...vendaAvulsaItens, { nome: produto.nome, preco: produto.preco, quantidade: 1, produtoId: produto.id }]);
+    }
+  };
+
+  const adicionarItemManual = () => {
+    if (!vendaAvulsaManualNome || !vendaAvulsaManualPreco) {
+      toast.error('Preencha nome e preço do item');
+      return;
+    }
+    const preco = parseFloat(vendaAvulsaManualPreco);
+    if (isNaN(preco) || preco <= 0) {
+      toast.error('Preço inválido');
+      return;
+    }
+    adicionarProdutoAvulso({ nome: vendaAvulsaManualNome, preco });
+    setVendaAvulsaManualNome('');
+    setVendaAvulsaManualPreco('');
+  };
+
+  const handleFinalizarVendaAvulsa = async () => {
+    if (vendaAvulsaItens.length === 0) {
+      toast.error('Adicione pelo menos um item');
+      return;
+    }
+    if (!profile?.empresa_id || !profile?.id) return;
+
+    setIsProcessingVendaAvulsa(true);
+    try {
+      // Registrar na tabela vendas_concluidas
+      await supabase.from('vendas_concluidas').insert({
+        empresa_id: profile.empresa_id,
+        comanda_id: null,
+        mesa_id: null,
+        valor_total: vendaAvulsaTotal,
+        valor_subtotal: vendaAvulsaTotal,
+        forma_pagamento: vendaAvulsaPagamento,
+        processado_por: profile.id,
+        tipo_processamento: 'caixa',
+      });
+
+      // Registrar em movimentacoes_caixa se houver caixa aberto
+      const { data: caixaAberto } = await supabase
+        .from('caixas')
+        .select('id')
+        .eq('empresa_id', profile.empresa_id)
+        .eq('status', 'aberto')
+        .maybeSingle();
+
+      if (caixaAberto) {
+        await supabase.from('movimentacoes_caixa').insert({
+          caixa_id: caixaAberto.id,
+          tipo: 'entrada',
+          valor: vendaAvulsaTotal,
+          forma_pagamento: vendaAvulsaPagamento,
+          descricao: `Venda avulsa: ${vendaAvulsaItens.map(i => `${i.quantidade}x ${i.nome}`).join(', ')}`,
+        });
+      }
+
+      // Imprimir cupom
+      printCaixaReceipt({
+        empresaNome: empresa?.nome_fantasia || 'Restaurante',
+        empresaEndereco: empresa?.endereco_completo || undefined,
+        empresaCnpj: empresa?.cnpj || undefined,
+        mesaNumero: 0,
+        nomeCliente: 'Venda Avulsa',
+        itens: vendaAvulsaItens.map(i => ({
+          nome: i.nome,
+          quantidade: i.quantidade,
+          precoUnitario: i.preco,
+          subtotal: i.preco * i.quantidade,
+        })),
+        subtotal: vendaAvulsaTotal,
+        total: vendaAvulsaTotal,
+        formaPagamento: vendaAvulsaPagamento,
+        timestamp: new Date(),
+      });
+
+      toast.success('Venda avulsa registrada com sucesso!');
+      setVendaAvulsaOpen(false);
+      setVendaAvulsaItens([]);
+      setVendaAvulsaPagamento('dinheiro');
+      setVendaAvulsaBusca('');
+
+      // Refresh queries
+      queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile.empresa_id] });
+    } catch (error: any) {
+      console.error('Erro na venda avulsa:', error);
+      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setIsProcessingVendaAvulsa(false);
+    }
+  };
 
   /** --------- QUERIES --------- */
 
@@ -957,7 +1093,203 @@ export default function Caixa() {
         data={nfceComandaData}
       />
 
-      {/* PIX Modal */}
+      {/* Modal Venda Avulsa */}
+      <Dialog open={vendaAvulsaOpen} onOpenChange={(open) => {
+        setVendaAvulsaOpen(open);
+        if (!open) {
+          setVendaAvulsaItens([]);
+          setVendaAvulsaBusca('');
+          setVendaAvulsaManualNome('');
+          setVendaAvulsaManualPreco('');
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-green-600" />
+              Venda Avulsa
+            </DialogTitle>
+            <DialogDescription>
+              Registre vendas de itens avulsos diretamente no caixa
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Busca de produtos do cardápio */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Buscar Produto do Cardápio</Label>
+              <Input
+                placeholder="Digite o nome do produto..."
+                value={vendaAvulsaBusca}
+                onChange={(e) => setVendaAvulsaBusca(e.target.value)}
+              />
+              {vendaAvulsaBusca && produtosFiltrados.length > 0 && (
+                <ScrollArea className="h-32 border rounded-lg">
+                  <div className="p-2 space-y-1">
+                    {produtosFiltrados.slice(0, 10).map((p: any) => (
+                      <Button
+                        key={p.id}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-between text-left h-auto py-2"
+                        onClick={() => {
+                          adicionarProdutoAvulso({ id: p.id, nome: p.nome, preco: p.preco });
+                          setVendaAvulsaBusca('');
+                        }}
+                      >
+                        <span className="truncate">{p.nome}</span>
+                        <span className="text-muted-foreground ml-2">R$ {Number(p.preco).toFixed(2)}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Adicionar item manual */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Ou Adicionar Item Manual</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nome do item"
+                  value={vendaAvulsaManualNome}
+                  onChange={(e) => setVendaAvulsaManualNome(e.target.value)}
+                  className="flex-1"
+                />
+                <Input
+                  placeholder="Preço"
+                  type="number"
+                  step="0.01"
+                  value={vendaAvulsaManualPreco}
+                  onChange={(e) => setVendaAvulsaManualPreco(e.target.value)}
+                  className="w-24"
+                />
+                <Button size="icon" variant="outline" onClick={adicionarItemManual}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Itens adicionados */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Itens ({vendaAvulsaItens.length})</Label>
+              {vendaAvulsaItens.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4 text-sm">Nenhum item adicionado</p>
+              ) : (
+                <div className="space-y-2">
+                  {vendaAvulsaItens.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 border rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">{item.nome}</span>
+                        <span className="text-xs text-muted-foreground">R$ {item.preco.toFixed(2)} un.</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            const novos = [...vendaAvulsaItens];
+                            if (novos[idx].quantidade > 1) {
+                              novos[idx].quantidade -= 1;
+                              setVendaAvulsaItens(novos);
+                            }
+                          }}
+                        >
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <span className="text-sm font-medium w-6 text-center">{item.quantidade}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            const novos = [...vendaAvulsaItens];
+                            novos[idx].quantidade += 1;
+                            setVendaAvulsaItens(novos);
+                          }}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => setVendaAvulsaItens(vendaAvulsaItens.filter((_, i) => i !== idx))}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                        <span className="text-sm font-bold w-20 text-right">
+                          R$ {(item.preco * item.quantidade).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Total */}
+            {vendaAvulsaItens.length > 0 && (
+              <>
+                <div className="p-3 bg-green-500/10 rounded-lg flex justify-between items-center">
+                  <span className="font-medium">Total</span>
+                  <span className="text-xl font-bold text-green-600">R$ {vendaAvulsaTotal.toFixed(2)}</span>
+                </div>
+
+                {/* Forma de pagamento */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Forma de Pagamento</Label>
+                  <RadioGroup
+                    value={vendaAvulsaPagamento}
+                    onValueChange={(v) => setVendaAvulsaPagamento(v as PaymentMethod)}
+                    className="grid grid-cols-2 gap-2"
+                  >
+                    <Label htmlFor="va-dinheiro" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'dinheiro' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="dinheiro" id="va-dinheiro" />
+                      <Banknote className="w-4 h-4" /> Dinheiro
+                    </Label>
+                    <Label htmlFor="va-pix" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'pix' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="pix" id="va-pix" />
+                      <QrCode className="w-4 h-4" /> PIX
+                    </Label>
+                    <Label htmlFor="va-credito" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'cartao_credito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="cartao_credito" id="va-credito" />
+                      <CreditCard className="w-4 h-4" /> Crédito
+                    </Label>
+                    <Label htmlFor="va-debito" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'cartao_debito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="cartao_debito" id="va-debito" />
+                      <CreditCard className="w-4 h-4" /> Débito
+                    </Label>
+                  </RadioGroup>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setVendaAvulsaOpen(false)} disabled={isProcessingVendaAvulsa}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleFinalizarVendaAvulsa}
+              disabled={isProcessingVendaAvulsa || vendaAvulsaItens.length === 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessingVendaAvulsa ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
+              ) : (
+                <><Check className="w-4 h-4 mr-2" /> Finalizar Venda</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showPixModal} onOpenChange={setShowPixModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1178,7 +1510,11 @@ export default function Caixa() {
           <h1 className="text-2xl font-bold text-foreground">Caixa</h1>
           <p className="text-muted-foreground">Gerencie pagamentos de mesas e delivery</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setVendaAvulsaOpen(true)} className="bg-green-600 hover:bg-green-700 text-white">
+            <ShoppingBag className="w-4 h-4 mr-2" />
+            Venda Avulsa
+          </Button>
           {alertasPendentes > 0 && (
             <Badge variant="destructive" className="text-sm px-3 py-1">
               {alertasPendentes} pendente{alertasPendentes > 1 ? 's' : ''}

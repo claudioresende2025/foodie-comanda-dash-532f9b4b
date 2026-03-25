@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { printKitchenOrder } from "@/utils/kitchenPrinter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -380,12 +381,45 @@ export default function Pedidos() {
           schema: "public",
           table: "pedidos",
         },
-        (payload) => {
+        async (payload) => {
           queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
 
           if (payload.eventType === "INSERT") {
             playNotificationSound();
             toast.info("🍽️ Novo pedido recebido!", { duration: 5000 });
+
+            // Auto-print: buscar dados e imprimir automaticamente
+            const savedSettings = localStorage.getItem("fcd-settings");
+            const parsedSettings = savedSettings ? JSON.parse(savedSettings) : {};
+            if (parsedSettings.autoPrint && payload.new) {
+              try {
+                const pedidoId = (payload.new as any).id;
+                const { data: pedidoCompleto } = await supabase
+                  .from("pedidos")
+                  .select(`
+                    *,
+                    produto:produtos(nome),
+                    comanda:comandas(mesa:mesas(numero_mesa), nome_cliente)
+                  `)
+                  .eq("id", pedidoId)
+                  .single();
+
+                if (pedidoCompleto) {
+                  printKitchenOrder({
+                    mesaNumero: (pedidoCompleto as any).comanda?.mesa?.numero_mesa || 0,
+                    itens: [{
+                      nome: (pedidoCompleto as any).produto?.nome || "Item",
+                      quantidade: pedidoCompleto.quantidade || 1,
+                      notas: pedidoCompleto.notas_cliente || null,
+                    }],
+                    timestamp: new Date(),
+                  });
+                  console.log("[KDS] Auto-print executado para pedido", pedidoId);
+                }
+              } catch (e) {
+                console.error("[KDS] Erro no auto-print:", e);
+              }
+            }
           }
         },
       )

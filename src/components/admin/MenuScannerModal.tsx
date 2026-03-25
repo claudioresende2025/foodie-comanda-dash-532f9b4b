@@ -156,10 +156,24 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
       toast.error('Por favor, selecione uma imagem');
       return;
     }
+
+    // Validar tamanho (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Imagem muito grande. Máximo 10MB.');
+      return;
+    }
     
     const reader = new FileReader();
+    reader.onerror = () => {
+      toast.error('Erro ao ler o arquivo. Tente novamente.');
+      event.target.value = '';
+    };
     reader.onload = (e) => {
       const imageData = e.target?.result as string;
+      if (!imageData || !imageData.startsWith('data:image')) {
+        toast.error('Formato de imagem inválido. Use JPG, PNG ou WebP.');
+        return;
+      }
       setImagemCapturada(imageData);
       processarImagem(imageData);
     };
@@ -458,8 +472,7 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
-                capture="environment"
+                accept="image/jpeg,image/png,image/webp,image/heic"
                 className="hidden"
                 onChange={handleFileUpload}
               />

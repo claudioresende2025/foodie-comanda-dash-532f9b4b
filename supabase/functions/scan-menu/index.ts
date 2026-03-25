@@ -30,21 +30,22 @@ const SYSTEM_PROMPT = `Você é um especialista em leitura de cardápios de rest
 
 Sua tarefa é analisar a imagem de um cardápio e extrair TODOS os produtos visíveis com suas informações.
 
-REGRAS IMPORTANTES:
-1. Extraia o nome do produto EXATAMENTE como aparece no cardápio
-2. Extraia a descrição se houver (ingredientes, acompanhamentos, etc). Se não houver descrição, use string vazia
-3. Extraia o preço em formato numérico (ex: 25.90, não "R$ 25,90")
-4. Se um produto tem múltiplos preços (tamanhos diferentes como P/M/G), extraia o MENOR preço
-5. Se um produto tem preço com variações (ex: "27.99 • 30.99"), extraia TODOS os preços como produtos separados ou use o menor
-6. NUNCA invente produtos ou preços - extraia SOMENTE o que está visível na imagem
-7. Ignore cabeçalhos, seções, números de páginas, logos e informações que não são produtos
-8. Mantenha acentos e caracteres especiais nos nomes
-9. Se o preço não for identificável, use 0
+REGRAS CRÍTICAS - SIGA À RISCA:
+1. Extraia o nome do produto EXATAMENTE como aparece no cardápio, caractere por caractere. NÃO traduza, NÃO reformule, NÃO abrevie, NÃO altere a capitalização.
+2. Extraia a descrição se houver (ingredientes, acompanhamentos). Se não houver descrição visível, use string vazia "".
+3. Extraia o preço em formato numérico decimal (ex: 25.90). Converta "R$ 25,90" para 25.90 e "R$30" para 30.00.
+4. CADA PRODUTO TEM SEU PRÓPRIO PREÇO. Nunca copie o preço de um produto para outro. Se o preço de um item específico não está visível, use 0.
+5. Se um produto tem múltiplos tamanhos/preços (P/M/G), crie UMA entrada com o MENOR preço.
+6. NUNCA invente produtos ou preços - extraia SOMENTE o que está visível na imagem.
+7. Respeite a estrutura visual do cardápio: leia linha por linha, coluna por coluna, seção por seção.
+8. Ignore cabeçalhos de seção, logotipos, telefones, endereços e qualquer texto que não seja um item do cardápio.
+9. Mantenha acentos e caracteres especiais nos nomes EXATAMENTE como aparecem.
+10. Se dois produtos aparecem na mesma linha (ex: em colunas), extraia ambos separadamente com seus respectivos preços.
 
 Responda APENAS com um JSON válido no formato:
 {
   "produtos": [
-    { "nome": "Nome do Produto", "descricao": "Descrição se houver", "preco": 25.90 }
+    { "nome": "Nome Exato do Produto", "descricao": "Descrição se houver", "preco": 25.90 }
   ]
 }`;
 
@@ -85,9 +86,9 @@ serve(async (req) => {
     // Remove data URL prefix if present
     const base64Data = image.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
 
-    logStep("Enviando para Lovable AI Gateway (Gemini 2.5 Flash)");
+    logStep("Enviando para Lovable AI Gateway (Gemini 2.5 Pro)");
 
-    // Chamada para a API usando o modelo google/gemini-2.5-flash via Lovable AI Gateway
+    // Chamada para a API usando o modelo google/gemini-2.5-pro via Lovable AI Gateway (melhor para visão)
     const apiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -95,7 +96,7 @@ serve(async (req) => {
         "Authorization": `Bearer ${LOVABLE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
@@ -112,12 +113,12 @@ serve(async (req) => {
               },
               {
                 type: "text",
-                text: "Analise este cardápio e extraia todos os produtos com nome, descrição e preço. Responda apenas com o JSON."
+                text: "Analise este cardápio e extraia TODOS os produtos com nome EXATO, descrição e preço INDIVIDUAL de cada item. Responda apenas com o JSON."
               }
             ]
           }
         ],
-        max_tokens: 4096,
+        max_tokens: 8192,
         temperature: 0.1
       })
     });
