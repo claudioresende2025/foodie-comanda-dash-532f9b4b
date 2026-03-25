@@ -174,6 +174,9 @@ export default function Menu() {
   const [waiterCallPending, setWaiterCallPending] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  // Upsell dialog states
+  const [showUpsellDialog, setShowUpsellDialog] = useState(false);
+  const [upsellShown, setUpsellShown] = useState(false);
   // Estado para modal de seleção de tamanho
   const [sizeModalProduct, setSizeModalProduct] = useState<Produto | null>(null);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
@@ -1317,24 +1320,7 @@ export default function Menu() {
                     </div>
                   ))}
 
-                  {/* Upsell Inteligente */}
-                  {empresaId && (
-                    <UpsellSection
-                      empresaId={empresaId}
-                      cartProductIds={cart.map(item => item.produto.id)}
-                      onAddToCart={(product) => {
-                        addToCart({
-                          id: product.id,
-                          nome: product.nome,
-                          descricao: product.descricao,
-                          preco: product.preco,
-                          imagem_url: product.imagem_url,
-                          categoria_id: '',
-                          ativo: true,
-                        } as any);
-                      }}
-                    />
-                  )}
+                  {/* Upsell inline removido - agora usa UpsellDialog popup */}
                 </div>
               </ScrollArea>
               <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t">
