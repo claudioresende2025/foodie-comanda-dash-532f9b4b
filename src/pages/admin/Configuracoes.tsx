@@ -397,28 +397,114 @@ export default function Configuracoes() {
               <Printer className="w-5 h-5 text-primary" />
               <CardTitle className="text-lg">Impressão</CardTitle>
             </div>
-            <CardDescription>Configurações de impressão de comandas e recibos</CardDescription>
+            <CardDescription>Configurações de impressão para cozinha e caixa</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Impressão automática</Label>
-                <p className="text-sm text-muted-foreground">Imprimir automaticamente novos pedidos na cozinha</p>
+          <CardContent className="space-y-6">
+            {/* Impressora Cozinha (KDS) */}
+            <div className="space-y-4">
+              <h4 className="font-medium text-foreground flex items-center gap-2">
+                🍳 Impressora Cozinha (KDS)
+              </h4>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Impressão automática</Label>
+                  <p className="text-sm text-muted-foreground">Imprimir automaticamente novos pedidos na cozinha</p>
+                </div>
+                <Switch checked={settings.autoPrint} onCheckedChange={(v) => updateSetting("autoPrint", v)} />
               </div>
-              <Switch checked={settings.autoPrint} onCheckedChange={(v) => updateSetting("autoPrint", v)} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-sm">Tipo de Conexão</Label>
+                  <Select
+                    value={settings.printerKdsType}
+                    onValueChange={(v) => updateStringSetting("printerKdsType", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Padrão do Sistema</SelectItem>
+                      <SelectItem value="wifi">Wi-Fi (Rede)</SelectItem>
+                      <SelectItem value="bluetooth">Bluetooth</SelectItem>
+                      <SelectItem value="usb">USB</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm">Nome/IP da Impressora</Label>
+                  <Input
+                    placeholder="Ex: 192.168.1.100"
+                    value={settings.printerKdsName}
+                    onChange={(e) => updateStringSetting("printerKdsName", e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => handleTestPrint('kds')}>
+                <Printer className="w-4 h-4 mr-2" />
+                Testar Impressão Cozinha
+              </Button>
             </div>
+
             <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Imprimir logo</Label>
-                <p className="text-sm text-muted-foreground">Incluir logo da empresa nos comprovantes</p>
+
+            {/* Impressora Caixa */}
+            <div className="space-y-4">
+              <h4 className="font-medium text-foreground flex items-center gap-2">
+                💰 Impressora Caixa
+              </h4>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Imprimir logo</Label>
+                  <p className="text-sm text-muted-foreground">Incluir logo da empresa nos comprovantes</p>
+                </div>
+                <Switch checked={settings.printLogo} onCheckedChange={(v) => updateSetting("printLogo", v)} />
               </div>
-              <Switch checked={settings.printLogo} onCheckedChange={(v) => updateSetting("printLogo", v)} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-sm">Tipo de Conexão</Label>
+                  <Select
+                    value={settings.printerCaixaType}
+                    onValueChange={(v) => updateStringSetting("printerCaixaType", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Padrão do Sistema</SelectItem>
+                      <SelectItem value="wifi">Wi-Fi (Rede)</SelectItem>
+                      <SelectItem value="bluetooth">Bluetooth</SelectItem>
+                      <SelectItem value="usb">USB</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm">Nome/IP da Impressora</Label>
+                  <Input
+                    placeholder="Ex: 192.168.1.101"
+                    value={settings.printerCaixaName}
+                    onChange={(e) => updateStringSetting("printerCaixaName", e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => handleTestPrint('caixa')}>
+                <Printer className="w-4 h-4 mr-2" />
+                Testar Impressão Caixa
+              </Button>
             </div>
-            <Button variant="outline" onClick={handleTestPrint}>
-              <Printer className="w-4 h-4 mr-2" />
-              Testar Impressão
-            </Button>
+
+            <Separator />
+
+            {/* Instruções */}
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+              <h4 className="font-medium text-sm">📋 Como configurar a impressora</h4>
+              <ul className="text-xs text-muted-foreground space-y-1">
+                <li>• <strong>Android/Tablet:</strong> Vá em Configurações → Impressoras → Adicione sua impressora como padrão</li>
+                <li>• <strong>Chrome:</strong> Após a primeira impressão, selecione a impressora e marque "Lembrar esta escolha"</li>
+                <li>• <strong>Wi-Fi:</strong> A impressora deve estar na mesma rede que o dispositivo</li>
+                <li>• <strong>Bluetooth:</strong> Pareie a impressora primeiro nas configurações do dispositivo</li>
+                <li>• <strong>USB:</strong> Conecte a impressora via cabo e instale os drivers necessários</li>
+              </ul>
+            </div>
           </CardContent>
         </Card>
 
