@@ -1,31 +1,20 @@
 
 
-# Plano: Corrigir faturamento e relatório de vendas avulsas
+# Plano: Adicionar Upsell Inteligente na página Menu (cardápio do restaurante)
 
-## Problema
+## Estado Atual
 
-As vendas avulsas são registradas na tabela `vendas_concluidas`, mas o Dashboard consulta apenas a tabela `comandas`. O relatório de vendas avulsas também busca em `comandas` (com `mesa_id IS NULL`) em vez de `vendas_concluidas`.
+- **DeliveryRestaurant.tsx**: Já tem `UpsellSection` integrada (linha 1251-1270), aparecendo no checkout sheet quando o carrinho tem itens.
+- **Menu.tsx**: **Não tem** nenhuma integração de upsell. O carrinho é renderizado em um Sheet (linhas 1260-1330) sem sugestões.
 
-## Alterações
+## Alteração
 
-### 1. Dashboard - Faturamento hoje (`src/pages/admin/Dashboard.tsx`)
-- Adicionar query para `vendas_concluidas` do dia atual (filtrado por `empresa_id`)
-- No `useMemo` de stats, somar `valor_total` das vendas concluídas ao `faturamentoHoje`
+### `src/pages/Menu.tsx`
+- Importar `UpsellSection` de `@/components/delivery/UpsellSection`
+- Adicionar o componente dentro do Sheet do carrinho, logo após a lista de itens do carrinho (depois da linha 1317) e antes do bloco de total/botão enviar
+- Passar `empresaId`, `cartProductIds` (IDs dos produtos no carrinho) e `onAddToCart` que chama a função `addToCart` existente
 
-### 2. Dashboard - Gráfico 7 dias (`src/pages/admin/Dashboard.tsx`)
-- Na query `daily-sales`, buscar também `vendas_concluidas` dos últimos 7 dias
-- Somar `valor_total` ao total diário de cada dia no gráfico
+O `UpsellSection` já é genérico — busca produtos por categoria (bebidas, acompanhamentos, sobremesas) ou por menor preço. Funciona tanto para delivery quanto para o cardápio presencial.
 
-### 3. Dashboard - Relatório Vendas Avulsas (`src/pages/admin/Dashboard.tsx`)
-- Corrigir `handleExportVendasAvulsas`: trocar consulta de `comandas` para `vendas_concluidas`
-- Usar colunas corretas: `valor_total`, `forma_pagamento`, `created_at`
-
-### 4. ValueMetrics - Faturamento mensal (`src/components/admin/ValueMetrics.tsx`)
-- Adicionar query paralela para `vendas_concluidas` do mês atual e anterior
-- Somar ao faturamento mensal de comandas
-
-### 5. TrialValueBanner (`src/components/admin/TrialValueBanner.tsx`)
-- Mesmo ajuste: somar vendas de `vendas_concluidas` ao faturamento do trial
-
-**Total: 3 arquivos alterados**
+**Total: 1 arquivo alterado**
 
