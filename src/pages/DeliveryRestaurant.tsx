@@ -18,7 +18,7 @@ import { ProductCard } from "@/components/delivery/ProductCard";
 import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
-import { UpsellSection } from "@/components/delivery/UpsellSection";
+import { UpsellDialog } from "@/components/delivery/UpsellDialog";
 import { useCart } from "@/hooks/useCart";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
