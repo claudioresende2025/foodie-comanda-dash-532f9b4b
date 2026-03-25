@@ -86,9 +86,9 @@ serve(async (req) => {
     // Remove data URL prefix if present
     const base64Data = image.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
 
-    logStep("Enviando para Lovable AI Gateway (Gemini 2.5 Flash)");
+    logStep("Enviando para Lovable AI Gateway (Gemini 2.5 Pro)");
 
-    // Chamada para a API usando o modelo google/gemini-2.5-flash via Lovable AI Gateway
+    // Chamada para a API usando o modelo google/gemini-2.5-pro via Lovable AI Gateway (melhor para visão)
     const apiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -96,7 +96,7 @@ serve(async (req) => {
         "Authorization": `Bearer ${LOVABLE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
@@ -113,12 +113,12 @@ serve(async (req) => {
               },
               {
                 type: "text",
-                text: "Analise este cardápio e extraia todos os produtos com nome, descrição e preço. Responda apenas com o JSON."
+                text: "Analise este cardápio e extraia TODOS os produtos com nome EXATO, descrição e preço INDIVIDUAL de cada item. Responda apenas com o JSON."
               }
             ]
           }
         ],
-        max_tokens: 4096,
+        max_tokens: 8192,
         temperature: 0.1
       })
     });
