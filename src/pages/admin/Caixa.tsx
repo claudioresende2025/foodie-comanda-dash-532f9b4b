@@ -182,6 +182,7 @@ export default function Caixa() {
   const [vendaAvulsaManualNome, setVendaAvulsaManualNome] = useState('');
   const [vendaAvulsaManualPreco, setVendaAvulsaManualPreco] = useState('');
   const [isProcessingVendaAvulsa, setIsProcessingVendaAvulsa] = useState(false);
+  const [vendaAvulsaShowPix, setVendaAvulsaShowPix] = useState(false);
 
   // Produtos para venda avulsa
   const { data: produtosCardapio = [] } = useQuery({
