@@ -301,7 +301,7 @@ export default function Caixa() {
       setVendaAvulsaItens([]);
       setVendaAvulsaPagamento('dinheiro');
       setVendaAvulsaBusca('');
-
+      setVendaAvulsaShowPix(false);
       // Refresh queries
       queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile.empresa_id] });
     } catch (error: any) {
