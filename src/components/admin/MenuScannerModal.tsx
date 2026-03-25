@@ -147,8 +147,35 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
     }
   };
 
+  // Comprimir imagem antes de enviar (evita timeout com fotos grandes da galeria)
+  const compressImage = (file: File, maxWidth = 2048, quality = 0.85): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w);
+          w = maxWidth;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas not supported')); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Erro ao carregar imagem')); };
+      img.src = url;
+    });
+  };
+
   // Processar arquivo de upload
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     
@@ -157,27 +184,25 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
       return;
     }
 
-    // Validar tamanho (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Imagem muito grande. Máximo 10MB.');
+    // Validar tamanho (max 20MB antes da compressão)
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('Imagem muito grande. Máximo 20MB.');
       return;
     }
-    
-    const reader = new FileReader();
-    reader.onerror = () => {
-      toast.error('Erro ao ler o arquivo. Tente novamente.');
-      event.target.value = '';
-    };
-    reader.onload = (e) => {
-      const imageData = e.target?.result as string;
+
+    try {
+      toast.info('Processando imagem...');
+      const imageData = await compressImage(file);
       if (!imageData || !imageData.startsWith('data:image')) {
         toast.error('Formato de imagem inválido. Use JPG, PNG ou WebP.');
         return;
       }
       setImagemCapturada(imageData);
       processarImagem(imageData);
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Erro ao comprimir imagem:', err);
+      toast.error('Erro ao processar o arquivo. Tente novamente.');
+    }
     
     // Limpar input
     event.target.value = '';
