@@ -148,7 +148,7 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
   };
 
   // Comprimir imagem antes de enviar (evita timeout com fotos grandes da galeria)
-  const compressImage = (file: File, maxWidth = 2048, quality = 0.85): Promise<string> => {
+  const compressImage = (file: File, maxDim = 1920, quality = 0.75): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -157,9 +157,14 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
         const canvas = document.createElement('canvas');
         let w = img.width;
         let h = img.height;
-        if (w > maxWidth) {
-          h = Math.round((h * maxWidth) / w);
-          w = maxWidth;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
         }
         canvas.width = w;
         canvas.height = h;
@@ -300,20 +305,32 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
       setProgressoOCR(10);
       console.log('[MenuScanner] Enviando imagem para análise com IA...');
       
-      // Chamar a edge function scan-menu
-      const { data, error } = await supabase.functions.invoke('scan-menu', {
-        body: { image: imageData }
+      // Chamar a edge function scan-menu diretamente no Lovable Cloud
+      const CLOUD_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/scan-menu`;
+      const CLOUD_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(CLOUD_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CLOUD_ANON_KEY}`,
+          'apikey': CLOUD_ANON_KEY,
+        },
+        body: JSON.stringify({ image: imageData }),
       });
       
       setProgressoOCR(80);
       
-      if (error) {
-        console.error('[MenuScanner] Erro na edge function:', error);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[MenuScanner] Erro na edge function:', response.status, errorText);
         toast.error('Não foi possível processar a imagem. Tente novamente.');
         setEtapa('selecao');
         setImagemCapturada(null);
         return;
       }
+
+      const data = await response.json();
       
       setProgressoOCR(95);
       console.log('[MenuScanner] Resposta da IA:', data);
@@ -325,24 +342,22 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
         setEtapa('selecao');
         setImagemCapturada(null);
       } else {
-        // Converter para ProdutoComImagem com confiança alta (IA é mais precisa)
         const produtosComImagem: ProdutoComImagem[] = produtos.map((p: { nome: string; descricao: string; preco: number }) => ({
           nome: p.nome,
           descricao: p.descricao || '',
           preco: p.preco || 0,
-          confianca: 90, // IA tem alta confiança
-          linhaOriginal: p.nome, // Usar nome como referência
+          confianca: 90,
+          linhaOriginal: p.nome,
           imagemUrl: undefined,
         }));
         setProdutosExtraidos(produtosComImagem);
-        // Selecionar todos por padrão
         setProdutosSelecionados(new Set(produtos.map((_: unknown, i: number) => i)));
         setEtapa('revisao');
         toast.success(`${produtos.length} produto(s) identificado(s) com IA! Adicione as fotos.`);
       }
     } catch (err) {
       console.error('[MenuScanner] Erro ao processar imagem:', err);
-      toast.error('Erro ao processar imagem. Tente novamente.');
+      toast.error('Erro de conexão ao processar imagem. Verifique sua internet e tente novamente.');
       setEtapa('selecao');
       setImagemCapturada(null);
     } finally {

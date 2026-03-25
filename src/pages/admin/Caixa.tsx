@@ -1538,13 +1538,13 @@ export default function Caixa() {
       )}
 
       {/* Header com botão de atualizar */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Caixa</h1>
           <p className="text-muted-foreground">Gerencie pagamentos de mesas e delivery</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setVendaAvulsaOpen(true)} className="bg-green-600 hover:bg-green-700 text-white">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => setVendaAvulsaOpen(true)} className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto">
             <ShoppingBag className="w-4 h-4 mr-2" />
             Venda Avulsa
           </Button>
@@ -1553,7 +1553,7 @@ export default function Caixa() {
               {alertasPendentes} pendente{alertasPendentes > 1 ? 's' : ''}
             </Badge>
           )}
-          <Button variant="outline" disabled={isRefreshing} onClick={handleRefreshAll}>
+          <Button variant="outline" disabled={isRefreshing} onClick={handleRefreshAll} className="w-full sm:w-auto">
             <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
