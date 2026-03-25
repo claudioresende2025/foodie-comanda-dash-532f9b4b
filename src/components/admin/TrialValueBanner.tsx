@@ -33,12 +33,14 @@ export default function TrialValueBanner() {
     queryKey: ['trial-metrics', empresaId],
     queryFn: async () => {
       if (!empresaId) return { pedidos: 0, faturamento: 0 };
-      const [pedidosRes, comandasRes] = await Promise.all([
+      const [pedidosRes, comandasRes, vendasRes] = await Promise.all([
         supabase.from('comandas').select('id', { count: 'exact', head: true }).eq('empresa_id', empresaId),
         supabase.from('comandas').select('total').eq('empresa_id', empresaId).eq('status', 'fechada'),
+        (supabase as any).from('vendas_concluidas').select('valor_total').eq('empresa_id', empresaId).is('comanda_id', null),
       ]);
-      const faturamento = (comandasRes.data || []).reduce((sum, c) => sum + (c.total || 0), 0);
-      return { pedidos: pedidosRes.count || 0, faturamento };
+      const faturamentoComandas = (comandasRes.data || []).reduce((sum, c) => sum + (c.total || 0), 0);
+      const faturamentoVendas = (vendasRes.data || []).reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
+      return { pedidos: pedidosRes.count || 0, faturamento: faturamentoComandas + faturamentoVendas };
     },
     enabled: !!empresaId,
     staleTime: 60 * 1000,

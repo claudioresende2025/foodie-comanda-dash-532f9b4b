@@ -89,6 +89,26 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
+  // Fetch today's vendas_concluidas (standalone sales)
+  const { data: vendasHoje = [] } = useQuery({
+    queryKey: ['vendas-concluidas-hoje', empresaId],
+    queryFn: async () => {
+      if (!empresaId) return [];
+      const today = new Date();
+      const { data } = await (supabase as any)
+        .from('vendas_concluidas')
+        .select('valor_total, created_at')
+        .eq('empresa_id', empresaId)
+        .is('comanda_id', null)
+        .gte('created_at', startOfDay(today).toISOString())
+        .lte('created_at', endOfDay(today).toISOString());
+      return data || [];
+    },
+    enabled: !!empresaId,
+    staleTime: 30 * 1000,
+    refetchInterval: 30000,
+  });
+
   // Fetch today's pedidos count - fix: filter by empresa through comandas
   const { data: pedidosHoje = 0 } = useQuery({
     queryKey: ['pedidos-count-hoje', empresaId],
@@ -167,7 +187,7 @@ export default function Dashboard() {
       const weekStart = startOfDay(subDays(today, 6)).toISOString();
       const weekEnd = endOfDay(today).toISOString();
 
-      const [comandasRes, pedidosRes] = await Promise.all([
+      const [comandasRes, pedidosRes, vendasRes] = await Promise.all([
         supabase
           .from('comandas')
           .select('total, created_at')
@@ -181,10 +201,18 @@ export default function Dashboard() {
           .eq('comanda.empresa_id', empresaId)
           .gte('created_at', weekStart)
           .lte('created_at', weekEnd),
+        (supabase as any)
+          .from('vendas_concluidas')
+          .select('valor_total, created_at')
+          .eq('empresa_id', empresaId)
+          .is('comanda_id', null)
+          .gte('created_at', weekStart)
+          .lte('created_at', weekEnd),
       ]);
 
       const weekComandas = comandasRes.data || [];
       const weekPedidos = pedidosRes.data || [];
+      const weekVendas = vendasRes.data || [];
 
       const salesData: DailySales[] = [];
       for (let i = 6; i >= 0; i--) {
@@ -192,12 +220,21 @@ export default function Dashboard() {
         const dayStart = startOfDay(date);
         const dayEnd = endOfDay(date);
 
-        const dayTotal = weekComandas
+        const dayTotalComandas = weekComandas
           .filter(c => {
             const createdAt = new Date(c.created_at);
             return createdAt >= dayStart && createdAt <= dayEnd;
           })
           .reduce((sum, c) => sum + (c.total || 0), 0);
+
+        const dayTotalVendas = weekVendas
+          .filter((v: any) => {
+            const createdAt = new Date(v.created_at);
+            return createdAt >= dayStart && createdAt <= dayEnd;
+          })
+          .reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
+
+        const dayTotal = dayTotalComandas + dayTotalVendas;
 
         const dayPedidosCount = weekPedidos
           .filter(p => {
@@ -221,9 +258,11 @@ export default function Dashboard() {
   const stats = useMemo(() => {
     const mesasOcupadas = mesas.filter(m => m.status === 'ocupada').length;
     const totalMesas = mesas.filter(m => m.status !== 'juncao').length;
-    const faturamentoHoje = comandasHoje
+    const faturamentoComandas = comandasHoje
       .filter(c => c.status === 'fechada')
       .reduce((sum, c) => sum + (c.total || 0), 0);
+    const faturamentoVendas = vendasHoje.reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
+    const faturamentoHoje = faturamentoComandas + faturamentoVendas;
     const comandasAbertas = comandasHoje.filter(c => c.status === 'aberta').length;
 
     return {
@@ -233,7 +272,7 @@ export default function Dashboard() {
       faturamentoHoje,
       comandasAbertas,
     };
-  }, [mesas, comandasHoje, pedidosHoje]);
+  }, [mesas, comandasHoje, pedidosHoje, vendasHoje]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -269,12 +308,11 @@ export default function Dashboard() {
     try {
       const today = new Date();
       const weekStart = startOfDay(subDays(today, 6)).toISOString();
-      const { data } = await supabase
-        .from('comandas')
-        .select('total, forma_pagamento, created_at')
+      const { data } = await (supabase as any)
+        .from('vendas_concluidas')
+        .select('valor_total, forma_pagamento, created_at')
         .eq('empresa_id', empresaId)
-        .eq('status', 'fechada')
-        .is('mesa_id', null)
+        .is('comanda_id', null)
         .gte('created_at', weekStart);
 
       if (!data || data.length === 0) {
@@ -282,9 +320,9 @@ export default function Dashboard() {
         return;
       }
 
-      const reportData = data.map(v => ({
+      const reportData = data.map((v: any) => ({
         'Data': format(new Date(v.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
-        'Valor (R$)': v.total || 0,
+        'Valor (R$)': v.valor_total || 0,
         'Forma de Pagamento': v.forma_pagamento || '-',
       }));
 
