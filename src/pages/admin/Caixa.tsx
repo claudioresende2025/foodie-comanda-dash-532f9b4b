@@ -174,6 +174,15 @@ export default function Caixa() {
     formaPagamento: string;
   } | null>(null);
 
+  // Venda Avulsa
+  const [vendaAvulsaOpen, setVendaAvulsaOpen] = useState(false);
+  const [vendaAvulsaItens, setVendaAvulsaItens] = useState<{ nome: string; preco: number; quantidade: number; produtoId?: string }[]>([]);
+  const [vendaAvulsaPagamento, setVendaAvulsaPagamento] = useState<PaymentMethod>('dinheiro');
+  const [vendaAvulsaBusca, setVendaAvulsaBusca] = useState('');
+  const [vendaAvulsaManualNome, setVendaAvulsaManualNome] = useState('');
+  const [vendaAvulsaManualPreco, setVendaAvulsaManualPreco] = useState('');
+  const [isProcessingVendaAvulsa, setIsProcessingVendaAvulsa] = useState(false);
+
   /** --------- QUERIES --------- */
 
   // Mesas com status de fechamento pendente
