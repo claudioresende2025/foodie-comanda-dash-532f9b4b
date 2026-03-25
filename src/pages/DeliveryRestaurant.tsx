@@ -18,7 +18,7 @@ import { ProductCard } from "@/components/delivery/ProductCard";
 import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
-import { UpsellSection } from "@/components/delivery/UpsellSection";
+import { UpsellDialog } from "@/components/delivery/UpsellDialog";
 import { useCart } from "@/hooks/useCart";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
@@ -77,6 +77,8 @@ export default function DeliveryRestaurant() {
   // Estado para modal de seleção de tamanho
   const [sizeModalProduct, setSizeModalProduct] = useState<any>(null);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
+  const [showUpsellDialog, setShowUpsellDialog] = useState(false);
+  const [upsellShown, setUpsellShown] = useState(false);
 
   // Taxa de entrega dinâmica por bairro
   const [taxaEntregaDinamica, setTaxaEntregaDinamica] = useState<number>(0);
@@ -1248,27 +1250,6 @@ export default function DeliveryRestaurant() {
                 </div>
               )}
 
-              {/* Seção de Upsell - Sugestões de acompanhamentos */}
-              {empresaId && cart.length > 0 && (
-                <UpsellSection
-                  empresaId={empresaId}
-                  cartProductIds={cart.map(item => item.produto.id)}
-                  onAddToCart={(product) => {
-                    addToCart(
-                      {
-                        id: product.id,
-                        nome: product.nome,
-                        descricao: product.descricao,
-                        preco: product.preco,
-                        imagem_url: product.imagem_url,
-                      },
-                      1,
-                      null,
-                      product.preco
-                    );
-                  }}
-                />
-              )}
 
               <div className="space-y-4">
                 <h3 className="font-bold text-base text-primary">Forma de Pagamento</h3>
@@ -1349,7 +1330,14 @@ export default function DeliveryRestaurant() {
 
               <Button
                 className="w-full h-14 text-lg font-bold rounded-xl shadow-lg"
-                onClick={handleCheckout}
+                onClick={() => {
+                  if (!upsellShown && empresaId) {
+                    setShowUpsellDialog(true);
+                    setUpsellShown(true);
+                  } else {
+                    handleCheckout();
+                  }
+                }}
                 disabled={isProcessing || itemCount === 0}
               >
                 {isProcessing ? <Loader2 className="animate-spin mr-2" /> : `Pagar R$ ${totalComDesconto.toFixed(2)}`}
@@ -1359,7 +1347,32 @@ export default function DeliveryRestaurant() {
         </SheetContent>
       </Sheet>
 
-      <Sheet 
+      {/* Upsell Dialog - popup antes do checkout */}
+      {empresaId && (
+        <UpsellDialog
+          open={showUpsellDialog}
+          onOpenChange={setShowUpsellDialog}
+          empresaId={empresaId}
+          cartProductIds={cart.map(item => item.produto.id)}
+          onAddToCart={(product) => {
+            addToCart(
+              {
+                id: product.id,
+                nome: product.nome,
+                descricao: product.descricao,
+                preco: product.preco,
+                imagem_url: product.imagem_url,
+              },
+              1,
+              null,
+              product.preco
+            );
+          }}
+          onContinue={handleCheckout}
+        />
+      )}
+
+      <Sheet
         open={showPixModal} 
         onOpenChange={(open) => {
           if (!open && !pixConfirmado) {
