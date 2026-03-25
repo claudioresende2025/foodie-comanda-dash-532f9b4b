@@ -1347,7 +1347,31 @@ export default function DeliveryRestaurant() {
         </SheetContent>
       </Sheet>
 
-      <Sheet 
+      {/* Upsell Dialog - popup antes do checkout */}
+      {empresaId && (
+        <UpsellDialog
+          open={showUpsellDialog}
+          onOpenChange={setShowUpsellDialog}
+          empresaId={empresaId}
+          cartProductIds={cart.map(item => item.produto.id)}
+          onAddToCart={(product) => {
+            addToCart(
+              {
+                id: product.id,
+                nome: product.nome,
+                descricao: product.descricao,
+                preco: product.preco,
+                imagem_url: product.imagem_url,
+              },
+              1,
+              null,
+              product.preco
+            );
+          }}
+          onContinue={handleCheckout}
+        />
+      )}
+
         open={showPixModal} 
         onOpenChange={(open) => {
           if (!open && !pixConfirmado) {
