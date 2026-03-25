@@ -1328,7 +1328,14 @@ export default function Menu() {
                   <span className="font-medium">Total</span>
                   <span className="text-xl font-bold text-primary">R$ {cartTotal.toFixed(2).replace(".", ",")}</span>
                 </div>
-                <Button className="w-full h-12 text-lg" onClick={handleSendOrder} disabled={isSendingOrder}>
+                <Button className="w-full h-12 text-lg" onClick={() => {
+                  if (!upsellShown && empresaId) {
+                    setShowUpsellDialog(true);
+                    setUpsellShown(true);
+                  } else {
+                    handleSendOrder();
+                  }
+                }} disabled={isSendingOrder}>
                   {isSendingOrder ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
                   Enviar Pedido
                 </Button>
@@ -1446,6 +1453,31 @@ export default function Menu() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+
+      {/* UpsellDialog Popup */}
+      {empresaId && (
+        <UpsellDialog
+          open={showUpsellDialog}
+          onOpenChange={setShowUpsellDialog}
+          empresaId={empresaId}
+          cartProductIds={cart.map(item => item.produto.id)}
+          onAddToCart={(product) => {
+            addToCart({
+              id: product.id,
+              nome: product.nome,
+              descricao: product.descricao,
+              preco: product.preco,
+              imagem_url: product.imagem_url,
+              categoria_id: '',
+              ativo: true,
+            } as any);
+          }}
+          onContinue={() => {
+            handleSendOrder();
+          }}
+        />
+      )}
 
       {/* Footer */}
       <footer className="bg-muted py-6 mt-8">
