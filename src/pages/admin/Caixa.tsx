@@ -1282,7 +1282,6 @@ export default function Caixa() {
                       chavePix={empresa.chave_pix}
                       valor={vendaAvulsaTotal}
                       nomeRecebedor={empresa.nome_fantasia || 'Restaurante'}
-                      cidadeRecebedor="Brasil"
                     />
                   </div>
                 )}
