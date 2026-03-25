@@ -1,20 +1,28 @@
 
 
-# Plano: Adicionar Upsell Inteligente na página Menu (cardápio do restaurante)
+# Plano: Upsell Inteligente em Popup (Delivery)
 
-## Estado Atual
+## Problema
+O upsell atual fica embutido no Sheet de checkout, misturado com os outros campos. É fácil de ignorar.
 
-- **DeliveryRestaurant.tsx**: Já tem `UpsellSection` integrada (linha 1251-1270), aparecendo no checkout sheet quando o carrinho tem itens.
-- **Menu.tsx**: **Não tem** nenhuma integração de upsell. O carrinho é renderizado em um Sheet (linhas 1260-1330) sem sugestões.
+## Solução
+Criar um **Dialog (popup)** de upsell que aparece automaticamente quando o cliente clica em "Finalizar Pedido", **antes** de processar o checkout. O popup mostra sugestões de acompanhamentos de forma chamativa. O cliente pode adicionar itens ou pular direto para o pagamento.
 
-## Alteração
+## Alterações
 
-### `src/pages/Menu.tsx`
-- Importar `UpsellSection` de `@/components/delivery/UpsellSection`
-- Adicionar o componente dentro do Sheet do carrinho, logo após a lista de itens do carrinho (depois da linha 1317) e antes do bloco de total/botão enviar
-- Passar `empresaId`, `cartProductIds` (IDs dos produtos no carrinho) e `onAddToCart` que chama a função `addToCart` existente
+### 1. Criar componente `UpsellDialog` (`src/components/delivery/UpsellDialog.tsx`)
+- Dialog fullscreen no mobile, modal no desktop
+- Título chamativo com ícone (ex: "Que tal completar seu pedido?")
+- Grid de produtos sugeridos com imagem, nome, preço e botão "Adicionar"
+- Botão principal "Continuar sem adicionar" e indicador de itens adicionados
+- Reutiliza a mesma lógica de busca do `UpsellSection` (categorias de bebidas/acompanhamentos/sobremesas)
 
-O `UpsellSection` já é genérico — busca produtos por categoria (bebidas, acompanhamentos, sobremesas) ou por menor preço. Funciona tanto para delivery quanto para o cardápio presencial.
+### 2. Integrar no fluxo de checkout (`src/pages/DeliveryRestaurant.tsx`)
+- Adicionar estado `showUpsellDialog`
+- Quando o cliente clica em "Finalizar Pedido", em vez de chamar `handleCheckout` diretamente:
+  - Se existem produtos de upsell disponíveis → abrir o popup primeiro
+  - O popup tem botão "Continuar" que fecha o dialog e chama `handleCheckout`
+- Remover o `UpsellSection` inline do Sheet (substituído pelo popup)
 
-**Total: 1 arquivo alterado**
+**Total: 1 arquivo criado, 1 arquivo alterado**
 
