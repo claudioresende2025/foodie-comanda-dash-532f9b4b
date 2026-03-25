@@ -159,10 +159,11 @@ export default function Configuracoes() {
     }
   };
 
-  const handleTestPrint = () => {
+  const handleTestPrint = (target: string = 'kds') => {
+    const label = target === 'caixa' ? 'CAIXA' : 'COZINHA (KDS)';
     const printContent = `
       ================================
-            TESTE DE IMPRESSÃO
+        TESTE DE IMPRESSÃO - ${label}
       ================================
       
       Food Comanda Pro - Sistema de Gestão
@@ -197,7 +198,7 @@ export default function Configuracoes() {
       `);
       printWindow.document.close();
     }
-    toast.success("Teste de impressão enviado!");
+    toast.success(`Teste de impressão (${label}) enviado!`);
   };
 
   const handleGenerateQRCodes = () => {
