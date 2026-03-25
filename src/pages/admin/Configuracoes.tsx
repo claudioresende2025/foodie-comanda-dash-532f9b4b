@@ -28,6 +28,11 @@ type ConfigSettings = {
   // Couver musical
   couverAtivo: boolean;
   couverValor: number;
+  // Impressoras
+  printerKdsType: string;
+  printerKdsName: string;
+  printerCaixaType: string;
+  printerCaixaName: string;
 };
 
 export default function Configuracoes() {
