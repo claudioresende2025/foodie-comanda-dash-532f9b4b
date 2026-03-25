@@ -180,6 +180,24 @@ serve(async (req) => {
     // Filtrar produtos inválidos (sem nome)
     produtos = produtos.filter(p => p.nome && p.nome.length > 0);
 
+    // Validar preços repetidos (indicativo de erro de leitura)
+    if (produtos.length > 3) {
+      const precos = produtos.map(p => p.preco).filter(p => p > 0);
+      const precoMaisComum = precos.sort((a, b) =>
+        precos.filter(v => v === a).length - precos.filter(v => v === b).length
+      ).pop();
+      const qtdRepetido = precos.filter(p => p === precoMaisComum).length;
+      if (qtdRepetido / precos.length > 0.7) {
+        logStep("ALERTA: preços suspeitos - maioria idêntica", { precoMaisComum, qtdRepetido, total: precos.length });
+        // Zerar preços repetidos para o usuário revisar manualmente
+        const precoSuspeito = precoMaisComum;
+        produtos = produtos.map(p => ({
+          ...p,
+          preco: p.preco === precoSuspeito ? 0 : p.preco,
+        }));
+      }
+    }
+
     logStep("Produtos extraídos", { count: produtos.length });
 
     const response: ScanMenuResponse = { produtos };
