@@ -374,7 +374,14 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Visão geral do seu restaurante</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="icon" onClick={handleRefresh} title="Atualizar">
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportVendasAvulsas}>
+            <Receipt className="w-4 h-4 mr-2" />
+            Vendas Avulsas
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <FileSpreadsheet className="w-4 h-4 mr-2" />
             Excel/CSV
