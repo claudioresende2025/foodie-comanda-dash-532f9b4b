@@ -238,6 +238,11 @@ export default function Caixa() {
       toast.error('Adicione pelo menos um item');
       return;
     }
+    // Se PIX selecionado e QR não exibido ainda, mostrar QR Code primeiro
+    if (vendaAvulsaPagamento === 'pix' && !vendaAvulsaShowPix) {
+      setVendaAvulsaShowPix(true);
+      return;
+    }
     if (!profile?.empresa_id || !profile?.id) return;
 
     setIsProcessingVendaAvulsa(true);
