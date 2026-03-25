@@ -32,6 +32,8 @@ import {
   CreditCard,
   Banknote,
   X,
+  Plus,
+  ShoppingBag,
 } from 'lucide-react';
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
@@ -39,6 +41,7 @@ import { NfceEmissionDialog } from '@/components/admin/NfceEmissionDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { printCaixaReceipt } from '@/utils/kitchenPrinter';
+import { AddItemModal } from '@/components/caixa/AddItemModal';
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
 type CaixaTab = 'mesas' | 'delivery';
@@ -169,6 +172,16 @@ export default function Caixa() {
     valorTotal: number;
     formaPagamento: string;
   } | null>(null);
+
+  // Modal de adicionar item de última hora
+  const [addItemModalOpen, setAddItemModalOpen] = useState(false);
+  const [addItemMode, setAddItemMode] = useState<'comanda' | 'avulsa'>('comanda');
+  
+  // Venda avulsa (sem comanda)
+  const [vendaAvulsaItems, setVendaAvulsaItems] = useState<{ produto_id: string; nome: string; preco: number; quantidade: number }[]>([]);
+  const [vendaAvulsaDialogOpen, setVendaAvulsaDialogOpen] = useState(false);
+  const [vendaAvulsaFormaPagamento, setVendaAvulsaFormaPagamento] = useState<PaymentMethod>('dinheiro');
+  const [isProcessingVendaAvulsa, setIsProcessingVendaAvulsa] = useState(false);
 
   /** --------- QUERIES --------- */
 
@@ -854,6 +867,106 @@ export default function Caixa() {
     }
   };
 
+  // ========== ADICIONAR ITEM DE ÚLTIMA HORA À COMANDA ==========
+  const handleOpenAddItem = (mode: 'comanda' | 'avulsa') => {
+    setAddItemMode(mode);
+    if (mode === 'avulsa') {
+      setVendaAvulsaItems([]); // Limpar itens anteriores
+    }
+    setAddItemModalOpen(true);
+  };
+
+  const handleItemAdded = (item: { produto_id: string; nome: string; preco: number; quantidade: number }) => {
+    if (addItemMode === 'comanda') {
+      // Recarregar dados da comanda
+      queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
+      
+      // Re-selecionar a comanda para atualizar a UI
+      if (selectedComanda) {
+        setTimeout(() => {
+          const updatedComanda = comandas?.find((c: any) => c.id === selectedComanda.id);
+          if (updatedComanda) {
+            setSelectedComanda(updatedComanda);
+          }
+        }, 500);
+      }
+    } else {
+      // Adicionar à lista de venda avulsa
+      setVendaAvulsaItems(prev => {
+        const existing = prev.find(i => i.produto_id === item.produto_id);
+        if (existing) {
+          return prev.map(i => 
+            i.produto_id === item.produto_id 
+              ? { ...i, quantidade: i.quantidade + 1 } 
+              : i
+          );
+        }
+        return [...prev, item];
+      });
+    }
+  };
+
+  // Total da venda avulsa
+  const vendaAvulsaTotal = useMemo(() => {
+    return vendaAvulsaItems.reduce((acc, item) => acc + item.preco * item.quantidade, 0);
+  }, [vendaAvulsaItems]);
+
+  // Finalizar venda avulsa
+  const handleFinalizarVendaAvulsa = async () => {
+    if (vendaAvulsaItems.length === 0) {
+      toast.error('Adicione pelo menos um item');
+      return;
+    }
+
+    setIsProcessingVendaAvulsa(true);
+
+    try {
+      // Registrar na tabela vendas_concluidas
+      const { error } = await supabase.from('vendas_concluidas').insert({
+        empresa_id: profile?.empresa_id,
+        valor_total: vendaAvulsaTotal,
+        valor_subtotal: vendaAvulsaTotal,
+        forma_pagamento: vendaAvulsaFormaPagamento,
+        processado_por: profile?.id,
+        tipo_processamento: 'venda_avulsa',
+        observacoes: `Venda avulsa: ${vendaAvulsaItems.map(i => `${i.quantidade}x ${i.nome}`).join(', ')}`,
+      });
+
+      if (error) throw error;
+
+      toast.success('Venda avulsa registrada com sucesso!');
+      
+      // Imprimir cupom
+      printCaixaReceipt({
+        empresaNome: empresa?.nome_fantasia || 'Restaurante',
+        empresaEndereco: empresa?.endereco_completo || undefined,
+        empresaCnpj: empresa?.cnpj || undefined,
+        mesaNumero: 0,
+        nomeCliente: 'Venda Avulsa',
+        itens: vendaAvulsaItems.map(item => ({
+          nome: item.nome,
+          quantidade: item.quantidade,
+          precoUnitario: item.preco,
+          subtotal: item.preco * item.quantidade,
+        })),
+        subtotal: vendaAvulsaTotal,
+        total: vendaAvulsaTotal,
+        formaPagamento: vendaAvulsaFormaPagamento,
+        timestamp: new Date(),
+      });
+
+      // Limpar e fechar
+      setVendaAvulsaItems([]);
+      setVendaAvulsaDialogOpen(false);
+      setAddItemModalOpen(false);
+    } catch (error: any) {
+      console.error('Erro ao processar venda avulsa:', error);
+      toast.error(`Erro ao processar: ${error.message}`);
+    } finally {
+      setIsProcessingVendaAvulsa(false);
+    }
+  };
+
   const handlePrint = () => {
     if (!selectedComanda) {
       toast.error('Nenhuma comanda selecionada para impressão');
@@ -1178,12 +1291,20 @@ export default function Caixa() {
           <h1 className="text-2xl font-bold text-foreground">Caixa</h1>
           <p className="text-muted-foreground">Gerencie pagamentos de mesas e delivery</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {alertasPendentes > 0 && (
             <Badge variant="destructive" className="text-sm px-3 py-1">
               {alertasPendentes} pendente{alertasPendentes > 1 ? 's' : ''}
             </Badge>
           )}
+          <Button 
+            variant="default" 
+            onClick={() => handleOpenAddItem('avulsa')}
+            className="bg-amber-600 hover:bg-amber-700"
+          >
+            <ShoppingBag className="w-4 h-4 mr-2" />
+            Venda Avulsa
+          </Button>
           <Button variant="outline" disabled={isRefreshing} onClick={handleRefreshAll}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Atualizar
@@ -1255,12 +1376,21 @@ export default function Caixa() {
               {selectedComanda ? (
                 <Card className="printable-receipt">
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <CardTitle className="flex items-center gap-2">
                         <Receipt className="w-5 h-5" />
                         Mesa {selectedComanda.mesa?.numero_mesa || '-'}
                       </CardTitle>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        <Button 
+                          variant="default" 
+                          size="sm" 
+                          onClick={() => handleOpenAddItem('comanda')}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Adicionar Item
+                        </Button>
                         <Button variant="outline" size="sm" onClick={handlePrint}>
                           <Printer className="w-4 h-4 mr-2" />
                           Imprimir
@@ -1847,6 +1977,144 @@ export default function Caixa() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modal de Adicionar Item */}
+      <AddItemModal
+        open={addItemModalOpen}
+        onOpenChange={(open) => {
+          setAddItemModalOpen(open);
+          if (!open && addItemMode === 'avulsa' && vendaAvulsaItems.length > 0) {
+            // Se fechou e tem itens de venda avulsa, abrir dialog de finalização
+            setVendaAvulsaDialogOpen(true);
+          }
+        }}
+        empresaId={profile?.empresa_id || ''}
+        comandaId={addItemMode === 'comanda' ? selectedComanda?.id : null}
+        onItemAdded={handleItemAdded}
+        mode={addItemMode}
+      />
+
+      {/* Dialog de Venda Avulsa */}
+      <Dialog open={vendaAvulsaDialogOpen} onOpenChange={setVendaAvulsaDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-amber-600" />
+              Finalizar Venda Avulsa
+            </DialogTitle>
+            <DialogDescription>
+              Revise os itens e selecione a forma de pagamento
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Itens da venda */}
+            <div className="space-y-2">
+              <Label>Itens</Label>
+              <div className="border rounded-lg divide-y max-h-40 overflow-y-auto">
+                {vendaAvulsaItems.map((item, idx) => (
+                  <div key={idx} className="p-2 flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium">{item.nome}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.quantidade}x R$ {item.preco.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">
+                        R$ {(item.preco * item.quantidade).toFixed(2)}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-red-500"
+                        onClick={() => {
+                          setVendaAvulsaItems(prev => prev.filter((_, i) => i !== idx));
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  setVendaAvulsaDialogOpen(false);
+                  setAddItemModalOpen(true);
+                }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Adicionar mais itens
+              </Button>
+            </div>
+
+            {/* Total */}
+            <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Total</span>
+                <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                  R$ {vendaAvulsaTotal.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Forma de Pagamento */}
+            <div className="space-y-2">
+              <Label>Forma de Pagamento</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'dinheiro' as PaymentMethod, label: 'Dinheiro', icon: Banknote },
+                  { value: 'pix' as PaymentMethod, label: 'PIX', icon: QrCode },
+                  { value: 'cartao_credito' as PaymentMethod, label: 'Crédito', icon: CreditCard },
+                  { value: 'cartao_debito' as PaymentMethod, label: 'Débito', icon: CreditCard },
+                ].map((method) => (
+                  <Button
+                    key={method.value}
+                    variant={vendaAvulsaFormaPagamento === method.value ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setVendaAvulsaFormaPagamento(method.value)}
+                    className="h-10"
+                  >
+                    <method.icon className="w-4 h-4 mr-2" />
+                    {method.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setVendaAvulsaDialogOpen(false)}
+              disabled={isProcessingVendaAvulsa}
+            >
+              Voltar
+            </Button>
+            <Button
+              onClick={handleFinalizarVendaAvulsa}
+              disabled={isProcessingVendaAvulsa || vendaAvulsaItems.length === 0}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              {isProcessingVendaAvulsa ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Finalizar Venda
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

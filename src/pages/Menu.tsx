@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
+import { SmartUpsellSection } from "@/components/smart/SmartUpsellSection";
 
 // --- Tipos de Dados (Types) ---
 
@@ -1261,6 +1262,38 @@ export default function Menu() {
               <SheetHeader>
                 <SheetTitle>Seu Carrinho</SheetTitle>
               </SheetHeader>
+              
+              {/* Smart Upsell Section */}
+              {empresaId && cart.length > 0 && (
+                <div className="mt-4 mb-2">
+                  <SmartUpsellSection
+                    empresaId={empresaId}
+                    cartItems={cart.map(item => ({
+                      produto_id: item.produto.id,
+                      produto: { id: item.produto.id, nome: item.produto.nome },
+                      nome: item.produto.nome,
+                      categoria_id: item.produto.categoria_id || undefined,
+                    }))}
+                    cartProductIds={cart.map(item => item.produto.id)}
+                    onAddToCart={(product) => {
+                      // Criar produto compatível com o tipo Produto
+                      const produtoParaAdicionar: Produto = {
+                        id: product.id,
+                        nome: product.nome,
+                        descricao: product.descricao,
+                        preco: product.preco,
+                        imagem_url: product.imagem_url,
+                        categoria_id: product.categoria_id,
+                        ativo: true,
+                      };
+                      addToCart(produtoParaAdicionar);
+                    }}
+                    title="Que tal adicionar?"
+                    maxItems={6}
+                  />
+                </div>
+              )}
+
               <ScrollArea className="h-[calc(100%-140px)] mt-4">
                 <div className="space-y-4 pr-4">
                   {cart.map((item) => (

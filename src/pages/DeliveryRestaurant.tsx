@@ -18,7 +18,7 @@ import { ProductCard } from "@/components/delivery/ProductCard";
 import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
-import { UpsellSection } from "@/components/delivery/UpsellSection";
+import { SmartUpsellSection } from "@/components/smart/SmartUpsellSection";
 import { useCart } from "@/hooks/useCart";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
@@ -1248,10 +1248,16 @@ export default function DeliveryRestaurant() {
                 </div>
               )}
 
-              {/* Seção de Upsell - Sugestões de acompanhamentos */}
+              {/* Seção de Upsell Inteligente - Sugestões baseadas no carrinho */}
               {empresaId && cart.length > 0 && (
-                <UpsellSection
+                <SmartUpsellSection
                   empresaId={empresaId}
+                  cartItems={cart.map(item => ({
+                    produto_id: item.produto.id,
+                    produto: { id: item.produto.id, nome: item.produto.nome },
+                    nome: item.produto.nome,
+                    categoria_id: item.produto.categoria_id || undefined,
+                  }))}
                   cartProductIds={cart.map(item => item.produto.id)}
                   onAddToCart={(product) => {
                     addToCart(
@@ -1261,12 +1267,15 @@ export default function DeliveryRestaurant() {
                         descricao: product.descricao,
                         preco: product.preco,
                         imagem_url: product.imagem_url,
+                        categoria_id: product.categoria_id,
                       },
                       1,
                       null,
                       product.preco
                     );
                   }}
+                  title="Que tal adicionar?"
+                  maxItems={6}
                 />
               )}
 
