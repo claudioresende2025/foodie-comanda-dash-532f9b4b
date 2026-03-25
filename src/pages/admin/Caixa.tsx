@@ -1314,7 +1314,11 @@ export default function Caixa() {
           <h1 className="text-2xl font-bold text-foreground">Caixa</h1>
           <p className="text-muted-foreground">Gerencie pagamentos de mesas e delivery</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setVendaAvulsaOpen(true)} className="bg-green-600 hover:bg-green-700 text-white">
+            <ShoppingBag className="w-4 h-4 mr-2" />
+            Venda Avulsa
+          </Button>
           {alertasPendentes > 0 && (
             <Badge variant="destructive" className="text-sm px-3 py-1">
               {alertasPendentes} pendente{alertasPendentes > 1 ? 's' : ''}
