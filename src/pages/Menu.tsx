@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { UpsellSection } from '@/components/delivery/UpsellSection';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -1315,6 +1316,23 @@ export default function Menu() {
                       </div>
                     </div>
                   ))}
+
+                  {/* Upsell Inteligente */}
+                  {empresaId && (
+                    <UpsellSection
+                      empresaId={empresaId}
+                      cartProductIds={cart.map(item => item.produto.id)}
+                      onAddToCart={(product) => {
+                        addToCart({
+                          id: product.id,
+                          nome: product.nome,
+                          descricao: product.descricao,
+                          preco: product.preco,
+                          imagem_url: product.imagem_url,
+                        });
+                      }}
+                    />
+                  )}
                 </div>
               </ScrollArea>
               <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t">
