@@ -381,7 +381,7 @@ export default function Pedidos() {
           schema: "public",
           table: "pedidos",
         },
-        (payload) => {
+        async (payload) => {
           queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
 
           if (payload.eventType === "INSERT") {
