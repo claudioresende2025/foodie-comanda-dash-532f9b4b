@@ -148,7 +148,7 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
   };
 
   // Comprimir imagem antes de enviar (evita timeout com fotos grandes da galeria)
-  const compressImage = (file: File, maxWidth = 2048, quality = 0.85): Promise<string> => {
+  const compressImage = (file: File, maxDim = 1920, quality = 0.75): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -157,9 +157,14 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
         const canvas = document.createElement('canvas');
         let w = img.width;
         let h = img.height;
-        if (w > maxWidth) {
-          h = Math.round((h * maxWidth) / w);
-          w = maxWidth;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
         }
         canvas.width = w;
         canvas.height = h;
