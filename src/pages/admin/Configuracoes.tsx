@@ -49,12 +49,14 @@ export default function Configuracoes() {
     clientOrdering: true,
     darkTheme: false,
     compactMenu: false,
-    // Taxa de serviço
     taxaServicoAtiva: true,
     taxaServicoPercentual: 10,
-    // Couver musical
     couverAtivo: false,
     couverValor: 0,
+    printerKdsType: 'default',
+    printerKdsName: '',
+    printerCaixaType: 'default',
+    printerCaixaName: '',
   });
 
   const [passwordDialog, setPasswordDialog] = useState(false);
