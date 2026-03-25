@@ -1093,7 +1093,203 @@ export default function Caixa() {
         data={nfceComandaData}
       />
 
-      {/* PIX Modal */}
+      {/* Modal Venda Avulsa */}
+      <Dialog open={vendaAvulsaOpen} onOpenChange={(open) => {
+        setVendaAvulsaOpen(open);
+        if (!open) {
+          setVendaAvulsaItens([]);
+          setVendaAvulsaBusca('');
+          setVendaAvulsaManualNome('');
+          setVendaAvulsaManualPreco('');
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-green-600" />
+              Venda Avulsa
+            </DialogTitle>
+            <DialogDescription>
+              Registre vendas de itens avulsos diretamente no caixa
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Busca de produtos do cardápio */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Buscar Produto do Cardápio</Label>
+              <Input
+                placeholder="Digite o nome do produto..."
+                value={vendaAvulsaBusca}
+                onChange={(e) => setVendaAvulsaBusca(e.target.value)}
+              />
+              {vendaAvulsaBusca && produtosFiltrados.length > 0 && (
+                <ScrollArea className="h-32 border rounded-lg">
+                  <div className="p-2 space-y-1">
+                    {produtosFiltrados.slice(0, 10).map((p: any) => (
+                      <Button
+                        key={p.id}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-between text-left h-auto py-2"
+                        onClick={() => {
+                          adicionarProdutoAvulso({ id: p.id, nome: p.nome, preco: p.preco });
+                          setVendaAvulsaBusca('');
+                        }}
+                      >
+                        <span className="truncate">{p.nome}</span>
+                        <span className="text-muted-foreground ml-2">R$ {Number(p.preco).toFixed(2)}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Adicionar item manual */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Ou Adicionar Item Manual</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nome do item"
+                  value={vendaAvulsaManualNome}
+                  onChange={(e) => setVendaAvulsaManualNome(e.target.value)}
+                  className="flex-1"
+                />
+                <Input
+                  placeholder="Preço"
+                  type="number"
+                  step="0.01"
+                  value={vendaAvulsaManualPreco}
+                  onChange={(e) => setVendaAvulsaManualPreco(e.target.value)}
+                  className="w-24"
+                />
+                <Button size="icon" variant="outline" onClick={adicionarItemManual}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Itens adicionados */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Itens ({vendaAvulsaItens.length})</Label>
+              {vendaAvulsaItens.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4 text-sm">Nenhum item adicionado</p>
+              ) : (
+                <div className="space-y-2">
+                  {vendaAvulsaItens.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 border rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">{item.nome}</span>
+                        <span className="text-xs text-muted-foreground">R$ {item.preco.toFixed(2)} un.</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            const novos = [...vendaAvulsaItens];
+                            if (novos[idx].quantidade > 1) {
+                              novos[idx].quantidade -= 1;
+                              setVendaAvulsaItens(novos);
+                            }
+                          }}
+                        >
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <span className="text-sm font-medium w-6 text-center">{item.quantidade}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            const novos = [...vendaAvulsaItens];
+                            novos[idx].quantidade += 1;
+                            setVendaAvulsaItens(novos);
+                          }}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => setVendaAvulsaItens(vendaAvulsaItens.filter((_, i) => i !== idx))}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                        <span className="text-sm font-bold w-20 text-right">
+                          R$ {(item.preco * item.quantidade).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Total */}
+            {vendaAvulsaItens.length > 0 && (
+              <>
+                <div className="p-3 bg-green-500/10 rounded-lg flex justify-between items-center">
+                  <span className="font-medium">Total</span>
+                  <span className="text-xl font-bold text-green-600">R$ {vendaAvulsaTotal.toFixed(2)}</span>
+                </div>
+
+                {/* Forma de pagamento */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Forma de Pagamento</Label>
+                  <RadioGroup
+                    value={vendaAvulsaPagamento}
+                    onValueChange={(v) => setVendaAvulsaPagamento(v as PaymentMethod)}
+                    className="grid grid-cols-2 gap-2"
+                  >
+                    <Label htmlFor="va-dinheiro" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'dinheiro' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="dinheiro" id="va-dinheiro" />
+                      <Banknote className="w-4 h-4" /> Dinheiro
+                    </Label>
+                    <Label htmlFor="va-pix" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'pix' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="pix" id="va-pix" />
+                      <QrCode className="w-4 h-4" /> PIX
+                    </Label>
+                    <Label htmlFor="va-credito" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'cartao_credito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="cartao_credito" id="va-credito" />
+                      <CreditCard className="w-4 h-4" /> Crédito
+                    </Label>
+                    <Label htmlFor="va-debito" className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${vendaAvulsaPagamento === 'cartao_debito' ? 'border-primary bg-primary/5' : 'hover:bg-muted'}`}>
+                      <RadioGroupItem value="cartao_debito" id="va-debito" />
+                      <CreditCard className="w-4 h-4" /> Débito
+                    </Label>
+                  </RadioGroup>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setVendaAvulsaOpen(false)} disabled={isProcessingVendaAvulsa}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleFinalizarVendaAvulsa}
+              disabled={isProcessingVendaAvulsa || vendaAvulsaItens.length === 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessingVendaAvulsa ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
+              ) : (
+                <><Check className="w-4 h-4 mr-2" /> Finalizar Venda</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showPixModal} onOpenChange={setShowPixModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
