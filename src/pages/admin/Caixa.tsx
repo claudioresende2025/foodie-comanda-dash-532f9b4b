@@ -183,6 +183,129 @@ export default function Caixa() {
   const [vendaAvulsaManualPreco, setVendaAvulsaManualPreco] = useState('');
   const [isProcessingVendaAvulsa, setIsProcessingVendaAvulsa] = useState(false);
 
+  // Produtos para venda avulsa
+  const { data: produtosCardapio = [] } = useQuery({
+    queryKey: ['produtos-venda-avulsa', profile?.empresa_id],
+    queryFn: async () => {
+      if (!profile?.empresa_id) return [];
+      const { data, error } = await supabase
+        .from('produtos')
+        .select('id, nome, preco')
+        .eq('empresa_id', profile.empresa_id)
+        .eq('ativo', true)
+        .order('nome');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.empresa_id && vendaAvulsaOpen,
+  });
+
+  const produtosFiltrados = produtosCardapio.filter((p: any) =>
+    p.nome.toLowerCase().includes(vendaAvulsaBusca.toLowerCase())
+  );
+
+  const vendaAvulsaTotal = vendaAvulsaItens.reduce((acc, item) => acc + item.preco * item.quantidade, 0);
+
+  const adicionarProdutoAvulso = (produto: { id?: string; nome: string; preco: number }) => {
+    const existente = vendaAvulsaItens.findIndex(i => i.nome === produto.nome);
+    if (existente >= 0) {
+      const novos = [...vendaAvulsaItens];
+      novos[existente].quantidade += 1;
+      setVendaAvulsaItens(novos);
+    } else {
+      setVendaAvulsaItens([...vendaAvulsaItens, { nome: produto.nome, preco: produto.preco, quantidade: 1, produtoId: produto.id }]);
+    }
+  };
+
+  const adicionarItemManual = () => {
+    if (!vendaAvulsaManualNome || !vendaAvulsaManualPreco) {
+      toast.error('Preencha nome e preço do item');
+      return;
+    }
+    const preco = parseFloat(vendaAvulsaManualPreco);
+    if (isNaN(preco) || preco <= 0) {
+      toast.error('Preço inválido');
+      return;
+    }
+    adicionarProdutoAvulso({ nome: vendaAvulsaManualNome, preco });
+    setVendaAvulsaManualNome('');
+    setVendaAvulsaManualPreco('');
+  };
+
+  const handleFinalizarVendaAvulsa = async () => {
+    if (vendaAvulsaItens.length === 0) {
+      toast.error('Adicione pelo menos um item');
+      return;
+    }
+    if (!profile?.empresa_id || !profile?.id) return;
+
+    setIsProcessingVendaAvulsa(true);
+    try {
+      // Registrar na tabela vendas_concluidas
+      await supabase.from('vendas_concluidas').insert({
+        empresa_id: profile.empresa_id,
+        comanda_id: null,
+        mesa_id: null,
+        valor_total: vendaAvulsaTotal,
+        valor_subtotal: vendaAvulsaTotal,
+        forma_pagamento: vendaAvulsaPagamento,
+        processado_por: profile.id,
+        tipo_processamento: 'caixa',
+      });
+
+      // Registrar em movimentacoes_caixa se houver caixa aberto
+      const { data: caixaAberto } = await supabase
+        .from('caixas')
+        .select('id')
+        .eq('empresa_id', profile.empresa_id)
+        .eq('status', 'aberto')
+        .maybeSingle();
+
+      if (caixaAberto) {
+        await supabase.from('movimentacoes_caixa').insert({
+          caixa_id: caixaAberto.id,
+          tipo: 'entrada',
+          valor: vendaAvulsaTotal,
+          forma_pagamento: vendaAvulsaPagamento,
+          descricao: `Venda avulsa: ${vendaAvulsaItens.map(i => `${i.quantidade}x ${i.nome}`).join(', ')}`,
+        });
+      }
+
+      // Imprimir cupom
+      printCaixaReceipt({
+        empresaNome: empresa?.nome_fantasia || 'Restaurante',
+        empresaEndereco: empresa?.endereco_completo || undefined,
+        empresaCnpj: empresa?.cnpj || undefined,
+        mesaNumero: 0,
+        nomeCliente: 'Venda Avulsa',
+        itens: vendaAvulsaItens.map(i => ({
+          nome: i.nome,
+          quantidade: i.quantidade,
+          precoUnitario: i.preco,
+          subtotal: i.preco * i.quantidade,
+        })),
+        subtotal: vendaAvulsaTotal,
+        total: vendaAvulsaTotal,
+        formaPagamento: vendaAvulsaPagamento,
+        timestamp: new Date(),
+      });
+
+      toast.success('Venda avulsa registrada com sucesso!');
+      setVendaAvulsaOpen(false);
+      setVendaAvulsaItens([]);
+      setVendaAvulsaPagamento('dinheiro');
+      setVendaAvulsaBusca('');
+
+      // Refresh queries
+      queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile.empresa_id] });
+    } catch (error: any) {
+      console.error('Erro na venda avulsa:', error);
+      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setIsProcessingVendaAvulsa(false);
+    }
+  };
+
   /** --------- QUERIES --------- */
 
   // Mesas com status de fechamento pendente
