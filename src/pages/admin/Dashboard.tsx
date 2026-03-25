@@ -10,7 +10,9 @@ import {
   Clock,
   Loader2,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw,
+  Receipt
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
