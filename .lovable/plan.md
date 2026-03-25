@@ -1,39 +1,35 @@
 
 
-# Plano: Corrigir erro do Scanner de Imagem + Redimensionar Header do Caixa
-
-## Diagnóstico
-
-### Erro do Scanner
-O app usa um **cliente Supabase customizado** (`src/config/supabase.ts`) apontando para o projeto externo `zlwpxflqtyhdwanmupgy`. Porém, a edge function `scan-menu` está deployada no **Lovable Cloud** (`jejpufnzaineihemdrgd`). Quando `supabase.functions.invoke('scan-menu')` é chamado, a requisição vai para o projeto errado, onde a função não existe -- resultando no erro "Não foi possível processar a imagem".
-
-### Header do Caixa
-Os botões "Venda Avulsa" e "Atualizar" ficam na mesma linha do título em mobile, causando layout apertado. Precisam ficar empilhados abaixo.
+# Plano: Faturamento com Vendas Avulsas + Onboarding Condicional + Botão Atualizar + Relatório Vendas Avulsas
 
 ## Alterações
 
-### 1. `src/components/admin/MenuScannerModal.tsx`
-- Na função `processarImagem`, trocar a chamada `supabase.functions.invoke('scan-menu', ...)` por uma chamada `fetch` direta ao endpoint correto do Lovable Cloud:
-  `https://jejpufnzaineihemdrgd.supabase.co/functions/v1/scan-menu`
-- Passar os headers necessários (`Authorization` com anon key do Lovable Cloud, `Content-Type`)
-- Melhorar mensagens de erro para diferenciar falha de conexão vs falha de processamento
-- Adicionar também limitação de altura na compressão (max 1920x1920) e qualidade 0.75 para reduzir payload
+### 1. Incluir vendas avulsas no faturamento (`src/pages/admin/Dashboard.tsx`)
+- Adicionar query para `vendas_concluidas` onde `comanda_id IS NULL` no cálculo de `faturamentoHoje` (stats do dia)
+- Incluir vendas avulsas no gráfico de 7 dias (`dailySales`)
+- Somar `valor_total` das vendas avulsas ao total de comandas fechadas
 
-### 2. `src/pages/admin/Caixa.tsx`
-- No header (linha ~1541), trocar `flex items-center justify-between` por layout responsivo:
-  - `flex flex-col gap-3` no container principal
-  - Título e descrição em um bloco
-  - Botões em outro bloco com `flex flex-wrap gap-2`
-- Em mobile: título em cima, botões embaixo em linha
-- Em desktop (`sm:`): manter lado a lado com `sm:flex-row sm:items-center sm:justify-between`
+### 2. Incluir vendas avulsas no ValueMetrics (`src/components/admin/ValueMetrics.tsx`)
+- Adicionar query paralela para `vendas_concluidas` (comanda_id IS NULL) do mês atual e anterior
+- Somar ao faturamento mensal
 
-Layout mobile resultante:
-```text
-Caixa
-Gerencie pagamentos de mesas e delivery
+### 3. Incluir vendas avulsas no TrialValueBanner (`src/components/admin/TrialValueBanner.tsx`)
+- Mesmo ajuste: somar vendas avulsas ao faturamento total do trial
 
-[Venda Avulsa]  [Atualizar]
-```
+### 4. Onboarding condicional (`src/components/admin/OnboardingChecklist.tsx`)
+- Atualmente o card "Parabéns" aparece sempre quando todos os passos estão completos
+- Mudar para: salvar em `localStorage` uma flag `onboarding_completed_[empresaId]` quando todos os passos forem completados pela primeira vez
+- Na próxima vez que o usuário abrir o Dashboard, se a flag existir, retornar `null` (não renderizar nada)
+- O "Parabéns" só aparece uma vez, na sessão em que o usuário completa tudo
 
-**Total: 2 arquivos alterados**
+### 5. Botão de atualizar no Dashboard (`src/pages/admin/Dashboard.tsx`)
+- Adicionar um botão pequeno com ícone `RefreshCw` ao lado dos botões Excel/PDF no header
+- Ao clicar, invalidar todas as queries do Dashboard (`queryClient.invalidateQueries`)
+
+### 6. Botão de relatório de vendas avulsas (`src/pages/admin/Dashboard.tsx`)
+- Adicionar botão "Vendas Avulsas" ao lado dos botões de exportação
+- Ao clicar, buscar vendas avulsas dos últimos 7 dias na tabela `vendas_concluidas` (comanda_id IS NULL)
+- Exportar como CSV com colunas: Data, Valor, Forma de Pagamento
+
+**Total: 4 arquivos alterados**
 
