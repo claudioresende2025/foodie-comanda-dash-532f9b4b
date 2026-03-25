@@ -26,6 +26,7 @@ import ValueMetrics from '@/components/admin/ValueMetrics';
 import { exportSalesReport, exportSalesReportPDF, exportToCSV } from '@/utils/exportReports';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 type DailySales = {
   date: string;
