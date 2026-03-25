@@ -1,52 +1,87 @@
 
 
-# Plano: Dashboard Realtime + UpsellDialog no Menu + Notificações WhatsApp-style
+# Plano: Notificações Push Nativas (estilo WhatsApp/Instagram)
 
-## 1. Dashboard com atualização automática do faturamento
+## Problema Atual
+O sistema atual usa `showLocalNotification` que só funciona com a aba aberta. Para notificações aparecerem mesmo com o app fechado (como WhatsApp/Instagram), é necessário implementar **Web Push API** com VAPID keys e um backend que envie as notificações.
 
-**Problema**: Os dados de faturamento só atualizam ao clicar "Atualizar".
+## Arquitetura
 
-**Solução** (`src/pages/admin/Dashboard.tsx`):
-- Importar `useRealtimeSubscription` do hook existente
-- Adicionar 3 subscriptions realtime: `comandas`, `vendas_concluidas` e `pedidos`
-- No callback `onChange`, invalidar as query keys relevantes (`comandas-hoje`, `vendas-concluidas-hoje`, `pedidos-count-hoje`, `recent-orders`, `daily-sales`)
-
-**Migração SQL**: Habilitar realtime para `vendas_concluidas` e `comandas`:
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE public.vendas_concluidas;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.comandas;
+```text
+[Novo pedido] → [Realtime trigger no OrderNotificationBadge]
+                      ↓
+              [Chama Edge Function send-push-notification]
+                      ↓
+              [Edge Function busca subscriptions da empresa]
+                      ↓
+              [Envia Web Push para cada dispositivo]
+                      ↓
+              [Service Worker recebe push event]
+                      ↓
+              [Exibe notificação nativa do SO ← igual WhatsApp]
 ```
 
-## 2. UpsellDialog (popup) na página Menu
+## Etapas
 
-**Problema**: O Menu.tsx usa `UpsellSection` inline no carrinho (pouco visível). O delivery já usa o `UpsellDialog` em popup.
+### 1. Gerar VAPID Keys e armazenar como secrets
+- Gerar par de chaves VAPID (pública + privada)
+- Armazenar `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` como secrets
+- A chave pública será usada no frontend para subscribe; a privada no backend para enviar
 
-**Solução** (`src/pages/Menu.tsx`):
-- Substituir import de `UpsellSection` por `UpsellDialog`
-- Adicionar estados `showUpsellDialog` e `upsellShown`
-- Interceptar o botão "Enviar Pedido": se upsell não foi mostrado, abrir o `UpsellDialog`; senão, chamar `handleSendOrder`
-- Remover o `UpsellSection` inline do Sheet
-- Adicionar `<UpsellDialog>` com `onContinue={handleSendOrder}`
+### 2. Criar tabela `push_subscriptions` (migração SQL)
+```sql
+CREATE TABLE public.push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  empresa_id uuid REFERENCES empresas(id) ON DELETE CASCADE,
+  endpoint text NOT NULL,
+  p256dh text NOT NULL,
+  auth_key text NOT NULL,
+  type text NOT NULL DEFAULT 'admin', -- 'admin' ou 'delivery'
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(endpoint)
+);
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+-- RLS: usuário pode gerenciar suas próprias subscriptions
+CREATE POLICY "Users manage own subscriptions" ON public.push_subscriptions
+  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+-- Staff pode ler subscriptions da empresa (para envio)
+CREATE POLICY "Staff can read empresa subscriptions" ON public.push_subscriptions
+  FOR SELECT TO authenticated USING (empresa_id = get_user_empresa_id(auth.uid()));
+```
 
-## 3. Notificações estilo WhatsApp para pedidos
+### 3. Criar Edge Function `send-push-notification`
+- Recebe `empresa_id`, `title`, `body`, `type` (salon/delivery), `url`
+- Busca todas subscriptions admin da empresa
+- Usa biblioteca `web-push` (Deno) para enviar para cada endpoint
+- Usa VAPID keys do secrets
 
-**Problema**: Não há notificações visuais persistentes (badges/banners) quando novos pedidos chegam no painel admin.
+### 4. Atualizar Service Worker (`dev-dist/sw.js` e config Vite)
+- Adicionar listener `self.addEventListener('push', ...)` para mostrar notificação nativa
+- Adicionar listener `self.addEventListener('notificationclick', ...)` para abrir a URL correta ao clicar
 
-**Solução**: Criar um componente de notificação flutuante no `AdminLayout` que mostra um badge/toast persistente estilo WhatsApp quando chegam novos pedidos (salão e delivery).
+### 5. Atualizar `usePushNotifications.ts`
+- Implementar subscribe real com VAPID public key
+- Ao obter permissão, registrar subscription no banco (`push_subscriptions`)
+- Salvar `empresa_id` para admin, `null` para delivery
 
-### Novo componente: `src/components/admin/OrderNotificationBadge.tsx`
-- Usa realtime subscriptions para `pedidos` (INSERT) e `pedidos_delivery` (INSERT)
-- Mantém um contador de pedidos não visualizados
-- Exibe um badge flutuante animado (estilo WhatsApp) no canto inferior direito com:
-  - Ícone de sino com badge numérico
-  - Preview do último pedido (tipo, mesa/endereço)
-  - Som de notificação ao receber
-  - Botão para marcar como visto / navegar para pedidos
-- Ao clicar, navega para `/admin/pedidos` ou `/admin/delivery`
-- O badge desaparece ao visitar a página de pedidos
+### 6. Atualizar `OrderNotificationBadge.tsx`
+- Quando detectar novo pedido via realtime, além do badge/som local, chamar a edge function `send-push-notification` para notificar TODOS os dispositivos admin da empresa (inclusive os que estão fechados)
 
-### Integração no `AdminLayout.tsx`:
-- Importar e renderizar `<OrderNotificationBadge />` dentro do layout, posicionado como `fixed bottom-4 right-4`
+### 7. Manter tudo que já existe
+- O badge flutuante, o som, o preview popup -- tudo continua funcionando como está
+- As notificações push são uma camada ADICIONAL
 
-**Total: 3 arquivos alterados, 1 arquivo criado, 1 migração SQL**
+## Resultado
+- Celular com app instalado (PWA) receberá notificação igual WhatsApp mesmo com tela bloqueada
+- Computador com Chrome/Edge receberá notificação nativa do SO
+- O badge in-app continua funcionando normalmente
+
+## Arquivos
+- **Novo**: `supabase/functions/send-push-notification/index.ts`
+- **Modificar**: `src/hooks/usePushNotifications.ts` (subscribe real com VAPID)
+- **Modificar**: `src/components/admin/OrderNotificationBadge.tsx` (chamar edge function)
+- **Modificar**: `dev-dist/sw.js` (push + notificationclick handlers)
+- **Migração SQL**: criar tabela `push_subscriptions`
+- **Secrets**: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
 
