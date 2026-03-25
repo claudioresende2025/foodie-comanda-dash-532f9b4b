@@ -1372,6 +1372,7 @@ export default function DeliveryRestaurant() {
         />
       )}
 
+      <Sheet
         open={showPixModal} 
         onOpenChange={(open) => {
           if (!open && !pixConfirmado) {
