@@ -32,6 +32,10 @@ import {
   CreditCard,
   Banknote,
   X,
+  ShoppingBag,
+  Plus,
+  Minus,
+  Trash2,
 } from 'lucide-react';
 import { PixQRCode } from '@/components/pix/PixQRCode';
 import { Switch } from '@/components/ui/switch';
