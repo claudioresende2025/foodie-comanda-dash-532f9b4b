@@ -1,35 +1,31 @@
 
 
-# Plano: Faturamento com Vendas Avulsas + Onboarding Condicional + Botão Atualizar + Relatório Vendas Avulsas
+# Plano: Corrigir faturamento e relatório de vendas avulsas
+
+## Problema
+
+As vendas avulsas são registradas na tabela `vendas_concluidas`, mas o Dashboard consulta apenas a tabela `comandas`. O relatório de vendas avulsas também busca em `comandas` (com `mesa_id IS NULL`) em vez de `vendas_concluidas`.
 
 ## Alterações
 
-### 1. Incluir vendas avulsas no faturamento (`src/pages/admin/Dashboard.tsx`)
-- Adicionar query para `vendas_concluidas` onde `comanda_id IS NULL` no cálculo de `faturamentoHoje` (stats do dia)
-- Incluir vendas avulsas no gráfico de 7 dias (`dailySales`)
-- Somar `valor_total` das vendas avulsas ao total de comandas fechadas
+### 1. Dashboard - Faturamento hoje (`src/pages/admin/Dashboard.tsx`)
+- Adicionar query para `vendas_concluidas` do dia atual (filtrado por `empresa_id`)
+- No `useMemo` de stats, somar `valor_total` das vendas concluídas ao `faturamentoHoje`
 
-### 2. Incluir vendas avulsas no ValueMetrics (`src/components/admin/ValueMetrics.tsx`)
-- Adicionar query paralela para `vendas_concluidas` (comanda_id IS NULL) do mês atual e anterior
-- Somar ao faturamento mensal
+### 2. Dashboard - Gráfico 7 dias (`src/pages/admin/Dashboard.tsx`)
+- Na query `daily-sales`, buscar também `vendas_concluidas` dos últimos 7 dias
+- Somar `valor_total` ao total diário de cada dia no gráfico
 
-### 3. Incluir vendas avulsas no TrialValueBanner (`src/components/admin/TrialValueBanner.tsx`)
-- Mesmo ajuste: somar vendas avulsas ao faturamento total do trial
+### 3. Dashboard - Relatório Vendas Avulsas (`src/pages/admin/Dashboard.tsx`)
+- Corrigir `handleExportVendasAvulsas`: trocar consulta de `comandas` para `vendas_concluidas`
+- Usar colunas corretas: `valor_total`, `forma_pagamento`, `created_at`
 
-### 4. Onboarding condicional (`src/components/admin/OnboardingChecklist.tsx`)
-- Atualmente o card "Parabéns" aparece sempre quando todos os passos estão completos
-- Mudar para: salvar em `localStorage` uma flag `onboarding_completed_[empresaId]` quando todos os passos forem completados pela primeira vez
-- Na próxima vez que o usuário abrir o Dashboard, se a flag existir, retornar `null` (não renderizar nada)
-- O "Parabéns" só aparece uma vez, na sessão em que o usuário completa tudo
+### 4. ValueMetrics - Faturamento mensal (`src/components/admin/ValueMetrics.tsx`)
+- Adicionar query paralela para `vendas_concluidas` do mês atual e anterior
+- Somar ao faturamento mensal de comandas
 
-### 5. Botão de atualizar no Dashboard (`src/pages/admin/Dashboard.tsx`)
-- Adicionar um botão pequeno com ícone `RefreshCw` ao lado dos botões Excel/PDF no header
-- Ao clicar, invalidar todas as queries do Dashboard (`queryClient.invalidateQueries`)
+### 5. TrialValueBanner (`src/components/admin/TrialValueBanner.tsx`)
+- Mesmo ajuste: somar vendas de `vendas_concluidas` ao faturamento do trial
 
-### 6. Botão de relatório de vendas avulsas (`src/pages/admin/Dashboard.tsx`)
-- Adicionar botão "Vendas Avulsas" ao lado dos botões de exportação
-- Ao clicar, buscar vendas avulsas dos últimos 7 dias na tabela `vendas_concluidas` (comanda_id IS NULL)
-- Exportar como CSV com colunas: Data, Valor, Forma de Pagamento
-
-**Total: 4 arquivos alterados**
+**Total: 3 arquivos alterados**
 
