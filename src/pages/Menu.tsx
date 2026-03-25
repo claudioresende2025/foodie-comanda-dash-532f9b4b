@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { UpsellSection } from '@/components/delivery/UpsellSection';
+import { UpsellDialog } from '@/components/delivery/UpsellDialog';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -174,6 +174,9 @@ export default function Menu() {
   const [waiterCallPending, setWaiterCallPending] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
+  // Upsell dialog states
+  const [showUpsellDialog, setShowUpsellDialog] = useState(false);
+  const [upsellShown, setUpsellShown] = useState(false);
   // Estado para modal de seleção de tamanho
   const [sizeModalProduct, setSizeModalProduct] = useState<Produto | null>(null);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
@@ -1317,24 +1320,7 @@ export default function Menu() {
                     </div>
                   ))}
 
-                  {/* Upsell Inteligente */}
-                  {empresaId && (
-                    <UpsellSection
-                      empresaId={empresaId}
-                      cartProductIds={cart.map(item => item.produto.id)}
-                      onAddToCart={(product) => {
-                        addToCart({
-                          id: product.id,
-                          nome: product.nome,
-                          descricao: product.descricao,
-                          preco: product.preco,
-                          imagem_url: product.imagem_url,
-                          categoria_id: '',
-                          ativo: true,
-                        } as any);
-                      }}
-                    />
-                  )}
+                  {/* Upsell inline removido - agora usa UpsellDialog popup */}
                 </div>
               </ScrollArea>
               <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t">
@@ -1342,7 +1328,14 @@ export default function Menu() {
                   <span className="font-medium">Total</span>
                   <span className="text-xl font-bold text-primary">R$ {cartTotal.toFixed(2).replace(".", ",")}</span>
                 </div>
-                <Button className="w-full h-12 text-lg" onClick={handleSendOrder} disabled={isSendingOrder}>
+                <Button className="w-full h-12 text-lg" onClick={() => {
+                  if (!upsellShown && empresaId) {
+                    setShowUpsellDialog(true);
+                    setUpsellShown(true);
+                  } else {
+                    handleSendOrder();
+                  }
+                }} disabled={isSendingOrder}>
                   {isSendingOrder ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
                   Enviar Pedido
                 </Button>
@@ -1460,6 +1453,31 @@ export default function Menu() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+
+      {/* UpsellDialog Popup */}
+      {empresaId && (
+        <UpsellDialog
+          open={showUpsellDialog}
+          onOpenChange={setShowUpsellDialog}
+          empresaId={empresaId}
+          cartProductIds={cart.map(item => item.produto.id)}
+          onAddToCart={(product) => {
+            addToCart({
+              id: product.id,
+              nome: product.nome,
+              descricao: product.descricao,
+              preco: product.preco,
+              imagem_url: product.imagem_url,
+              categoria_id: '',
+              ativo: true,
+            } as any);
+          }}
+          onContinue={() => {
+            handleSendOrder();
+          }}
+        />
+      )}
 
       {/* Footer */}
       <footer className="bg-muted py-6 mt-8">
