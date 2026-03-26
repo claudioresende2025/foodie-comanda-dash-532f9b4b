@@ -14,6 +14,7 @@ export interface CartItem {
     preco: number;
     imagem_url: string | null;
     variacoes?: VariacaoTamanho[] | null;
+    categoria_id?: string | null;
   };
   quantidade: number;
   // Campos para variação de tamanho selecionada

@@ -3,25 +3,35 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-// VAPID Public Key from environment
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+// VAPID Public Key from environment - fallback gracefully if not set
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 
 interface PushNotificationConfig {
   type: 'delivery' | 'admin';
 }
 
 // Helper to convert VAPID key to Uint8Array
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
+function urlBase64ToUint8Array(base64String: string): Uint8Array | null {
+  if (!base64String) {
+    console.warn('[Push] VAPID key is empty or not configured');
+    return null;
   }
-  return outputArray;
+  
+  try {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding)
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  } catch (error) {
+    console.error('[Push] Error converting VAPID key:', error);
+    return null;
+  }
 }
 
 export const usePushNotifications = ({ type }: PushNotificationConfig) => {
@@ -42,13 +52,21 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
     if (supported) {
       setPermission(Notification.permission);
       
-      // Check for existing subscription
-      navigator.serviceWorker.ready.then(async (registration) => {
-        const existingSubscription = await registration.pushManager.getSubscription();
-        if (existingSubscription) {
-          setSubscription(existingSubscription);
-        }
-      });
+      // Check for existing subscription (with error handling)
+      navigator.serviceWorker.ready
+        .then(async (registration) => {
+          try {
+            const existingSubscription = await registration.pushManager.getSubscription();
+            if (existingSubscription) {
+              setSubscription(existingSubscription);
+            }
+          } catch (err) {
+            console.warn('[Push] Error checking existing subscription:', err);
+          }
+        })
+        .catch(err => {
+          console.warn('[Push] Service worker not ready:', err);
+        });
     }
   }, []);
 
@@ -56,21 +74,25 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
   useEffect(() => {
     if (!isSupported) return;
 
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') {
-        console.log('[Push] Subscription changed, need to resubscribe');
-        setSubscription(null);
-        // Auto-resubscribe if we have permission
-        if (permission === 'granted') {
-          subscribeToNotifications();
+    try {
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+          console.log('[Push] Subscription changed, need to resubscribe');
+          setSubscription(null);
+          // Auto-resubscribe if we have permission
+          if (permission === 'granted') {
+            subscribeToNotifications();
+          }
         }
-      }
-    };
+      };
 
-    navigator.serviceWorker.addEventListener('message', handleMessage);
-    return () => {
-      navigator.serviceWorker.removeEventListener('message', handleMessage);
-    };
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleMessage);
+      };
+    } catch (err) {
+      console.warn('[Push] Error setting up message listener:', err);
+    }
   }, [isSupported, permission]);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
@@ -123,11 +145,18 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
       let pushSubscription = await registration.pushManager.getSubscription();
       
       if (!pushSubscription) {
+        // Convert VAPID key
+        const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+        if (!applicationServerKey) {
+          console.warn('[Push] Cannot create subscription - invalid VAPID key');
+          return null;
+        }
+        
         // Create new subscription with VAPID key
         console.log('[Push] Creating new subscription with VAPID key');
         pushSubscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+          applicationServerKey
         });
         console.log('[Push] Subscription created:', pushSubscription.endpoint);
       }
