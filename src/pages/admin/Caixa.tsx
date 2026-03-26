@@ -175,7 +175,7 @@ export default function Caixa() {
     formaPagamento: string;
   } | null>(null);
 
-  // Venda Avulsa
+  // Venda Avulsa (dialog com busca de produtos)
   const [vendaAvulsaOpen, setVendaAvulsaOpen] = useState(false);
   const [vendaAvulsaItens, setVendaAvulsaItens] = useState<{ nome: string; preco: number; quantidade: number; produtoId?: string }[]>([]);
   const [vendaAvulsaPagamento, setVendaAvulsaPagamento] = useState<PaymentMethod>('dinheiro');
@@ -184,6 +184,13 @@ export default function Caixa() {
   const [vendaAvulsaManualPreco, setVendaAvulsaManualPreco] = useState('');
   const [isProcessingVendaAvulsa, setIsProcessingVendaAvulsa] = useState(false);
   const [vendaAvulsaShowPix, setVendaAvulsaShowPix] = useState(false);
+
+  // Modal de adicionar item (para comandas e venda avulsa via modal)
+  const [addItemModalOpen, setAddItemModalOpen] = useState(false);
+  const [addItemMode, setAddItemMode] = useState<'comanda' | 'avulsa'>('comanda');
+  const [vendaAvulsaItems, setVendaAvulsaItems] = useState<{ produto_id: string; nome: string; preco: number; quantidade: number }[]>([]);
+  const [vendaAvulsaDialogOpen, setVendaAvulsaDialogOpen] = useState(false);
+  const [vendaAvulsaFormaPagamento, setVendaAvulsaFormaPagamento] = useState<PaymentMethod>('dinheiro');
 
   // Produtos para venda avulsa
   const { data: produtosCardapio = [] } = useQuery({
@@ -1036,13 +1043,13 @@ export default function Caixa() {
     }
   };
 
-  // Total da venda avulsa
-  const vendaAvulsaTotal = useMemo(() => {
+  // Total da venda avulsa (via modal AddItemModal)
+  const vendaAvulsaModalTotal = useMemo(() => {
     return vendaAvulsaItems.reduce((acc, item) => acc + item.preco * item.quantidade, 0);
   }, [vendaAvulsaItems]);
 
-  // Finalizar venda avulsa
-  const handleFinalizarVendaAvulsa = async () => {
+  // Finalizar venda avulsa (via modal AddItemModal)
+  const handleFinalizarVendaAvulsaModal = async () => {
     if (vendaAvulsaItems.length === 0) {
       toast.error('Adicione pelo menos um item');
       return;
@@ -1054,8 +1061,8 @@ export default function Caixa() {
       // Registrar na tabela vendas_concluidas
       const { error } = await supabase.from('vendas_concluidas').insert({
         empresa_id: profile?.empresa_id,
-        valor_total: vendaAvulsaTotal,
-        valor_subtotal: vendaAvulsaTotal,
+        valor_total: vendaAvulsaModalTotal,
+        valor_subtotal: vendaAvulsaModalTotal,
         forma_pagamento: vendaAvulsaFormaPagamento,
         processado_por: profile?.id,
         tipo_processamento: 'venda_avulsa',
@@ -1079,8 +1086,8 @@ export default function Caixa() {
           precoUnitario: item.preco,
           subtotal: item.preco * item.quantidade,
         })),
-        subtotal: vendaAvulsaTotal,
-        total: vendaAvulsaTotal,
+        subtotal: vendaAvulsaModalTotal,
+        total: vendaAvulsaModalTotal,
         formaPagamento: vendaAvulsaFormaPagamento,
         timestamp: new Date(),
       });
@@ -2406,7 +2413,7 @@ export default function Caixa() {
               <div className="flex justify-between items-center">
                 <span className="font-medium">Total</span>
                 <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
-                  R$ {vendaAvulsaTotal.toFixed(2)}
+                  R$ {vendaAvulsaModalTotal.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -2445,7 +2452,7 @@ export default function Caixa() {
               Voltar
             </Button>
             <Button
-              onClick={handleFinalizarVendaAvulsa}
+              onClick={handleFinalizarVendaAvulsaModal}
               disabled={isProcessingVendaAvulsa || vendaAvulsaItems.length === 0}
               className="bg-amber-600 hover:bg-amber-700"
             >
