@@ -77,6 +77,8 @@ export default function DeliveryRestaurant() {
   // Estado para modal de seleção de tamanho
   const [sizeModalProduct, setSizeModalProduct] = useState<any>(null);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
+  const [showUpsellDialog, setShowUpsellDialog] = useState(false);
+  const [upsellShown, setUpsellShown] = useState(false);
 
   // Taxa de entrega dinâmica por bairro
   const [taxaEntregaDinamica, setTaxaEntregaDinamica] = useState<number>(0);
@@ -1358,7 +1360,14 @@ export default function DeliveryRestaurant() {
 
               <Button
                 className="w-full h-14 text-lg font-bold rounded-xl shadow-lg"
-                onClick={handleCheckout}
+                onClick={() => {
+                  if (!upsellShown && empresaId) {
+                    setShowUpsellDialog(true);
+                    setUpsellShown(true);
+                  } else {
+                    handleCheckout();
+                  }
+                }}
                 disabled={isProcessing || itemCount === 0}
               >
                 {isProcessing ? <Loader2 className="animate-spin mr-2" /> : `Pagar R$ ${totalComDesconto.toFixed(2)}`}
@@ -1368,7 +1377,32 @@ export default function DeliveryRestaurant() {
         </SheetContent>
       </Sheet>
 
-      <Sheet 
+      {/* Upsell Dialog - popup antes do checkout */}
+      {empresaId && (
+        <UpsellDialog
+          open={showUpsellDialog}
+          onOpenChange={setShowUpsellDialog}
+          empresaId={empresaId}
+          cartProductIds={cart.map(item => item.produto.id)}
+          onAddToCart={(product) => {
+            addToCart(
+              {
+                id: product.id,
+                nome: product.nome,
+                descricao: product.descricao,
+                preco: product.preco,
+                imagem_url: product.imagem_url,
+              },
+              1,
+              null,
+              product.preco
+            );
+          }}
+          onContinue={handleCheckout}
+        />
+      )}
+
+      <Sheet
         open={showPixModal} 
         onOpenChange={(open) => {
           if (!open && !pixConfirmado) {

@@ -10,7 +10,9 @@ import {
   Clock,
   Loader2,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw,
+  Receipt
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,9 +23,10 @@ import WaiterNotifications from '@/components/admin/WaiterNotifications';
 import OnboardingChecklist from '@/components/admin/OnboardingChecklist';
 import TrialValueBanner from '@/components/admin/TrialValueBanner';
 import ValueMetrics from '@/components/admin/ValueMetrics';
-import { exportSalesReport, exportSalesReportPDF } from '@/utils/exportReports';
+import { exportSalesReport, exportSalesReportPDF, exportToCSV } from '@/utils/exportReports';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 type DailySales = {
   date: string;
@@ -33,7 +36,50 @@ type DailySales = {
 
 export default function Dashboard() {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const empresaId = profile?.empresa_id;
+
+  // Realtime: auto-refresh when comandas change
+  useRealtimeSubscription(
+    `dashboard-comandas-${empresaId}`,
+    {
+      table: 'comandas',
+      onChange: () => {
+        queryClient.invalidateQueries({ queryKey: ['comandas-hoje'] });
+        queryClient.invalidateQueries({ queryKey: ['vendas-concluidas-hoje'] });
+        queryClient.invalidateQueries({ queryKey: ['daily-sales'] });
+        queryClient.invalidateQueries({ queryKey: ['recent-orders'] });
+        queryClient.invalidateQueries({ queryKey: ['pedidos-count-hoje'] });
+      },
+    },
+    !!empresaId
+  );
+
+  // Realtime: auto-refresh when pedidos change
+  useRealtimeSubscription(
+    `dashboard-pedidos-${empresaId}`,
+    {
+      table: 'pedidos',
+      onChange: () => {
+        queryClient.invalidateQueries({ queryKey: ['pedidos-count-hoje'] });
+        queryClient.invalidateQueries({ queryKey: ['recent-orders'] });
+      },
+    },
+    !!empresaId
+  );
+
+  // Realtime: auto-refresh when delivery orders change
+  useRealtimeSubscription(
+    `dashboard-delivery-${empresaId}`,
+    {
+      table: 'pedidos_delivery',
+      filter: `empresa_id=eq.${empresaId}`,
+      onChange: () => {
+        queryClient.invalidateQueries({ queryKey: ['daily-sales'] });
+      },
+    },
+    !!empresaId
+  );
 
   // Fetch empresa data
   const { data: empresa } = useQuery({
@@ -77,6 +123,26 @@ export default function Dashboard() {
         .from('comandas')
         .select('id, total, status, created_at')
         .eq('empresa_id', empresaId)
+        .gte('created_at', startOfDay(today).toISOString())
+        .lte('created_at', endOfDay(today).toISOString());
+      return data || [];
+    },
+    enabled: !!empresaId,
+    staleTime: 30 * 1000,
+    refetchInterval: 30000,
+  });
+
+  // Fetch today's vendas_concluidas (standalone sales)
+  const { data: vendasHoje = [] } = useQuery({
+    queryKey: ['vendas-concluidas-hoje', empresaId],
+    queryFn: async () => {
+      if (!empresaId) return [];
+      const today = new Date();
+      const { data } = await (supabase as any)
+        .from('vendas_concluidas')
+        .select('valor_total, created_at')
+        .eq('empresa_id', empresaId)
+        .is('comanda_id', null)
         .gte('created_at', startOfDay(today).toISOString())
         .lte('created_at', endOfDay(today).toISOString());
       return data || [];
@@ -164,7 +230,7 @@ export default function Dashboard() {
       const weekStart = startOfDay(subDays(today, 6)).toISOString();
       const weekEnd = endOfDay(today).toISOString();
 
-      const [comandasRes, pedidosRes] = await Promise.all([
+      const [comandasRes, pedidosRes, vendasRes] = await Promise.all([
         supabase
           .from('comandas')
           .select('total, created_at')
@@ -178,10 +244,18 @@ export default function Dashboard() {
           .eq('comanda.empresa_id', empresaId)
           .gte('created_at', weekStart)
           .lte('created_at', weekEnd),
+        (supabase as any)
+          .from('vendas_concluidas')
+          .select('valor_total, created_at')
+          .eq('empresa_id', empresaId)
+          .is('comanda_id', null)
+          .gte('created_at', weekStart)
+          .lte('created_at', weekEnd),
       ]);
 
       const weekComandas = comandasRes.data || [];
       const weekPedidos = pedidosRes.data || [];
+      const weekVendas = vendasRes.data || [];
 
       const salesData: DailySales[] = [];
       for (let i = 6; i >= 0; i--) {
@@ -189,12 +263,21 @@ export default function Dashboard() {
         const dayStart = startOfDay(date);
         const dayEnd = endOfDay(date);
 
-        const dayTotal = weekComandas
+        const dayTotalComandas = weekComandas
           .filter(c => {
             const createdAt = new Date(c.created_at);
             return createdAt >= dayStart && createdAt <= dayEnd;
           })
           .reduce((sum, c) => sum + (c.total || 0), 0);
+
+        const dayTotalVendas = weekVendas
+          .filter((v: any) => {
+            const createdAt = new Date(v.created_at);
+            return createdAt >= dayStart && createdAt <= dayEnd;
+          })
+          .reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
+
+        const dayTotal = dayTotalComandas + dayTotalVendas;
 
         const dayPedidosCount = weekPedidos
           .filter(p => {
@@ -218,9 +301,11 @@ export default function Dashboard() {
   const stats = useMemo(() => {
     const mesasOcupadas = mesas.filter(m => m.status === 'ocupada').length;
     const totalMesas = mesas.filter(m => m.status !== 'juncao').length;
-    const faturamentoHoje = comandasHoje
+    const faturamentoComandas = comandasHoje
       .filter(c => c.status === 'fechada')
       .reduce((sum, c) => sum + (c.total || 0), 0);
+    const faturamentoVendas = vendasHoje.reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
+    const faturamentoHoje = faturamentoComandas + faturamentoVendas;
     const comandasAbertas = comandasHoje.filter(c => c.status === 'aberta').length;
 
     return {
@@ -230,7 +315,7 @@ export default function Dashboard() {
       faturamentoHoje,
       comandasAbertas,
     };
-  }, [mesas, comandasHoje, pedidosHoje]);
+  }, [mesas, comandasHoje, pedidosHoje, vendasHoje]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -254,6 +339,41 @@ export default function Dashboard() {
       return;
     }
     exportSalesReportPDF(dailySales, empresa?.nome_fantasia || 'Empresa');
+  };
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries();
+    toast.success('Dados atualizados!');
+  };
+
+  const handleExportVendasAvulsas = async () => {
+    if (!empresaId) return;
+    try {
+      const today = new Date();
+      const weekStart = startOfDay(subDays(today, 6)).toISOString();
+      const { data } = await (supabase as any)
+        .from('vendas_concluidas')
+        .select('valor_total, forma_pagamento, created_at')
+        .eq('empresa_id', empresaId)
+        .is('comanda_id', null)
+        .gte('created_at', weekStart);
+
+      if (!data || data.length === 0) {
+        toast.error('Nenhuma venda avulsa nos últimos 7 dias');
+        return;
+      }
+
+      const reportData = data.map((v: any) => ({
+        'Data': format(new Date(v.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
+        'Valor (R$)': v.valor_total || 0,
+        'Forma de Pagamento': v.forma_pagamento || '-',
+      }));
+
+      exportToCSV(reportData, `vendas_avulsas_${format(today, 'yyyy-MM-dd')}`);
+      toast.success('Relatório de vendas avulsas exportado!');
+    } catch (e) {
+      toast.error('Erro ao exportar vendas avulsas');
+    }
   };
 
   const statusConfig: Record<string, { label: string; color: string }> = {
@@ -335,7 +455,14 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Visão geral do seu restaurante</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="icon" onClick={handleRefresh} title="Atualizar">
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportVendasAvulsas}>
+            <Receipt className="w-4 h-4 mr-2" />
+            Vendas Avulsas
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <FileSpreadsheet className="w-4 h-4 mr-2" />
             Excel/CSV

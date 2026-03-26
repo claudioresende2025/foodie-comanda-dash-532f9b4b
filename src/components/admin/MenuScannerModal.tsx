@@ -147,8 +147,40 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
     }
   };
 
+  // Comprimir imagem antes de enviar (evita timeout com fotos grandes da galeria)
+  const compressImage = (file: File, maxDim = 1920, quality = 0.75): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas not supported')); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Erro ao carregar imagem')); };
+      img.src = url;
+    });
+  };
+
   // Processar arquivo de upload
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     
@@ -156,14 +188,26 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
       toast.error('Por favor, selecione uma imagem');
       return;
     }
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageData = e.target?.result as string;
+
+    // Validar tamanho (max 20MB antes da compressão)
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('Imagem muito grande. Máximo 20MB.');
+      return;
+    }
+
+    try {
+      toast.info('Processando imagem...');
+      const imageData = await compressImage(file);
+      if (!imageData || !imageData.startsWith('data:image')) {
+        toast.error('Formato de imagem inválido. Use JPG, PNG ou WebP.');
+        return;
+      }
       setImagemCapturada(imageData);
       processarImagem(imageData);
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Erro ao comprimir imagem:', err);
+      toast.error('Erro ao processar o arquivo. Tente novamente.');
+    }
     
     // Limpar input
     event.target.value = '';
@@ -261,20 +305,32 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
       setProgressoOCR(10);
       console.log('[MenuScanner] Enviando imagem para análise com IA...');
       
-      // Chamar a edge function scan-menu
-      const { data, error } = await supabase.functions.invoke('scan-menu', {
-        body: { image: imageData }
+      // Chamar a edge function scan-menu diretamente no Lovable Cloud
+      const CLOUD_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/scan-menu`;
+      const CLOUD_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const response = await fetch(CLOUD_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CLOUD_ANON_KEY}`,
+          'apikey': CLOUD_ANON_KEY,
+        },
+        body: JSON.stringify({ image: imageData }),
       });
       
       setProgressoOCR(80);
       
-      if (error) {
-        console.error('[MenuScanner] Erro na edge function:', error);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[MenuScanner] Erro na edge function:', response.status, errorText);
         toast.error('Não foi possível processar a imagem. Tente novamente.');
         setEtapa('selecao');
         setImagemCapturada(null);
         return;
       }
+
+      const data = await response.json();
       
       setProgressoOCR(95);
       console.log('[MenuScanner] Resposta da IA:', data);
@@ -286,24 +342,22 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
         setEtapa('selecao');
         setImagemCapturada(null);
       } else {
-        // Converter para ProdutoComImagem com confiança alta (IA é mais precisa)
         const produtosComImagem: ProdutoComImagem[] = produtos.map((p: { nome: string; descricao: string; preco: number }) => ({
           nome: p.nome,
           descricao: p.descricao || '',
           preco: p.preco || 0,
-          confianca: 90, // IA tem alta confiança
-          linhaOriginal: p.nome, // Usar nome como referência
+          confianca: 90,
+          linhaOriginal: p.nome,
           imagemUrl: undefined,
         }));
         setProdutosExtraidos(produtosComImagem);
-        // Selecionar todos por padrão
         setProdutosSelecionados(new Set(produtos.map((_: unknown, i: number) => i)));
         setEtapa('revisao');
         toast.success(`${produtos.length} produto(s) identificado(s) com IA! Adicione as fotos.`);
       }
     } catch (err) {
       console.error('[MenuScanner] Erro ao processar imagem:', err);
-      toast.error('Erro ao processar imagem. Tente novamente.');
+      toast.error('Erro de conexão ao processar imagem. Verifique sua internet e tente novamente.');
       setEtapa('selecao');
       setImagemCapturada(null);
     } finally {
@@ -459,7 +513,6 @@ export function MenuScannerModal({ isOpen, onClose, onImportProducts }: MenuScan
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 className="hidden"
                 onChange={handleFileUpload}
               />

@@ -1,44 +1,87 @@
 
 
-# Correção: Leitura de Cardápio com IA em vez de OCR
+# Plano: Notificações Push Nativas (estilo WhatsApp/Instagram)
 
-## Problema
+## Problema Atual
+O sistema atual usa `showLocalNotification` que só funciona com a aba aberta. Para notificações aparecerem mesmo com o app fechado (como WhatsApp/Instagram), é necessário implementar **Web Push API** com VAPID keys e um backend que envie as notificações.
 
-O Tesseract.js (OCR local no navegador) tem baixa precisão com cardápios reais que possuem:
-- Múltiplas colunas e seções
-- Fontes decorativas e variadas
-- Imagens misturadas com texto
-- Preços em formatos variados (ex: "27.99 • 30.99")
+## Arquitetura
 
-O parser de texto (`menuTextParser.ts`) também não lida bem com esses layouts complexos.
+```text
+[Novo pedido] → [Realtime trigger no OrderNotificationBadge]
+                      ↓
+              [Chama Edge Function send-push-notification]
+                      ↓
+              [Edge Function busca subscriptions da empresa]
+                      ↓
+              [Envia Web Push para cada dispositivo]
+                      ↓
+              [Service Worker recebe push event]
+                      ↓
+              [Exibe notificação nativa do SO ← igual WhatsApp]
+```
 
-## Solução
+## Etapas
 
-Substituir o Tesseract.js por **Lovable AI com modelo de visão** (Gemini), que entende layouts visuais complexos e extrai dados estruturados com alta precisão.
+### 1. Gerar VAPID Keys e armazenar como secrets
+- Gerar par de chaves VAPID (pública + privada)
+- Armazenar `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` como secrets
+- A chave pública será usada no frontend para subscribe; a privada no backend para enviar
 
-### 1. Criar Edge Function `scan-menu`
-**Arquivo:** `supabase/functions/scan-menu/index.ts`
+### 2. Criar tabela `push_subscriptions` (migração SQL)
+```sql
+CREATE TABLE public.push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  empresa_id uuid REFERENCES empresas(id) ON DELETE CASCADE,
+  endpoint text NOT NULL,
+  p256dh text NOT NULL,
+  auth_key text NOT NULL,
+  type text NOT NULL DEFAULT 'admin', -- 'admin' ou 'delivery'
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(endpoint)
+);
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+-- RLS: usuário pode gerenciar suas próprias subscriptions
+CREATE POLICY "Users manage own subscriptions" ON public.push_subscriptions
+  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+-- Staff pode ler subscriptions da empresa (para envio)
+CREATE POLICY "Staff can read empresa subscriptions" ON public.push_subscriptions
+  FOR SELECT TO authenticated USING (empresa_id = get_user_empresa_id(auth.uid()));
+```
 
-- Recebe a imagem em base64
-- Envia para o Lovable AI Gateway usando modelo `google/gemini-2.5-flash` com a imagem
-- Usa tool calling para extrair dados estruturados: `{ produtos: [{ nome, descricao, preco }] }`
-- Prompt instrui o modelo a identificar todos os itens com nomes e preços exatos do cardápio
+### 3. Criar Edge Function `send-push-notification`
+- Recebe `empresa_id`, `title`, `body`, `type` (salon/delivery), `url`
+- Busca todas subscriptions admin da empresa
+- Usa biblioteca `web-push` (Deno) para enviar para cada endpoint
+- Usa VAPID keys do secrets
 
-### 2. Atualizar `MenuScannerModal.tsx`
-- Remover import dinâmico de `tesseract.js`
-- Remover função `preprocessarImagem` (não mais necessária)
-- Na função `processarImagem`, chamar a edge function `scan-menu` via `supabase.functions.invoke`
-- Manter todo o fluxo de UI (seleção, câmera, revisão, imagens de produto)
+### 4. Atualizar Service Worker (`dev-dist/sw.js` e config Vite)
+- Adicionar listener `self.addEventListener('push', ...)` para mostrar notificação nativa
+- Adicionar listener `self.addEventListener('notificationclick', ...)` para abrir a URL correta ao clicar
 
-### 3. Manter `menuTextParser.ts` como fallback
-- Não remover, mas o fluxo principal usará a IA
-- Se a edge function falhar, pode cair no parser local
+### 5. Atualizar `usePushNotifications.ts`
+- Implementar subscribe real com VAPID public key
+- Ao obter permissão, registrar subscription no banco (`push_subscriptions`)
+- Salvar `empresa_id` para admin, `null` para delivery
 
-## Resultado esperado
+### 6. Atualizar `OrderNotificationBadge.tsx`
+- Quando detectar novo pedido via realtime, além do badge/som local, chamar a edge function `send-push-notification` para notificar TODOS os dispositivos admin da empresa (inclusive os que estão fechados)
 
-- Leitura precisa de nomes, descrições e preços exatamente como aparecem no cardápio
-- Suporte a layouts complexos com múltiplas colunas e seções
-- Preços com variações (ex: "27.99 • 30.99") corretamente identificados
+### 7. Manter tudo que já existe
+- O badge flutuante, o som, o preview popup -- tudo continua funcionando como está
+- As notificações push são uma camada ADICIONAL
 
-**Total: 2 arquivos (1 novo edge function + 1 atualização do modal)**
+## Resultado
+- Celular com app instalado (PWA) receberá notificação igual WhatsApp mesmo com tela bloqueada
+- Computador com Chrome/Edge receberá notificação nativa do SO
+- O badge in-app continua funcionando normalmente
+
+## Arquivos
+- **Novo**: `supabase/functions/send-push-notification/index.ts`
+- **Modificar**: `src/hooks/usePushNotifications.ts` (subscribe real com VAPID)
+- **Modificar**: `src/components/admin/OrderNotificationBadge.tsx` (chamar edge function)
+- **Modificar**: `dev-dist/sw.js` (push + notificationclick handlers)
+- **Migração SQL**: criar tabela `push_subscriptions`
+- **Secrets**: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
 

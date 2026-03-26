@@ -67,31 +67,40 @@ export default function OnboardingChecklist() {
   const completedCount = steps.filter(s => s.completed).length;
   const progress = Math.round((completedCount / steps.length) * 100);
   const allDone = completedCount === steps.length;
+  const storageKey = `onboarding_completed_${empresaId}`;
+  const alreadyCompleted = empresaId ? localStorage.getItem(storageKey) === 'true' : false;
 
-  if (dismissed || allDone) {
-    if (allDone) {
-      return (
-        <AnimatePresence>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <Card className="border-primary/30 bg-primary/5 shadow-fcd">
-              <CardContent className="pt-6 text-center">
-                <PartyPopper className="w-12 h-12 text-primary mx-auto mb-3" />
-                <h3 className="font-bold text-lg mb-1">Parabéns! 🎉</h3>
-                <p className="text-muted-foreground text-sm">
-                  Você completou todos os passos! Seu restaurante está pronto para operar.
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </AnimatePresence>
-      );
+  useEffect(() => {
+    if (allDone && empresaId && !alreadyCompleted) {
+      localStorage.setItem(storageKey, 'true');
     }
-    return null;
+  }, [allDone, empresaId, storageKey, alreadyCompleted]);
+
+  // If already completed previously, don't render anything
+  if (alreadyCompleted && !(!allDone)) return null;
+  // Show Parabéns only once (current session where user just completed)
+  if (allDone && !alreadyCompleted) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <Card className="border-primary/30 bg-primary/5 shadow-fcd">
+            <CardContent className="pt-6 text-center">
+              <PartyPopper className="w-12 h-12 text-primary mx-auto mb-3" />
+              <h3 className="font-bold text-lg mb-1">Parabéns! 🎉</h3>
+              <p className="text-muted-foreground text-sm">
+                Você completou todos os passos! Seu restaurante está pronto para operar.
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </AnimatePresence>
+    );
   }
+  if (dismissed) return null;
 
   return (
     <Card className="shadow-fcd border-0">

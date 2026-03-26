@@ -19,15 +19,19 @@ export default function ValueMetrics() {
       const lastMonthStart = startOfMonth(subMonths(now, 1)).toISOString();
       const lastMonthEnd = endOfMonth(subMonths(now, 1)).toISOString();
 
-      const [thisComandas, lastComandas, thisMesas, thisPedidos] = await Promise.all([
+      const [thisComandas, lastComandas, thisMesas, thisPedidos, thisVendas, lastVendas] = await Promise.all([
         supabase.from('comandas').select('total, status').eq('empresa_id', empresaId).gte('created_at', thisMonthStart),
         supabase.from('comandas').select('total, status').eq('empresa_id', empresaId).gte('created_at', lastMonthStart).lte('created_at', lastMonthEnd),
         supabase.from('mesas').select('id', { count: 'exact', head: true }).eq('empresa_id', empresaId),
         supabase.from('comandas').select('id', { count: 'exact', head: true }).eq('empresa_id', empresaId).gte('created_at', thisMonthStart),
+        (supabase as any).from('vendas_concluidas').select('valor_total').eq('empresa_id', empresaId).is('comanda_id', null).gte('created_at', thisMonthStart),
+        (supabase as any).from('vendas_concluidas').select('valor_total').eq('empresa_id', empresaId).is('comanda_id', null).gte('created_at', lastMonthStart).lte('created_at', lastMonthEnd),
       ]);
 
-      const thisFaturamento = (thisComandas.data || []).filter(c => c.status === 'fechada').reduce((s, c) => s + (c.total || 0), 0);
-      const lastFaturamento = (lastComandas.data || []).filter(c => c.status === 'fechada').reduce((s, c) => s + (c.total || 0), 0);
+      const thisVendasTotal = (thisVendas.data || []).reduce((s: number, v: any) => s + (v.valor_total || 0), 0);
+      const lastVendasTotal = (lastVendas.data || []).reduce((s: number, v: any) => s + (v.valor_total || 0), 0);
+      const thisFaturamento = (thisComandas.data || []).filter(c => c.status === 'fechada').reduce((s, c) => s + (c.total || 0), 0) + thisVendasTotal;
+      const lastFaturamento = (lastComandas.data || []).filter(c => c.status === 'fechada').reduce((s, c) => s + (c.total || 0), 0) + lastVendasTotal;
       const thisPedidosCount = thisPedidos.count || 0;
       const lastPedidosCount = (lastComandas.data || []).length;
 
