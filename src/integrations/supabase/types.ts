@@ -1847,6 +1847,57 @@ export type Database = {
           },
         ]
       }
+      push_subscriptions: {
+        Row: {
+          auth_key: string
+          created_at: string | null
+          empresa_id: string | null
+          endpoint: string
+          id: string
+          p256dh: string
+          type: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth_key?: string
+          created_at?: string | null
+          empresa_id?: string | null
+          endpoint: string
+          id?: string
+          p256dh?: string
+          type?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth_key?: string
+          created_at?: string | null
+          empresa_id?: string | null
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          type?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas_publico"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reembolsos: {
         Row: {
           assinatura_id: string | null

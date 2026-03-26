@@ -9,6 +9,7 @@ import { OrderNotificationBadge } from './OrderNotificationBadge';
 import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 // Roles que pertencem à equipe (staff) - devem ter acesso ao Admin
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
@@ -18,6 +19,23 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isDeliveryCustomer, setIsDeliveryCustomer] = useState<boolean | null>(null);
+  
+  // Push notifications - auto-subscribe when admin loads
+  const { subscribeToNotifications, subscribeToAdminUpdates, permission } = usePushNotifications({ type: 'admin' });
+  
+  // Auto-subscribe to push notifications if permission already granted
+  useEffect(() => {
+    if (permission === 'granted' && profile?.empresa_id) {
+      subscribeToNotifications();
+    }
+  }, [permission, profile?.empresa_id, subscribeToNotifications]);
+  
+  // Subscribe to realtime admin updates (triggers push to all devices)
+  useEffect(() => {
+    if (!profile?.empresa_id) return;
+    const cleanup = subscribeToAdminUpdates();
+    return cleanup;
+  }, [profile?.empresa_id, subscribeToAdminUpdates]);
   
   // Ler configuração de menu compacto do localStorage
   const [sidebarOpen, setSidebarOpen] = useState(() => {
