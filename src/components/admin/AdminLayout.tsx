@@ -20,6 +20,23 @@ export function AdminLayout() {
   const location = useLocation();
   const [isDeliveryCustomer, setIsDeliveryCustomer] = useState<boolean | null>(null);
   
+  // Push notifications - auto-subscribe when admin loads
+  const { subscribeToNotifications, subscribeToAdminUpdates, permission } = usePushNotifications({ type: 'admin' });
+  
+  // Auto-subscribe to push notifications if permission already granted
+  useEffect(() => {
+    if (permission === 'granted' && profile?.empresa_id) {
+      subscribeToNotifications();
+    }
+  }, [permission, profile?.empresa_id, subscribeToNotifications]);
+  
+  // Subscribe to realtime admin updates (triggers push to all devices)
+  useEffect(() => {
+    if (!profile?.empresa_id) return;
+    const cleanup = subscribeToAdminUpdates();
+    return cleanup;
+  }, [profile?.empresa_id, subscribeToAdminUpdates]);
+  
   // Ler configuração de menu compacto do localStorage
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try {
