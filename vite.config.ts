@@ -70,15 +70,7 @@ export default defineConfig(async ({ mode }) => {
     })
   ];
 
-  // Carrega `lovable-tagger` dinamicamente apenas em desenvolvimento
-  if (mode === "development") {
-    try {
-      const { componentTagger } = await import("lovable-tagger");
-      plugins.push(componentTagger());
-    } catch {
-      // Ignora se não disponível
-    }
-  }
+  // lovable-tagger removido para não exibir badge "Edit with Lovable"
 
   return {
     server: {
