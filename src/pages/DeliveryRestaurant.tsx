@@ -19,6 +19,7 @@ import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { CartButton } from "@/components/delivery/CartButton";
 import { BottomNavigation } from "@/components/delivery/BottomNavigation";
 import { SmartUpsellSection } from "@/components/smart/SmartUpsellSection";
+import { UpsellDialog } from "@/components/delivery/UpsellDialog";
 import { useCart } from "@/hooks/useCart";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 

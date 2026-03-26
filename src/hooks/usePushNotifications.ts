@@ -156,7 +156,7 @@ export const usePushNotifications = ({ type }: PushNotificationConfig) => {
         console.log('[Push] Creating new subscription with VAPID key');
         pushSubscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey
+          applicationServerKey: applicationServerKey.buffer as ArrayBuffer
         });
         console.log('[Push] Subscription created:', pushSubscription.endpoint);
       }
