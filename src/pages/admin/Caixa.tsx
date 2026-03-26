@@ -183,7 +183,7 @@ export default function Caixa() {
   const [vendaAvulsaManualNome, setVendaAvulsaManualNome] = useState('');
   const [vendaAvulsaManualPreco, setVendaAvulsaManualPreco] = useState('');
   const [isProcessingVendaAvulsa, setIsProcessingVendaAvulsa] = useState(false);
-  const [vendaAvulsaShowPix, setVendaAvulsaShowPix] = useState(false);
+  const [vendaAvulsaPixModalOpen, setVendaAvulsaPixModalOpen] = useState(false);
 
   // Modal de adicionar item (para comandas e venda avulsa via modal)
   const [addItemModalOpen, setAddItemModalOpen] = useState(false);
@@ -246,11 +246,15 @@ export default function Caixa() {
       toast.error('Adicione pelo menos um item');
       return;
     }
-    // Se PIX selecionado e QR não exibido ainda, mostrar QR Code primeiro
-    if (vendaAvulsaPagamento === 'pix' && !vendaAvulsaShowPix) {
-      setVendaAvulsaShowPix(true);
+    // Se PIX selecionado, abrir modal do QR Code primeiro
+    if (vendaAvulsaPagamento === 'pix') {
+      setVendaAvulsaPixModalOpen(true);
       return;
     }
+    await processarVendaAvulsa();
+  };
+
+  const processarVendaAvulsa = async () => {
     if (!profile?.empresa_id || !profile?.id) return;
 
     setIsProcessingVendaAvulsa(true);
@@ -306,10 +310,10 @@ export default function Caixa() {
 
       toast.success('Venda avulsa registrada com sucesso!');
       setVendaAvulsaOpen(false);
+      setVendaAvulsaPixModalOpen(false);
       setVendaAvulsaItens([]);
       setVendaAvulsaPagamento('dinheiro');
       setVendaAvulsaBusca('');
-      setVendaAvulsaShowPix(false);
       // Refresh queries
       queryClient.invalidateQueries({ queryKey: ['comandas-fechadas', profile.empresa_id] });
     } catch (error: any) {
@@ -1215,7 +1219,7 @@ export default function Caixa() {
           setVendaAvulsaBusca('');
           setVendaAvulsaManualNome('');
           setVendaAvulsaManualPreco('');
-          setVendaAvulsaShowPix(false);
+          setVendaAvulsaPixModalOpen(false);
         }
       }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -1382,37 +1386,13 @@ export default function Caixa() {
                     </Label>
                   </RadioGroup>
                 </div>
-
-                {/* PIX QR Code display */}
-                {vendaAvulsaShowPix && vendaAvulsaPagamento === 'pix' && empresa?.chave_pix && (
-                  <div className="space-y-2 pt-2">
-                    <PixQRCode
-                      chavePix={empresa.chave_pix}
-                      valor={vendaAvulsaTotal}
-                      nomeRecebedor={empresa.nome_fantasia || 'Restaurante'}
-                    />
-                  </div>
-                )}
-
-                {vendaAvulsaShowPix && vendaAvulsaPagamento === 'pix' && !empresa?.chave_pix && (
-                  <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg">
-                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                    <span className="text-sm">Configure a chave PIX em Configurações &gt; Dados da Empresa para gerar o QR Code.</span>
-                  </div>
-                )}
               </>
             )}
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => {
-              if (vendaAvulsaShowPix) {
-                setVendaAvulsaShowPix(false);
-              } else {
-                setVendaAvulsaOpen(false);
-              }
-            }} disabled={isProcessingVendaAvulsa}>
-              {vendaAvulsaShowPix ? 'Voltar' : 'Cancelar'}
+            <Button variant="outline" onClick={() => setVendaAvulsaOpen(false)} disabled={isProcessingVendaAvulsa}>
+              Cancelar
             </Button>
             <Button
               onClick={handleFinalizarVendaAvulsa}
@@ -1421,10 +1401,53 @@ export default function Caixa() {
             >
               {isProcessingVendaAvulsa ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
-              ) : vendaAvulsaShowPix ? (
-                <><Check className="w-4 h-4 mr-2" /> Entendido / Fechar</>
               ) : (
                 <><Check className="w-4 h-4 mr-2" /> Finalizar Venda</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal PIX Venda Avulsa */}
+      <Dialog open={vendaAvulsaPixModalOpen} onOpenChange={setVendaAvulsaPixModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-green-600" />
+              Pagamento PIX
+            </DialogTitle>
+            <DialogDescription>
+              Use o QR Code ou copie a chave PIX para receber o pagamento.
+            </DialogDescription>
+          </DialogHeader>
+
+          {empresa?.chave_pix ? (
+            <PixQRCode
+              chavePix={empresa.chave_pix}
+              valor={vendaAvulsaTotal}
+              nomeRecebedor={empresa.nome_fantasia || 'Restaurante'}
+            />
+          ) : (
+            <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-4 rounded-lg">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm">Configure a chave PIX em Configurações &gt; Dados da Empresa para gerar o QR Code.</span>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setVendaAvulsaPixModalOpen(false)}>
+              Voltar
+            </Button>
+            <Button
+              onClick={processarVendaAvulsa}
+              disabled={isProcessingVendaAvulsa}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessingVendaAvulsa ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</>
+              ) : (
+                <><Check className="w-4 h-4 mr-2" /> Entendido / Fechar</>
               )}
             </Button>
           </DialogFooter>
