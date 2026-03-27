@@ -1,1 +1,0 @@
-ALTER TYPE delivery_status ADD VALUE IF NOT EXISTS 'pago';

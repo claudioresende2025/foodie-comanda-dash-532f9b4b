@@ -1,3 +1,0 @@
-ALTER TABLE enderecos_cliente 
-  ADD COLUMN IF NOT EXISTS latitude NUMERIC,
-  ADD COLUMN IF NOT EXISTS longitude NUMERIC;
