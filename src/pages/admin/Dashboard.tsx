@@ -15,6 +15,7 @@ import {
   Receipt
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { db, sincronizarTudo } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
@@ -97,17 +98,46 @@ export default function Dashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch mesas
+  // Fetch mesas - Offline-First
   const { data: mesas = [] } = useQuery({
     queryKey: ['mesas', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data } = await supabase
-        .from('mesas')
-        .select('id, numero_mesa, status, mesa_juncao_id')
-        .eq('empresa_id', empresaId)
-        .order('numero_mesa');
-      return data || [];
+      
+      // 1. Buscar do local primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const locais = await db.mesas.where('empresa_id').equals(empresaId).toArray();
+        dadosLocais = locais.map((m: any) => ({
+          id: m.id,
+          numero_mesa: m.numero_mesa ?? m.numero,
+          status: m.status || 'disponivel',
+          mesa_juncao_id: m.mesa_juncao_id || null,
+        }));
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler mesas do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data } = await supabase
+            .from('mesas')
+            .select('id, numero_mesa, status, mesa_juncao_id')
+            .eq('empresa_id', empresaId)
+            .order('numero_mesa');
+          
+          if (data) {
+            const dadosComSync = data.map((item: any) => ({ ...item, numero: item.numero_mesa, sincronizado: 1 }));
+            await db.mesas.bulkPut(dadosComSync);
+            return data || [];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para mesas:', err);
+        }
+      }
+      
+      return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
     },
     enabled: !!empresaId,
     staleTime: 30 * 1000,

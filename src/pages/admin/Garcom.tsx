@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { db, sincronizarTudo } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -115,20 +116,50 @@ export default function Garcom() {
   const [baixaTotalValue, setBaixaTotalValue] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ========== QUERIES ==========
+  // ========== QUERIES - Offline-First ==========
 
-  // Mesas
+  // Mesas - Offline-First
   const { data: mesas = [], isLoading: isLoadingMesas } = useQuery({
     queryKey: ['mesas-garcom', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('*')
-        .eq('empresa_id', profile.empresa_id)
-        .order('numero_mesa', { ascending: true });
-      if (error) throw error;
-      return data as Mesa[];
+      
+      // 1. Buscar do local primeiro
+      let dadosLocais: Mesa[] = [];
+      try {
+        const locais = await db.mesas.where('empresa_id').equals(profile.empresa_id).toArray();
+        dadosLocais = locais.map((m: any) => ({
+          id: m.id,
+          numero_mesa: m.numero_mesa ?? m.numero,
+          status: m.status || 'disponivel',
+          capacidade: m.capacidade || 4,
+          mesa_juncao_id: m.mesa_juncao_id || null,
+          nome: m.nome || null,
+        })) as Mesa[];
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler mesas do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from('mesas')
+            .select('*')
+            .eq('empresa_id', profile.empresa_id)
+            .order('numero_mesa', { ascending: true });
+          
+          if (!error && data) {
+            const dadosComSync = data.map((item: any) => ({ ...item, numero: item.numero_mesa, sincronizado: 1 }));
+            await db.mesas.bulkPut(dadosComSync);
+            return data as Mesa[];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para mesas:', err);
+        }
+      }
+      
+      return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
     },
     enabled: !!profile?.empresa_id,
     staleTime: 30000,
@@ -157,31 +188,54 @@ export default function Garcom() {
   const chamadas = useMemo(() => chamadasRaw.filter(c => c.motivo !== 'fechamento'), [chamadasRaw]);
   const chamadasFechamento = useMemo(() => chamadasRaw.filter(c => c.motivo === 'fechamento'), [chamadasRaw]);
 
-  // Pedidos (para ver status de todos os pedidos)
+  // Pedidos (para ver status de todos os pedidos) - Offline-First
   const { data: pedidos = [], refetch: refetchPedidos } = useQuery({
     queryKey: ['pedidos-garcom', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
-      const { data, error } = await supabase
-        .from('pedidos')
-        .select(`
-          *,
-          produto:produtos(nome, preco),
-          comanda:comandas!inner(
-            id,
-            nome_cliente,
-            empresa_id,
-            mesa:mesas(numero_mesa)
-          )
-        `)
-        .eq('comanda.empresa_id', profile.empresa_id)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      return data || [];
+      
+      // 1. Buscar do local primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const pedidosLocais = await db.pedidos.toArray();
+        dadosLocais = pedidosLocais;
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler pedidos do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from('pedidos')
+            .select(`
+              *,
+              produto:produtos(nome, preco),
+              comanda:comandas!inner(
+                id,
+                nome_cliente,
+                empresa_id,
+                mesa:mesas(numero_mesa)
+              )
+            `)
+            .eq('comanda.empresa_id', profile.empresa_id)
+            .order('created_at', { ascending: true });
+          
+          if (!error && data) {
+            const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
+            await db.pedidos.bulkPut(dadosComSync);
+            return data || [];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para pedidos:', err);
+        }
+      }
+      
+      return dadosLocais;
     },
     enabled: !!profile?.empresa_id,
     staleTime: 3000,
-    refetchInterval: 8000,
+    refetchInterval: navigator.onLine ? 8000 : false,
   });
 
   // Empresa (para obter chave PIX)
@@ -200,12 +254,27 @@ export default function Garcom() {
     enabled: !!profile?.empresa_id,
   });
 
-  // ========== MUTATIONS ==========
+  // ========== MUTATIONS - Offline-First ==========
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: PedidoStatus }) => {
-      const { error } = await supabase.from('pedidos').update({ status_cozinha: status }).eq('id', id);
-      if (error) throw error;
+      // 1. Atualizar local primeiro
+      try {
+        await db.pedidos.update(id, { status_cozinha: status, sincronizado: 0 });
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao atualizar pedido local:', err);
+      }
+      
+      // 2. Sincronizar com Supabase se online
+      if (navigator.onLine) {
+        const { error } = await supabase.from('pedidos').update({ status_cozinha: status }).eq('id', id);
+        if (!error) {
+          await db.pedidos.update(id, { sincronizado: 1 });
+        } else {
+          throw error;
+        }
+        sincronizarTudo(supabase).catch(console.warn);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pedidos-garcom', profile?.empresa_id] });

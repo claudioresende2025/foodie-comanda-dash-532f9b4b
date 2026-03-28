@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { db, sincronizarTudo } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
 import { printKitchenOrder } from "@/utils/kitchenPrinter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -185,7 +186,7 @@ export default function Pedidos() {
   const processedPedidosRef = useRef<Set<string>>(new Set()); // Evitar processar o mesmo pedido múltiplas vezes
 
   // ===============================
-  // QUERY ÚNICA → SUPER PERFORMÁTICA
+  // QUERY ÚNICA → Offline-First Híbrido
   // ===============================
   const {
     data: pedidos,
@@ -196,29 +197,51 @@ export default function Pedidos() {
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
 
-      const { data, error } = await supabase
-        .from("pedidos")
-        .select(
-          `
-          *,
-          produto:produtos(nome, preco, categoria:categorias(nome)),
-          comanda:comandas!inner(
-            id,
-            nome_cliente,
-            empresa_id,
-            mesa:mesas(numero_mesa)
-          )
-        `,
-        )
-        .eq("comanda.empresa_id", profile.empresa_id)
-        .order("created_at", { ascending: true });
+      // 1. Buscar do banco local primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const pedidosLocais = await db.pedidos.toArray();
+        dadosLocais = pedidosLocais;
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler pedidos do IndexedDB:', err);
+      }
 
-      if (error) throw error;
-      return data || [];
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from("pedidos")
+            .select(
+              `
+              *,
+              produto:produtos(nome, preco, categoria:categorias(nome)),
+              comanda:comandas!inner(
+                id,
+                nome_cliente,
+                empresa_id,
+                mesa:mesas(numero_mesa)
+              )
+            `,
+            )
+            .eq("comanda.empresa_id", profile.empresa_id)
+            .order("created_at", { ascending: true });
+
+          if (!error && data) {
+            // Atualizar banco local
+            const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
+            await db.pedidos.bulkPut(dadosComSync);
+            return data || [];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para pedidos:', err);
+        }
+      }
+
+      return dadosLocais;
     },
     enabled: !!profile?.empresa_id,
     staleTime: 3000,
-    refetchInterval: 8000,
+    refetchInterval: navigator.onLine ? 8000 : false,
   });
 
   // Query para chamadas de garçom pendentes
@@ -239,15 +262,47 @@ export default function Pedidos() {
     refetchInterval: 5000,
   });
 
-  // Query para mesas (para exibir nome/número)
+  // Query para mesas (para exibir nome/número) - Offline-First
   const { data: mesas = [] } = useQuery<Mesa[]>({
     queryKey: ["mesas-kds", profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
-      const { data, error } = await supabase
-        .from("mesas")
-        .select("id, numero_mesa, nome")
-        .eq("empresa_id", profile.empresa_id);
+      
+      // 1. Buscar do local primeiro
+      let dadosLocais: Mesa[] = [];
+      try {
+        const locais = await db.mesas.where('empresa_id').equals(profile.empresa_id).toArray();
+        dadosLocais = locais.map((m: any) => ({
+          id: m.id,
+          numero_mesa: m.numero_mesa ?? m.numero,
+          nome: m.nome || null,
+        })) as Mesa[];
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler mesas do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from("mesas")
+            .select("id, numero_mesa, nome")
+            .eq("empresa_id", profile.empresa_id);
+          
+          if (!error && data) {
+            const dadosComSync = data.map((item: any) => ({ ...item, numero: item.numero_mesa, sincronizado: 1 }));
+            await db.mesas.bulkPut(dadosComSync);
+            return data || [];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para mesas:', err);
+        }
+      }
+      
+      return dadosLocais;
+    },
+    enabled: !!profile?.empresa_id,
+  });
       if (error) throw error;
       return data || [];
     },
@@ -453,12 +508,27 @@ export default function Pedidos() {
   }, [profile?.empresa_id, queryClient, soundEnabled]);
 
   // ===============================
-  // UPDATE STATUS
+  // UPDATE STATUS - Offline-First
   // ===============================
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: PedidoStatus }) => {
-      const { error } = await supabase.from("pedidos").update({ status_cozinha: status }).eq("id", id);
-      if (error) throw error;
+      // 1. Atualizar no banco local primeiro
+      try {
+        await db.pedidos.update(id, { status_cozinha: status, sincronizado: 0 });
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao atualizar pedido local:', err);
+      }
+      
+      // 2. Se online, sincronizar com Supabase
+      if (navigator.onLine) {
+        const { error } = await supabase.from("pedidos").update({ status_cozinha: status }).eq("id", id);
+        if (!error) {
+          await db.pedidos.update(id, { sincronizado: 1 });
+        } else {
+          throw error;
+        }
+        sincronizarTudo(supabase).catch(console.warn);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile?.empresa_id] });

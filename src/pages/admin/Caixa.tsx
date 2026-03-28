@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { db, sincronizarTudo } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -326,22 +327,50 @@ export default function Caixa() {
 
   /** --------- QUERIES --------- */
 
-  // Mesas com status de fechamento pendente
+  // Mesas com status de fechamento pendente - Offline-First
   const { data: mesasPendentes = [] } = useQuery({
     queryKey: ['mesas-pendentes', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('id, numero_mesa, status, nome')
-        .eq('empresa_id', profile.empresa_id)
-        .in('status', ['solicitou_fechamento', 'aguardando_pagamento'])
-        .order('numero_mesa');
-      if (error) throw error;
-      return data as MesaPendente[];
+      
+      // 1. Buscar do local primeiro
+      let dadosLocais: MesaPendente[] = [];
+      try {
+        const locais = await db.mesas.where('empresa_id').equals(profile.empresa_id).toArray();
+        dadosLocais = locais
+          .filter((m: any) => ['solicitou_fechamento', 'aguardando_pagamento'].includes(m.status))
+          .map((m: any) => ({
+            id: m.id,
+            numero_mesa: m.numero_mesa ?? m.numero,
+            status: m.status,
+            nome: m.nome || null,
+          })) as MesaPendente[];
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler mesas do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from('mesas')
+            .select('id, numero_mesa, status, nome')
+            .eq('empresa_id', profile.empresa_id)
+            .in('status', ['solicitou_fechamento', 'aguardando_pagamento'])
+            .order('numero_mesa');
+          
+          if (!error && data) {
+            return data as MesaPendente[];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para mesas pendentes:', err);
+        }
+      }
+      
+      return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
     },
     enabled: !!profile?.empresa_id,
-    refetchInterval: 5000,
+    refetchInterval: navigator.onLine ? 5000 : false,
   });
 
   // Empresa
@@ -395,7 +424,7 @@ export default function Caixa() {
     configFiscal?.csc_id
   );
 
-  // Comandas abertas (Mesas)
+  // Comandas abertas (Mesas) - Offline-First
   const {
     data: comandas = [],
     isLoading: isLoadingComandas,
@@ -403,18 +432,42 @@ export default function Caixa() {
     queryKey: ['comandas-abertas', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
-      const { data, error } = await supabase
-        .from('comandas')
-        .select(`
-          *,
-          mesa:mesas(numero_mesa),
-          pedidos(id, quantidade, preco_unitario, subtotal, produto:produtos(nome))
-        `)
-        .eq('empresa_id', profile.empresa_id)
-        .eq('status', 'aberta')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
+      
+      // 1. Buscar do local primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const locais = await db.comandas.where('empresa_id').equals(profile.empresa_id).toArray();
+        dadosLocais = locais.filter((c: any) => c.status === 'aberta');
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler comandas do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from('comandas')
+            .select(`
+              *,
+              mesa:mesas(numero_mesa),
+              pedidos(id, quantidade, preco_unitario, subtotal, produto:produtos(nome))
+            `)
+            .eq('empresa_id', profile.empresa_id)
+            .eq('status', 'aberta')
+            .order('created_at', { ascending: false });
+          
+          if (!error && data) {
+            // Atualizar local
+            const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
+            await db.comandas.bulkPut(dadosComSync);
+            return data;
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para comandas:', err);
+        }
+      }
+      
+      return dadosLocais;
     },
     enabled: !!profile?.empresa_id,
     refetchOnMount: 'always',

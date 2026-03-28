@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { db, sincronizarTudo } from '@/lib/db';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -94,35 +95,97 @@ export default function Cardapio() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
-  // Fetch categorias
+  // Fetch categorias - Offline-First Híbrido
   const { data: categorias = [], isLoading: isLoadingCat, refetch: refetchCat } = useQuery({
     queryKey: ['categorias', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('categorias')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .order('ordem');
-      if (error) throw error;
-      return data as Categoria[];
+      
+      // 1. Buscar do banco local primeiro
+      let dadosLocais: Categoria[] = [];
+      try {
+        const locais = await db.categorias.where('empresa_id').equals(empresaId).toArray();
+        dadosLocais = locais.map((c: any) => ({
+          id: c.id,
+          nome: c.nome,
+          descricao: c.descricao || null,
+          ordem: c.ordem || 0,
+          ativo: c.ativo !== false,
+        })) as Categoria[];
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler categorias do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase e atualizar local
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from('categorias')
+            .select('*')
+            .eq('empresa_id', empresaId)
+            .order('ordem');
+          
+          if (!error && data) {
+            const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
+            await db.categorias.bulkPut(dadosComSync);
+            return data as Categoria[];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para categorias:', err);
+        }
+      }
+      
+      return dadosLocais.sort((a, b) => a.ordem - b.ordem);
     },
     enabled: !!empresaId,
     staleTime: 60000,
   });
 
-  // Fetch produtos
+  // Fetch produtos - Offline-First Híbrido
   const { data: produtos = [], isLoading: isLoadingProd, refetch: refetchProd } = useQuery({
     queryKey: ['produtos', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('produtos')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .order('nome');
-      if (error) throw error;
-      return data as Produto[];
+      
+      // 1. Buscar do banco local primeiro
+      let dadosLocais: Produto[] = [];
+      try {
+        const locais = await db.produtos.where('empresa_id').equals(empresaId).toArray();
+        dadosLocais = locais.map((p: any) => ({
+          id: p.id,
+          nome: p.nome,
+          descricao: p.descricao || null,
+          preco: p.preco || 0,
+          imagem_url: p.imagem_url || null,
+          categoria_id: p.categoria_id || null,
+          ativo: p.ativo !== false,
+          variacoes: p.variacoes || null,
+          ncm: p.ncm || null,
+        })) as Produto[];
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler produtos do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase e atualizar local
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from('produtos')
+            .select('*')
+            .eq('empresa_id', empresaId)
+            .order('nome');
+          
+          if (!error && data) {
+            const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
+            await db.produtos.bulkPut(dadosComSync);
+            return data as Produto[];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para produtos:', err);
+        }
+      }
+      
+      return dadosLocais.sort((a, b) => a.nome.localeCompare(b.nome));
     },
     enabled: !!empresaId,
     staleTime: 60000,
@@ -130,7 +193,7 @@ export default function Cardapio() {
 
   const isLoading = isLoadingCat || isLoadingProd;
 
-  // Category handlers
+  // Category handlers - Offline-First
   const handleSaveCategoria = async () => {
     if (!empresaId || !catForm.nome.trim()) {
       toast.error('Nome da categoria é obrigatório');
@@ -140,21 +203,64 @@ export default function Cardapio() {
     setIsSaving(true);
     try {
       if (editingCat) {
-        const { error } = await supabase
-          .from('categorias')
-          .update({ nome: catForm.nome, descricao: catForm.descricao || null })
-          .eq('id', editingCat.id);
-        if (error) throw error;
+        // EDIÇÃO: Salvar local primeiro
+        const dadosAtualizados = {
+          ...editingCat,
+          nome: catForm.nome,
+          descricao: catForm.descricao || null,
+          sincronizado: 0,
+        };
+        await db.categorias.put(dadosAtualizados);
         toast.success('Categoria atualizada!');
+        
+        // Sincronizar em background se online
+        if (navigator.onLine) {
+          try {
+            const { error } = await supabase
+              .from('categorias')
+              .update({ nome: catForm.nome, descricao: catForm.descricao || null })
+              .eq('id', editingCat.id);
+            if (!error) {
+              await db.categorias.update(editingCat.id, { sincronizado: 1 });
+            }
+            sincronizarTudo(supabase).catch(console.warn);
+          } catch (syncErr) {
+            console.warn('[Offline-First] Erro na sincronização:', syncErr);
+          }
+        }
       } else {
-        const { error } = await supabase.from('categorias').insert({
+        // CRIAÇÃO: Gerar UUID e salvar local primeiro
+        const localId = crypto.randomUUID();
+        const novaCategoria = {
+          id: localId,
           empresa_id: empresaId,
           nome: catForm.nome,
           descricao: catForm.descricao || null,
           ordem: categorias.length,
-        });
-        if (error) throw error;
+          ativo: true,
+          sincronizado: 0,
+        };
+        await db.categorias.put(novaCategoria);
         toast.success('Categoria criada!');
+        
+        // Sincronizar em background se online
+        if (navigator.onLine) {
+          try {
+                const { error } = await supabase.from('categorias').insert({
+              id: localId,
+              empresa_id: empresaId,
+              nome: catForm.nome,
+              descricao: catForm.descricao || null,
+              ordem: categorias.length,
+            });
+            if (!error) {
+              await db.categorias.update(localId, { sincronizado: 1 });
+            }
+            sincronizarTudo(supabase).catch(console.warn);
+          } catch (syncErr) {
+            console.warn('[Offline-First] Erro na sincronização:', syncErr);
+          }
+        }
       }
 
       setIsCatDialogOpen(false);
@@ -173,10 +279,20 @@ export default function Cardapio() {
     if (!confirm('Tem certeza que deseja excluir esta categoria?')) return;
 
     try {
-      const { error } = await supabase.from('categorias').delete().eq('id', id);
-      if (error) throw error;
+      // Excluir do local primeiro
+      await db.categorias.delete(id);
       toast.success('Categoria excluída!');
       queryClient.invalidateQueries({ queryKey: ['categorias'] });
+      
+      // Sincronizar com Supabase se online
+      if (navigator.onLine) {
+        try {
+          await supabase.from('categorias').delete().eq('id', id);
+          sincronizarTudo(supabase).catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro ao sincronizar exclusão:', syncErr);
+        }
+      }
     } catch (error) {
       console.error('Error deleting categoria:', error);
       toast.error('Erro ao excluir categoria');
@@ -241,25 +357,30 @@ export default function Cardapio() {
     try {
       let imagem_url = editingProd?.imagem_url || null;
 
-      // Prioridade: 1) Arquivo uploadado, 2) URL de imagem buscada online
-      if (prodImage) {
-        const fileExt = prodImage.name.split('.').pop();
-        const fileName = `${empresaId}/${Date.now()}.${fileExt}`;
+      // Upload de imagem só funciona online
+      if (navigator.onLine) {
+        // Prioridade: 1) Arquivo uploadado, 2) URL de imagem buscada online
+        if (prodImage) {
+          const fileExt = prodImage.name.split('.').pop();
+          const fileName = `${empresaId}/${Date.now()}.${fileExt}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('produtos')
-          .upload(fileName, prodImage);
+          const { error: uploadError } = await supabase.storage
+            .from('produtos')
+            .upload(fileName, prodImage);
 
-        if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('produtos')
-          .getPublicUrl(fileName);
+          const { data: { publicUrl } } = supabase.storage
+            .from('produtos')
+            .getPublicUrl(fileName);
 
-        imagem_url = publicUrl;
-      } else if (prodImageUrl) {
-        // Usar URL da imagem buscada online
-        imagem_url = prodImageUrl;
+          imagem_url = publicUrl;
+        } else if (prodImageUrl) {
+          // Usar URL da imagem buscada online
+          imagem_url = prodImageUrl;
+        }
+      } else if (prodImage || prodImageUrl) {
+        toast.info('Upload de imagem será feito quando houver conexão');
       }
 
       const produtoData = {
@@ -276,19 +397,58 @@ export default function Cardapio() {
       };
 
       if (editingProd) {
-        const { error } = await supabase
-          .from('produtos')
-          .update(produtoData)
-          .eq('id', editingProd.id);
-        if (error) throw error;
-        toast.success('Produto atualizado!');
-      } else {
-        const { error } = await supabase.from('produtos').insert({
+        // EDIÇÃO: Salvar local primeiro
+        const dadosAtualizados = {
+          ...editingProd,
           ...produtoData,
+          sincronizado: 0,
+        };
+        await db.produtos.put(dadosAtualizados);
+        toast.success('Produto atualizado!');
+        
+        // Sincronizar em background se online
+        if (navigator.onLine) {
+          try {
+            const { error } = await supabase
+              .from('produtos')
+              .update(produtoData)
+              .eq('id', editingProd.id);
+            if (!error) {
+              await db.produtos.update(editingProd.id, { sincronizado: 1 });
+            }
+            sincronizarTudo(supabase).catch(console.warn);
+          } catch (syncErr) {
+            console.warn('[Offline-First] Erro na sincronização:', syncErr);
+          }
+        }
+      } else {
+        // CRIAÇÃO: Gerar UUID e salvar local primeiro
+        const localId = crypto.randomUUID();
+        const novoProduto = {
+          id: localId,
           empresa_id: empresaId,
-        });
-        if (error) throw error;
+          ...produtoData,
+          sincronizado: 0,
+        };
+        await db.produtos.put(novoProduto);
         toast.success('Produto criado!');
+        
+        // Sincronizar em background se online
+        if (navigator.onLine) {
+          try {
+            const { error } = await supabase.from('produtos').insert({
+              id: localId,
+              empresa_id: empresaId,
+              ...produtoData,
+            });
+            if (!error) {
+              await db.produtos.update(localId, { sincronizado: 1 });
+            }
+            sincronizarTudo(supabase).catch(console.warn);
+          } catch (syncErr) {
+            console.warn('[Offline-First] Erro na sincronização:', syncErr);
+          }
+        }
       }
 
       setIsProdDialogOpen(false);
@@ -312,10 +472,20 @@ export default function Cardapio() {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
     try {
-      const { error } = await supabase.from('produtos').delete().eq('id', id);
-      if (error) throw error;
+      // Excluir do local primeiro
+      await db.produtos.delete(id);
       toast.success('Produto excluído!');
       queryClient.invalidateQueries({ queryKey: ['produtos'] });
+      
+      // Sincronizar com Supabase se online
+      if (navigator.onLine) {
+        try {
+          await supabase.from('produtos').delete().eq('id', id);
+          sincronizarTudo(supabase).catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro ao sincronizar exclusão:', syncErr);
+        }
+      }
     } catch (error) {
       console.error('Error deleting produto:', error);
       toast.error('Erro ao excluir produto');
