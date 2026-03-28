@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { db, sincronizarTudo } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -64,18 +65,54 @@ export default function Mesas() {
 
   const empresaId = profile?.empresa_id;
 
-  // Fetch mesas with react-query
+  // Fetch mesas with react-query - Offline-First Híbrido
   const { data: mesas = [], isLoading, refetch } = useQuery({
     queryKey: ['mesas', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .order('numero_mesa');
-      if (error) throw error;
-      return data as Mesa[];
+      
+      // 1. Buscar dados do banco local primeiro (fonte da verdade operacional)
+      let dadosLocais: Mesa[] = [];
+      try {
+        const locais = await db.mesas.toArray();
+        dadosLocais = locais.map((m: any) => ({
+          id: m.id,
+          numero_mesa: m.numero_mesa ?? m.numero,
+          status: m.status || 'disponivel',
+          capacidade: m.capacidade || 4,
+          mesa_juncao_id: m.mesa_juncao_id || null,
+          nome: m.nome || null,
+        })) as Mesa[];
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar dados atualizados do Supabase e atualizar IndexedDB
+      if (navigator.onLine) {
+        try {
+          const { data, error } = await supabase
+            .from('mesas')
+            .select('*')
+            .eq('empresa_id', empresaId)
+            .order('numero_mesa');
+          
+          if (!error && data) {
+            // Atualizar banco local com dados da nuvem
+            const dadosComSync = data.map((item: any) => ({
+              ...item,
+              numero: item.numero_mesa,
+              sincronizado: 1,
+            }));
+            await db.mesas.bulkPut(dadosComSync);
+            return data as Mesa[];
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível, usando dados locais:', err);
+        }
+      }
+      
+      // 3. Retornar dados locais ordenados
+      return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
     },
     enabled: !!empresaId,
     staleTime: 30000,
@@ -185,29 +222,62 @@ export default function Mesas() {
       return;
     }
 
+    // Gerar UUID local
+    const localId = crypto.randomUUID();
+    const novaMesa = {
+      id: localId,
+      empresa_id: empresaId,
+      numero_mesa: numero,
+      numero: numero,
+      capacidade: parseInt(newMesa.capacidade),
+      status: 'disponivel' as MesaStatus,
+      mesa_juncao_id: null,
+      sincronizado: 0,
+      criado_em: new Date().toISOString(),
+    };
+
     try {
-      const { error } = await supabase.from('mesas').insert({
-        empresa_id: empresaId,
-        numero_mesa: numero,
-        capacidade: parseInt(newMesa.capacidade),
-      });
-
-      if (error) {
-        if (error.code === '23505') {
-          toast.error('Já existe uma mesa com este número');
-        } else {
-          throw error;
-        }
-        return;
-      }
-
+      // 1. Salvar imediatamente no banco local (fonte da verdade operacional)
+      await db.mesas.put(novaMesa);
+      
+      // 2. Atualizar UI imediatamente
+      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
       toast.success('Mesa criada com sucesso!');
       setNewMesa({ numero_mesa: '', capacidade: '4' });
       setIsDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+      
+      // 3. Se online, sincronizar em background
+      if (navigator.onLine) {
+        try {
+          const { error } = await supabase.from('mesas').insert({
+            id: localId,
+            empresa_id: empresaId,
+            numero_mesa: numero,
+            capacidade: parseInt(newMesa.capacidade),
+          });
+
+          if (error) {
+            if (error.code === '23505') {
+              toast.error('Já existe uma mesa com este número no servidor');
+              // Remover do local se duplicado no servidor
+              await db.mesas.delete(localId);
+              queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+            } else {
+              console.warn('[Offline-First] Erro ao sincronizar mesa:', error);
+            }
+          } else {
+            // Marcar como sincronizado
+            await db.mesas.update(localId, { sincronizado: 1 });
+          }
+          
+          // Disparar sincronização em background
+          sincronizarTudo(supabase).catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro na sincronização:', syncErr);
+        }
+      }
     } catch (error: any) {
       console.error('Error creating mesa:', error);
-      // Se o backend retornar mensagem amigável, exibe ela
       const msg = error?.message || error?.error_description || error?.msg;
       if (msg && msg.toLowerCase().includes('limite de mesas')) {
         toast.error(msg);
@@ -227,25 +297,49 @@ export default function Mesas() {
       const masterMesa = selectedMesas[0];
       const otherMesas = selectedMesas.slice(1);
 
+      // 1. Atualizar banco local primeiro
       for (const mesaId of otherMesas) {
-        await supabase
-          .from('mesas')
-          .update({ 
-            status: 'juncao',
-            mesa_juncao_id: masterMesa 
-          })
-          .eq('id', mesaId);
+        await db.mesas.update(mesaId, {
+          status: 'juncao',
+          mesa_juncao_id: masterMesa,
+          sincronizado: 0,
+        });
       }
-
-      await supabase
-        .from('mesas')
-        .update({ status: 'ocupada' })
-        .eq('id', masterMesa);
+      await db.mesas.update(masterMesa, {
+        status: 'ocupada',
+        sincronizado: 0,
+      });
 
       toast.success('Mesas unidas com sucesso!');
       setSelectedMesas([]);
       setIsMergeDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+
+      // 2. Se online, sincronizar com Supabase em background
+      if (navigator.onLine) {
+        try {
+          for (const mesaId of otherMesas) {
+            await supabase
+              .from('mesas')
+              .update({ 
+                status: 'juncao',
+                mesa_juncao_id: masterMesa 
+              })
+              .eq('id', mesaId);
+            await db.mesas.update(mesaId, { sincronizado: 1 });
+          }
+
+          await supabase
+            .from('mesas')
+            .update({ status: 'ocupada' })
+            .eq('id', masterMesa);
+          await db.mesas.update(masterMesa, { sincronizado: 1 });
+          
+          sincronizarTudo(supabase).catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro na sincronização de junção:', syncErr);
+        }
+      }
     } catch (error) {
       console.error('Error merging mesas:', error);
       toast.error('Erro ao unir mesas');
@@ -254,16 +348,32 @@ export default function Mesas() {
 
   const handleUnmergeMesa = async (mesaId: string) => {
     try {
-      await supabase
-        .from('mesas')
-        .update({ 
-          status: 'disponivel',
-          mesa_juncao_id: null 
-        })
-        .eq('id', mesaId);
+      // 1. Atualizar banco local primeiro
+      await db.mesas.update(mesaId, {
+        status: 'disponivel',
+        mesa_juncao_id: null,
+        sincronizado: 0,
+      });
 
       toast.success('Junção desfeita!');
       queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+
+      // 2. Se online, sincronizar com Supabase em background
+      if (navigator.onLine) {
+        try {
+          await supabase
+            .from('mesas')
+            .update({ 
+              status: 'disponivel',
+              mesa_juncao_id: null 
+            })
+            .eq('id', mesaId);
+          await db.mesas.update(mesaId, { sincronizado: 1 });
+          sincronizarTudo(supabase).catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro na sincronização:', syncErr);
+        }
+      }
     } catch (error) {
       console.error('Error unmerging:', error);
       toast.error('Erro ao desfazer junção');
