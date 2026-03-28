@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { WifiOff, Wifi, RefreshCw, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { WifiOff, Wifi, RefreshCw, Cloud, CloudOff, Loader2, Database } from 'lucide-react';
 import { useConnection } from '@/hooks/useConnection';
 import { toast } from 'sonner';
 
@@ -29,7 +29,7 @@ export function OfflineIndicator() {
   useEffect(() => {
     if (previousStatus.current !== status) {
       if (status === 'offline' && previousStatus.current !== 'checking') {
-        toast.warning('Modo Offline ativado. Dados salvos localmente.', { 
+        toast.info('Modo Local ativado. Sistema funcionando com dados salvos.', { 
           duration: 4000,
           id: 'connection-status'
         });
@@ -96,11 +96,11 @@ export function OfflineIndicator() {
       case 'offline':
       default:
         return {
-          bgColor: 'bg-red-500',
+          bgColor: 'bg-orange-500',
           textColor: 'text-white',
-          icon: <WifiOff className="w-4 h-4" />,
-          label: 'Modo Offline',
-          animate: true
+          icon: <Database className="w-4 h-4" />,
+          label: 'Modo Local',
+          animate: false
         };
     }
   };
