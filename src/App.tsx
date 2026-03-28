@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
-import { sincronizarPedidosPendentes } from "./lib/db";
+import { sincronizarTudo } from "./lib/db";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -67,8 +67,8 @@ const App = () => {
   useEffect(() => {
     const realizarSincronizacao = async () => {
       if (navigator.onLine) {
-        console.log("🌐 Internet detectada! Sincronizando pedidos pendentes...");
-        await sincronizarPedidosPendentes(supabase);
+        console.log("🌐 Internet detectada! Sincronizando dados pendentes...");
+        await sincronizarTudo(supabase);
       }
     };
 
