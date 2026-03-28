@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { db, sincronizarTudo } from "@/lib/db";
 import {
   Loader2,
   ChefHat,
@@ -601,16 +602,53 @@ export default function Menu() {
     }
   };
 
+  // Buscar pedidos - Offline-First
   const fetchMeusPedidos = async (cmdId: string) => {
-    const { data, error } = await supabase
-      .from("pedidos")
-      .select("*")
-      .eq("comanda_id", cmdId)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      setMeusPedidos(data);
+    // 1. Buscar pedidos locais primeiro
+    let pedidosLocais: Pedido[] = [];
+    try {
+      const locais = await db.pedidos.where('comanda_id').equals(cmdId).toArray();
+      pedidosLocais = locais.map((p: any) => ({
+        id: p.id,
+        produto_id: p.produto_id,
+        quantidade: p.quantidade,
+        status_cozinha: p.status_cozinha || 'pendente',
+        notas_cliente: p.notas_cliente,
+        created_at: p.criado_em || p.created_at || new Date().toISOString(),
+      }));
+    } catch (e) {
+      console.warn('[Offline-First] Erro ao buscar pedidos locais:', e);
     }
+
+    // 2. Se online, buscar do Supabase e mesclar
+    if (navigator.onLine) {
+      try {
+        const { data, error } = await supabase
+          .from("pedidos")
+          .select("*")
+          .eq("comanda_id", cmdId)
+          .order("created_at", { ascending: false });
+
+        if (!error && data) {
+          // Mesclar: pedidos do Supabase + pedidos locais não sincronizados
+          const idsSupabase = new Set(data.map((p: any) => p.id));
+          const pedidosNaoSincronizados = pedidosLocais.filter(p => !idsSupabase.has(p.id));
+          
+          const todosPedidos = [...data, ...pedidosNaoSincronizados]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          
+          setMeusPedidos(todosPedidos);
+          return;
+        }
+      } catch (e) {
+        console.warn('[Offline-First] Supabase inacessível, usando dados locais:', e);
+      }
+    }
+
+    // 3. Se offline ou falhou, usar dados locais
+    setMeusPedidos(pedidosLocais.sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ));
   };
 
   const handleCallWaiter = async () => {
@@ -753,7 +791,7 @@ export default function Menu() {
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantidade, 0);
 
   // #################################################################
-  // # FUNÇÃO handleSendOrder CORRIGIDA (RPC, RLS e TRATAMENTO DE ERRO) #
+  // # FUNÇÃO handleSendOrder - OFFLINE-FIRST HÍBRIDO                #
   // #################################################################
 
   const handleSendOrder = async () => {
@@ -771,31 +809,15 @@ export default function Menu() {
 
     try {
       let currentComandaId = comandaId;
+      const agora = new Date().toISOString();
 
-      // 1. Prepara os dados do carrinho
-      const itemsToSend = cart.map((item) => ({
-        produto_id: item.produto.id,
-        quantidade: item.quantidade,
-        preco_unitario: item.precoUnitario,
-        subtotal: item.precoUnitario * item.quantidade,
-        notas_cliente: item.tamanhoSelecionado 
-          ? `[${item.tamanhoSelecionado}] ${item.notas || ''}`.trim() 
-          : (item.notas || null),
-        status_cozinha: "pendente" as const,
-        comanda_id: currentComandaId,
-      }));
-
-      // 2. ABERTURA DE COMANDA (Se comanda não existe)
+      // 1. Se não tem comanda, criar uma nova
       if (!currentComandaId) {
-        // Gera ID de sessão
-        const sessionId = crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-
-        // Antes de criar comanda, verifica se já temos info do cliente (quando via QR na mesa)
+        // Verificar se temos info do cliente
         const clientKey = `client_info_${empresaId}_${mesaId}`;
         let nomeCliente: string | null = null;
         let telefoneCliente: string | null = null;
+        
         try {
           const saved = localStorage.getItem(clientKey);
           if (saved) {
@@ -803,7 +825,6 @@ export default function Menu() {
             nomeCliente = `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim() || null;
             telefoneCliente = parsed.phone || null;
           } else {
-            // Abre modal para coletar nome/telefone e interrompe envio
             setShowClientModal(true);
             setIsSendingOrder(false);
             return;
@@ -814,124 +835,146 @@ export default function Menu() {
           return;
         }
 
-        // Criar comanda manualmente
-        const { data: newComanda, error: comandaError } = await supabase
-          .from("comandas")
-          .insert({
-            empresa_id: empresaId,
-            mesa_id: mesaId,
-            qr_code_sessao: sessionId,
-            status: "aberta",
-            total: cartTotal,
-            nome_cliente: nomeCliente,
-            telefone_cliente: telefoneCliente,
-          })
-          .select("id")
-          .single();
+        // Gerar UUID local para a comanda
+        currentComandaId = crypto.randomUUID();
+        const sessionId = crypto.randomUUID();
 
-        if (comandaError) throw comandaError;
-        currentComandaId = newComanda.id;
+        const novaComanda = {
+          id: currentComandaId,
+          empresa_id: empresaId,
+          mesa_id: mesaId,
+          qr_code_sessao: sessionId,
+          status: "aberta",
+          total: cartTotal,
+          nome_cliente: nomeCliente,
+          telefone_cliente: telefoneCliente,
+          criado_em: agora,
+          sincronizado: 0,
+        };
 
-        // NOTA: O trigger 'update_mesa_status_on_comanda' no banco de dados já marca a mesa como 'ocupada'
-        // automaticamente quando uma comanda é inserida com status 'aberta'.
+        // 2. SALVAR COMANDA NO INDEXEDDB PRIMEIRO (Offline-First)
+        try {
+          await db.comandas.put(novaComanda);
+        } catch (dbErr) {
+          console.warn('[Offline-First] Erro ao salvar comanda local:', dbErr);
+        }
 
-        // Inserir os pedidos
-        const pedidosToInsert = itemsToSend.map((item) => ({
-          ...item,
-          comanda_id: currentComandaId,
-        }));
-
-        const { error: pedidosError } = await supabase.from("pedidos").insert(pedidosToInsert);
-        if (pedidosError) throw pedidosError;
-
+        // Atualizar estado e localStorage
         setComandaId(currentComandaId);
         localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
-      } else {
-        // 3. PEDIDOS SUBSEQUENTES (Se comanda já existe)
-        // Busca o total atual da comanda ANTES de inserir os pedidos
-        const { data: comandaAtual, error: fetchTotalError } = await supabase
-          .from("comandas")
-          .select("total, status")
-          .eq("id", currentComandaId)
-          .single();
 
-        if (fetchTotalError) throw fetchTotalError;
-
-        // IMPORTANTE: Verificar se a comanda ainda está aberta
-        // Se a comanda foi fechada (ex: cliente anterior), criar uma nova
-        if (comandaAtual?.status !== "aberta") {
-          // Limpa referência antiga
-          localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
-          setComandaId(null);
-          
-          // Cria nova comanda (recursivamente chamando a lógica de nova comanda)
-          const sessionId = crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-
-          const { data: newComanda, error: newComandaError } = await supabase
-            .from("comandas")
-            .insert({
-              empresa_id: empresaId,
-              mesa_id: mesaId,
-              qr_code_sessao: sessionId,
-              status: "aberta",
-              total: cartTotal,
-            })
-            .select("id")
-            .single();
-
-          if (newComandaError) throw newComandaError;
-          currentComandaId = newComanda.id;
-
-          // Inserir os pedidos na nova comanda
-          const pedidosToInsert = itemsToSend.map((item) => ({
-            ...item,
-            comanda_id: currentComandaId,
-          }));
-
-          const { error: pedidosError } = await supabase.from("pedidos").insert(pedidosToInsert);
-          if (pedidosError) throw pedidosError;
-
-          setComandaId(currentComandaId);
-          localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
-        } else {
-          // Comanda ainda está aberta - adicionar pedidos normalmente
-          const totalAtual = Number(comandaAtual?.total) || 0;
-          const novoTotal = totalAtual + cartTotal;
-
-          // Insere os novos pedidos diretamente na tabela 'pedidos'
-          const subsequentPedidos = itemsToSend.map((item) => ({
-            ...item,
-            comanda_id: currentComandaId,
-          }));
-          const { error: pedidosError } = await supabase.from("pedidos").insert(subsequentPedidos);
-          if (pedidosError) throw pedidosError;
-
-          // Atualiza o total da comanda com a soma
-          const { error: updateTotalError } = await supabase
-            .from("comandas")
-            .update({ total: novoTotal })
-            .eq("id", currentComandaId);
-          if (updateTotalError) throw updateTotalError;
+        // Atualizar mesa para ocupada no IndexedDB
+        try {
+          await db.mesas.where('id').equals(mesaId).modify({ status: 'ocupada', sincronizado: 0 });
+        } catch (e) {
+          console.warn('[Offline-First] Erro ao atualizar mesa local:', e);
         }
       }
 
-      // 5. Ações de Conclusão
+      // 3. CRIAR PEDIDOS COM UUIDS LOCAIS
+      const pedidosParaSalvar = cart.map((item) => ({
+        id: crypto.randomUUID(),
+        comanda_id: currentComandaId,
+        produto_id: item.produto.id,
+        quantidade: item.quantidade,
+        preco_unitario: item.precoUnitario,
+        subtotal: item.precoUnitario * item.quantidade,
+        notas_cliente: item.tamanhoSelecionado 
+          ? `[${item.tamanhoSelecionado}] ${item.notas || ''}`.trim() 
+          : (item.notas || null),
+        status_cozinha: "pendente",
+        criado_em: agora,
+        sincronizado: 0,
+      }));
+
+      // 4. SALVAR PEDIDOS NO INDEXEDDB PRIMEIRO
+      try {
+        await db.pedidos.bulkPut(pedidosParaSalvar);
+      } catch (dbErr) {
+        console.warn('[Offline-First] Erro ao salvar pedidos locais:', dbErr);
+      }
+
+      // 5. UI RESPONDE IMEDIATAMENTE
       toast.success("Pedido enviado com sucesso!");
       setCart([]);
       setIsCartOpen(false);
-      setFechamentoSolicitado(false); // Resetar estado de fechamento quando faz novo pedido
+      setFechamentoSolicitado(false);
       fetchMeusPedidos(currentComandaId);
+
+      // 6. SE ONLINE, SINCRONIZAR EM BACKGROUND
+      if (navigator.onLine) {
+        try {
+          // Buscar comanda se não foi criada ainda no Supabase
+          const { data: comandaExiste } = await supabase
+            .from("comandas")
+            .select("id")
+            .eq("id", currentComandaId)
+            .single();
+
+          if (!comandaExiste) {
+            // Criar comanda no Supabase
+            const comandaParaSync = {
+              id: currentComandaId,
+              empresa_id: empresaId,
+              mesa_id: mesaId,
+              qr_code_sessao: crypto.randomUUID(),
+              status: "aberta",
+              total: cartTotal,
+            };
+            
+            const { error: comandaError } = await supabase
+              .from("comandas")
+              .insert(comandaParaSync);
+
+            if (!comandaError) {
+              await db.comandas.update(currentComandaId, { sincronizado: 1 });
+            }
+          } else {
+            // Atualizar total da comanda existente
+            const { data: comandaAtual } = await supabase
+              .from("comandas")
+              .select("total")
+              .eq("id", currentComandaId)
+              .single();
+            
+            const totalAtual = Number(comandaAtual?.total) || 0;
+            await supabase
+              .from("comandas")
+              .update({ total: totalAtual + cartTotal })
+              .eq("id", currentComandaId);
+          }
+
+          // Inserir pedidos no Supabase
+          const pedidosParaSync = pedidosParaSalvar.map(p => {
+            const { sincronizado, criado_em, ...rest } = p;
+            return rest;
+          });
+
+          const { error: pedidosError } = await supabase
+            .from("pedidos")
+            .insert(pedidosParaSync);
+
+          if (!pedidosError) {
+            // Marcar como sincronizados
+            for (const p of pedidosParaSalvar) {
+              await db.pedidos.update(p.id, { sincronizado: 1 });
+            }
+          }
+
+          // Sincronizar tudo em background
+          sincronizarTudo().catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro na sincronização (será tentado depois):', syncErr);
+        }
+      }
+
     } catch (error) {
-      // 💡 CORREÇÃO AQUI: Tenta extrair a mensagem de erro do Supabase
       const errorMessage =
         (error as any)?.message ||
         (error as any)?.error_description ||
-        "Erro desconhecido ao enviar pedido. (Detalhes no console)";
+        "Erro desconhecido ao enviar pedido.";
 
-      console.error("Error sending order (detailed):", error);
-      // Mensagem mais informativa
+      console.error("Error sending order:", error);
       toast.error(`Erro ao enviar pedido: ${errorMessage}`);
     } finally {
       setIsSendingOrder(false);
