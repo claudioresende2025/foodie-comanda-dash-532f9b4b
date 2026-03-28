@@ -303,11 +303,6 @@ export default function Pedidos() {
     },
     enabled: !!profile?.empresa_id,
   });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.empresa_id,
-  });
 
   // Helper para obter nome/número da mesa
   const getMesaDisplayName = (mesaId: string) => {
