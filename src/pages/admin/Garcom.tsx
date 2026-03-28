@@ -524,41 +524,46 @@ export default function Garcom() {
     }
   };
 
-  // Processar "Dar Baixa" - finaliza pagamento pelo garçom
+  // Processar "Dar Baixa" - finaliza pagamento pelo garçom - Offline-First
   const handleProcessarBaixa = async () => {
     if (!selectedMesaForBaixa || !profile?.id) return;
 
     setIsProcessingBaixa(true);
+    const agora = new Date().toISOString();
+    const vendaId = crypto.randomUUID();
 
     try {
-      // 1. Validação de concorrência: Verificar se status ainda é válido
-      const { data: mesaAtual } = await supabase
-        .from('mesas')
-        .select('status')
-        .eq('id', selectedMesaForBaixa.id)
-        .single();
-
-      if (!mesaAtual || (mesaAtual.status !== 'solicitou_fechamento' && mesaAtual.status !== 'aguardando_pagamento' && mesaAtual.status !== 'ocupada')) {
-        toast.error('Esta mesa já foi processada por outro funcionário.');
-        setDarBaixaDialogOpen(false);
-        queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
-        return;
+      // 1. BUSCAR COMANDAS LOCALMENTE PRIMEIRO
+      let comandaIds: string[] = [];
+      try {
+        const comandasLocais = await db.comandas
+          .where('mesa_id').equals(selectedMesaForBaixa.id)
+          .and(c => c.status === 'aberta' || c.status === 'aguardando_pagamento')
+          .toArray();
+        comandaIds = comandasLocais.map(c => c.id);
+      } catch (e) {
+        console.warn('[Offline-First] Erro ao buscar comandas locais:', e);
       }
 
-      // 2. Buscar TODAS as comandas da mesa (não fechadas)
-      const { data: comandas } = await supabase
-        .from('comandas')
-        .select('id')
-        .eq('mesa_id', selectedMesaForBaixa.id)
-        .in('status', ['aberta', 'aguardando_pagamento']);
+      // Se não encontrou localmente e está online, buscar do Supabase
+      if (comandaIds.length === 0 && navigator.onLine) {
+        const { data: comandas } = await supabase
+          .from('comandas')
+          .select('id')
+          .eq('mesa_id', selectedMesaForBaixa.id)
+          .in('status', ['aberta', 'aguardando_pagamento']);
+        if (comandas) {
+          comandaIds = comandas.map(c => c.id);
+        }
+      }
 
-      if (comandas && comandas.length > 0) {
-        const comandaIds = comandas.map(c => c.id);
-        
-        // 3. Registrar na tabela vendas_concluidas (uma entrada por comanda ou consolidado)
-        await supabase.from('vendas_concluidas').insert({
+      // 2. SALVAR TUDO NO INDEXEDDB PRIMEIRO
+      if (comandaIds.length > 0) {
+        // Venda concluída
+        const novaVenda = {
+          id: vendaId,
           empresa_id: profile.empresa_id,
-          comanda_id: comandaIds[0], // Usa a primeira como referência
+          comanda_id: comandaIds[0],
           mesa_id: selectedMesaForBaixa.id,
           valor_total: baixaTotalValue,
           valor_subtotal: baixaTotalValue,
@@ -566,67 +571,110 @@ export default function Garcom() {
           processado_por: profile.id,
           tipo_processamento: 'garcom',
           observacao: baixaObservacao || null,
-        });
+          criado_em: agora,
+          sincronizado: 0,
+        };
+        await db.vendas_concluidas.put(novaVenda);
 
-        // 4. Fechar TODAS as comandas
-        await supabase
-          .from('comandas')
-          .update({
+        // Fechar comandas localmente
+        for (const comandaId of comandaIds) {
+          await db.comandas.update(comandaId, {
             status: 'fechada',
             forma_pagamento: baixaFormaPagamento,
-            total: baixaTotalValue / comandas.length, // Divide proporcionalmente
-            data_fechamento: new Date().toISOString(),
-          })
-          .in('id', comandaIds);
+            total: baixaTotalValue / comandaIds.length,
+            data_fechamento: agora,
+            sincronizado: 0,
+          });
+        }
 
-        // 5. Marcar TODOS os pedidos como finalizados
-        await supabase
-          .from('pedidos')
-          .update({ status_cozinha: 'entregue' })
-          .in('comanda_id', comandaIds);
+        // Marcar pedidos como entregues localmente
+        const pedidosLocais = await db.pedidos.where('comanda_id').anyOf(comandaIds).toArray();
+        for (const pedido of pedidosLocais) {
+          await db.pedidos.update(pedido.id, { status_cozinha: 'entregue', sincronizado: 0 });
+        }
       }
 
-      // 6. Liberar mesa usando RPC (contorna RLS)
-      console.log('[GARÇOM] Tentando liberar mesa:', selectedMesaForBaixa.id);
-      const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaForBaixa.id });
-      if (mesaError) {
-        console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
-        // Fallback
-        const { error: fallbackError } = await supabase
-          .from('mesas')
-          .update({ status: 'disponivel' })
-          .eq('id', selectedMesaForBaixa.id);
-        
-        if (fallbackError) {
-          console.error('[LIBERAR MESA] Fallback também falhou:', fallbackError.message);
-        } else {
-          console.log('[LIBERAR MESA] Fallback funcionou');
+      // Liberar mesa localmente
+      await db.mesas.update(selectedMesaForBaixa.id, { status: 'disponivel', sincronizado: 0 });
+
+      // Atender chamadas localmente
+      const chamadasPendentes = await db.chamadas_garcom
+        .where('mesa_id').equals(selectedMesaForBaixa.id)
+        .and(c => c.status === 'pendente')
+        .toArray();
+      for (const chamada of chamadasPendentes) {
+        await db.chamadas_garcom.update(chamada.id, { status: 'atendida', atendida_at: agora, sincronizado: 0 });
+      }
+
+      // 3. SE ONLINE, SINCRONIZAR COM SUPABASE
+      if (navigator.onLine) {
+        try {
+          if (comandaIds.length > 0) {
+            // Sincronizar venda
+            await supabase.from('vendas_concluidas').insert({
+              id: vendaId,
+              empresa_id: profile.empresa_id,
+              comanda_id: comandaIds[0],
+              mesa_id: selectedMesaForBaixa.id,
+              valor_total: baixaTotalValue,
+              valor_subtotal: baixaTotalValue,
+              forma_pagamento: baixaFormaPagamento,
+              processado_por: profile.id,
+              tipo_processamento: 'garcom',
+              observacao: baixaObservacao || null,
+            });
+            await db.vendas_concluidas.update(vendaId, { sincronizado: 1 });
+
+            // Fechar comandas
+            await supabase
+              .from('comandas')
+              .update({
+                status: 'fechada',
+                forma_pagamento: baixaFormaPagamento,
+                total: baixaTotalValue / comandaIds.length,
+                data_fechamento: agora,
+              })
+              .in('id', comandaIds);
+
+            // Marcar pedidos como entregues
+            await supabase
+              .from('pedidos')
+              .update({ status_cozinha: 'entregue' })
+              .in('comanda_id', comandaIds);
+
+            // Marcar como sincronizado
+            for (const comandaId of comandaIds) {
+              await db.comandas.update(comandaId, { sincronizado: 1 });
+            }
+          }
+
+          // Liberar mesa
+          await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaForBaixa.id }).catch(() => {
+            supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaForBaixa.id);
+          });
+          await db.mesas.update(selectedMesaForBaixa.id, { sincronizado: 1 });
+
+          // Atender chamadas
+          await supabase
+            .from('chamadas_garcom')
+            .update({ status: 'atendida', atendida_at: agora })
+            .eq('mesa_id', selectedMesaForBaixa.id)
+            .eq('status', 'pendente');
+
+          sincronizarTudo().catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro na sincronização (será tentado depois):', syncErr);
         }
-      } else {
-        console.log('[LIBERAR MESA] Mesa liberada com sucesso via RPC');
       }
 
       toast.success('Baixa realizada com sucesso! Mesa liberada.');
       setDarBaixaDialogOpen(false);
       
-      // 7. Atender TODAS as chamadas pendentes desta mesa (para parar o som)
-      await supabase
-        .from('chamadas_garcom')
-        .update({ status: 'atendida', atendida_at: new Date().toISOString() })
-        .eq('mesa_id', selectedMesaForBaixa.id)
-        .eq('status', 'pendente');
-      
       queryClient.invalidateQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
-      queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] }); // Sincronizar com página Mesas
+      queryClient.invalidateQueries({ queryKey: ['mesas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['comandas-abertas', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['chamadas-garcom', profile?.empresa_id] });
       queryClient.invalidateQueries({ queryKey: ['chamadas-garcom-kds', profile?.empresa_id] });
-      
-      // Forçar atualização imediata
-      setTimeout(() => {
-        queryClient.refetchQueries({ queryKey: ['mesas', profile?.empresa_id] });
-        queryClient.refetchQueries({ queryKey: ['mesas-garcom', profile?.empresa_id] });
-      }, 500);
     } catch (error: any) {
       console.error('Erro ao dar baixa:', error);
       toast.error(`Erro ao processar baixa: ${error.message}`);

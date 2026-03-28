@@ -260,8 +260,11 @@ export default function Caixa() {
 
     setIsProcessingVendaAvulsa(true);
     try {
-      // Registrar na tabela vendas_concluidas
-      await supabase.from('vendas_concluidas').insert({
+      const vendaId = crypto.randomUUID();
+      const agora = new Date().toISOString();
+
+      const novaVenda = {
+        id: vendaId,
         empresa_id: profile.empresa_id,
         comanda_id: null,
         mesa_id: null,
@@ -270,24 +273,55 @@ export default function Caixa() {
         forma_pagamento: vendaAvulsaPagamento,
         processado_por: profile.id,
         tipo_processamento: 'caixa',
-      });
+        criado_em: agora,
+        sincronizado: 0,
+      };
 
-      // Registrar em movimentacoes_caixa se houver caixa aberto
-      const { data: caixaAberto } = await supabase
-        .from('caixas')
-        .select('id')
-        .eq('empresa_id', profile.empresa_id)
-        .eq('status', 'aberto')
-        .maybeSingle();
+      // 1. Salvar no IndexedDB primeiro (Offline-First)
+      try {
+        await db.vendas_concluidas.put(novaVenda);
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao salvar venda local:', err);
+      }
 
-      if (caixaAberto) {
-        await supabase.from('movimentacoes_caixa').insert({
-          caixa_id: caixaAberto.id,
-          tipo: 'entrada',
-          valor: vendaAvulsaTotal,
-          forma_pagamento: vendaAvulsaPagamento,
-          descricao: `Venda avulsa: ${vendaAvulsaItens.map(i => `${i.quantidade}x ${i.nome}`).join(', ')}`,
-        });
+      // 2. Se online, sincronizar
+      if (navigator.onLine) {
+        const { sincronizado, criado_em, ...dadosParaSync } = novaVenda;
+        await supabase.from('vendas_concluidas').insert(dadosParaSync);
+        await db.vendas_concluidas.update(vendaId, { sincronizado: 1 });
+
+        // Registrar em movimentacoes_caixa se houver caixa aberto
+        const { data: caixaAberto } = await supabase
+          .from('caixas')
+          .select('id')
+          .eq('empresa_id', profile.empresa_id)
+          .eq('status', 'aberto')
+          .maybeSingle();
+
+        if (caixaAberto) {
+          const movId = crypto.randomUUID();
+          const novaMov = {
+            id: movId,
+            caixa_id: caixaAberto.id,
+            tipo: 'entrada',
+            valor: vendaAvulsaTotal,
+            forma_pagamento: vendaAvulsaPagamento,
+            descricao: `Venda avulsa: ${vendaAvulsaItens.map(i => `${i.quantidade}x ${i.nome}`).join(', ')}`,
+            sincronizado: 0,
+          };
+          await db.movimentacoes_caixa.put(novaMov);
+          await supabase.from('movimentacoes_caixa').insert({
+            id: movId,
+            caixa_id: caixaAberto.id,
+            tipo: 'entrada',
+            valor: vendaAvulsaTotal,
+            forma_pagamento: vendaAvulsaPagamento,
+            descricao: novaMov.descricao,
+          });
+          await db.movimentacoes_caixa.update(movId, { sincronizado: 1 });
+        }
+
+        sincronizarTudo().catch(console.warn);
       }
 
       // Imprimir cupom
@@ -985,29 +1019,20 @@ export default function Caixa() {
     }
   };
 
-  // Processar liquidação da mesa pendente
+  // Processar liquidação da mesa pendente - Offline-First
   const handleProcessarLiquidacao = async () => {
     if (!selectedMesaLiquidacao || liquidacaoComandaIds.length === 0 || !profile?.id) return;
 
     setIsProcessingLiquidacao(true);
+    const agora = new Date().toISOString();
+    const vendaId = crypto.randomUUID();
 
     try {
-      // 1. Validação de concorrência
-      const { data: mesaAtual } = await supabase
-        .from('mesas')
-        .select('status')
-        .eq('id', selectedMesaLiquidacao.id)
-        .single();
-
-      if (!mesaAtual || (mesaAtual.status !== 'solicitou_fechamento' && mesaAtual.status !== 'aguardando_pagamento')) {
-        toast.error('Esta mesa já foi processada por outro funcionário.');
-        setLiquidacaoDialogOpen(false);
-        queryClient.invalidateQueries({ queryKey: ['mesas-pendentes', profile?.empresa_id] });
-        return;
-      }
-
-      // 2. Registrar na tabela vendas_concluidas (usando a primeira comanda como referência)
-      await supabase.from('vendas_concluidas').insert({
+      // 1. SALVAR TUDO NO INDEXEDDB PRIMEIRO (Offline-First)
+      
+      // Venda concluída
+      const novaVenda = {
+        id: vendaId,
         empresa_id: profile.empresa_id,
         comanda_id: liquidacaoComandaIds[0],
         mesa_id: selectedMesaLiquidacao.id,
@@ -1016,34 +1041,92 @@ export default function Caixa() {
         forma_pagamento: liquidacaoFormaPagamento,
         processado_por: profile.id,
         tipo_processamento: 'caixa',
-      });
+        criado_em: agora,
+        sincronizado: 0,
+      };
+      await db.vendas_concluidas.put(novaVenda);
 
-      // 3. Fechar TODAS as comandas
-      await supabase
-        .from('comandas')
-        .update({
+      // Atualizar comandas localmente
+      for (const comandaId of liquidacaoComandaIds) {
+        await db.comandas.update(comandaId, {
           status: 'fechada',
           forma_pagamento: liquidacaoFormaPagamento,
           total: liquidacaoTotal / liquidacaoComandaIds.length,
-          data_fechamento: new Date().toISOString(),
-        })
-        .in('id', liquidacaoComandaIds);
+          data_fechamento: agora,
+          sincronizado: 0,
+        });
+      }
 
-      // 4. Marcar TODOS os pedidos como finalizados
-      await supabase
-        .from('pedidos')
-        .update({ status_cozinha: 'entregue' })
-        .in('comanda_id', liquidacaoComandaIds);
+      // Atualizar pedidos localmente
+      const pedidosLocais = await db.pedidos.where('comanda_id').anyOf(liquidacaoComandaIds).toArray();
+      for (const pedido of pedidosLocais) {
+        await db.pedidos.update(pedido.id, { status_cozinha: 'entregue', sincronizado: 0 });
+      }
 
-      // 5. Liberar mesa usando RPC (contorna RLS)
-      const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaLiquidacao.id });
-      if (mesaError) {
-        console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
-        // Fallback
-        await supabase
-          .from('mesas')
-          .update({ status: 'disponivel' })
-          .eq('id', selectedMesaLiquidacao.id);
+      // Liberar mesa localmente
+      await db.mesas.update(selectedMesaLiquidacao.id, { status: 'disponivel', sincronizado: 0 });
+
+      // 2. SE ONLINE, SINCRONIZAR COM SUPABASE
+      if (navigator.onLine) {
+        try {
+          // Validação de concorrência
+          const { data: mesaAtual } = await supabase
+            .from('mesas')
+            .select('status')
+            .eq('id', selectedMesaLiquidacao.id)
+            .single();
+
+          if (mesaAtual && (mesaAtual.status === 'solicitou_fechamento' || mesaAtual.status === 'aguardando_pagamento' || mesaAtual.status === 'ocupada')) {
+            // Sincronizar venda
+            await supabase.from('vendas_concluidas').insert({
+              id: vendaId,
+              empresa_id: profile.empresa_id,
+              comanda_id: liquidacaoComandaIds[0],
+              mesa_id: selectedMesaLiquidacao.id,
+              valor_total: liquidacaoTotal,
+              valor_subtotal: liquidacaoTotal,
+              forma_pagamento: liquidacaoFormaPagamento,
+              processado_por: profile.id,
+              tipo_processamento: 'caixa',
+            });
+            await db.vendas_concluidas.update(vendaId, { sincronizado: 1 });
+
+            // Fechar comandas
+            await supabase
+              .from('comandas')
+              .update({
+                status: 'fechada',
+                forma_pagamento: liquidacaoFormaPagamento,
+                total: liquidacaoTotal / liquidacaoComandaIds.length,
+                data_fechamento: agora,
+              })
+              .in('id', liquidacaoComandaIds);
+
+            // Marcar pedidos como entregues
+            await supabase
+              .from('pedidos')
+              .update({ status_cozinha: 'entregue' })
+              .in('comanda_id', liquidacaoComandaIds);
+
+            // Liberar mesa
+            await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaLiquidacao.id }).catch(() => {
+              supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaLiquidacao.id);
+            });
+
+            // Marcar tudo como sincronizado
+            for (const comandaId of liquidacaoComandaIds) {
+              await db.comandas.update(comandaId, { sincronizado: 1 });
+            }
+            for (const pedido of pedidosLocais) {
+              await db.pedidos.update(pedido.id, { sincronizado: 1 });
+            }
+            await db.mesas.update(selectedMesaLiquidacao.id, { sincronizado: 1 });
+          }
+
+          sincronizarTudo().catch(console.warn);
+        } catch (syncErr) {
+          console.warn('[Offline-First] Erro na sincronização (será tentado depois):', syncErr);
+        }
       }
 
       toast.success(`Mesa ${selectedMesaLiquidacao.numero_mesa} liberada com sucesso!`);

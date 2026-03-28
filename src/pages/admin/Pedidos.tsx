@@ -534,20 +534,38 @@ export default function Pedidos() {
     },
   });
 
-  // Handler para atender chamada de garçom
+  // Handler para atender chamada de garçom - Offline-First
   const handleAtenderChamada = async (chamadaId: string) => {
-    const { error } = await supabase
-      .from("chamadas_garcom")
-      .update({ status: "atendida", atendida_at: new Date().toISOString() })
-      .eq("id", chamadaId);
+    const atualizacao = { 
+      status: "atendida", 
+      atendida_at: new Date().toISOString(),
+      sincronizado: 0 
+    };
 
-    if (error) {
-      toast.error("Erro ao atender chamada");
-    } else {
-      toast.success("Chamada atendida!");
-      queryClient.invalidateQueries({ queryKey: ["chamadas-garcom-kds", profile?.empresa_id] });
-      queryClient.invalidateQueries({ queryKey: ["chamadas-garcom", profile?.empresa_id] }); // Sincronizar com página Garçom
+    // 1. Atualizar no banco local primeiro
+    try {
+      await db.chamadas_garcom.update(chamadaId, atualizacao);
+    } catch (err) {
+      console.warn('[Offline-First] Erro ao atualizar chamada local:', err);
     }
+
+    // 2. Se online, sincronizar
+    if (navigator.onLine) {
+      const { error } = await supabase
+        .from("chamadas_garcom")
+        .update({ status: "atendida", atendida_at: atualizacao.atendida_at })
+        .eq("id", chamadaId);
+
+      if (!error) {
+        await db.chamadas_garcom.update(chamadaId, { sincronizado: 1 });
+      } else {
+        toast.error("Erro ao sincronizar chamada");
+      }
+    }
+
+    toast.success("Chamada atendida!");
+    queryClient.invalidateQueries({ queryKey: ["chamadas-garcom-kds", profile?.empresa_id] });
+    queryClient.invalidateQueries({ queryKey: ["chamadas-garcom", profile?.empresa_id] });
   };
 
   const getNextStatus = (current: PedidoStatus): PedidoStatus | null => {

@@ -4,8 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 // 1. CONFIGURAÇÃO DO BANCO LOCAL (INDEXEDDB)
 export const db = new Dexie('FoodComandaPro_DB');
 
-db.version(3).stores({
-    pedidos: 'id, comanda_id, produto_id, status, sincronizado, criado_em',
+db.version(4).stores({
+    // Tabelas do salão
+    pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em',
     comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em',
     produtos: 'id, nome, preco, categoria_id, empresa_id, ativo, sincronizado',
     categorias: 'id, nome, empresa_id, ordem, ativo, sincronizado',
@@ -14,7 +15,10 @@ db.version(3).stores({
     movimentacoes_caixa: 'id, caixa_id, tipo, valor, descricao, sincronizado',
     vendas_concluidas: 'id, comanda_id, mesa_id, valor_total, empresa_id, sincronizado',
     empresa: 'id, nome, cnpj, sincronizado',
-    chamadas_garcom: 'id, mesa_id, empresa_id, status, sincronizado'
+    chamadas_garcom: 'id, mesa_id, empresa_id, status, sincronizado',
+    // Tabelas de delivery
+    pedidos_delivery: 'id, empresa_id, user_id, status, total, sincronizado',
+    itens_delivery: 'id, pedido_delivery_id, produto_id, sincronizado',
 });
 
 // 2. DOWNLOAD INICIAL (POPULAR O PC DO RESTAURANTE)
@@ -81,7 +85,18 @@ export async function sincronizarTudo(supabaseClient = supabase) {
         return;
     }
     
-    const tabelas = ['pedidos', 'produtos', 'categorias', 'mesas', 'comandas', 'movimentacoes_caixa', 'vendas_concluidas'];
+    const tabelas = [
+        'pedidos', 
+        'produtos', 
+        'categorias', 
+        'mesas', 
+        'comandas', 
+        'movimentacoes_caixa', 
+        'vendas_concluidas',
+        'chamadas_garcom',
+        'pedidos_delivery',
+        'itens_delivery'
+    ];
 
     for (const nomeTabela of tabelas) {
         if (!db[nomeTabela]) continue;
@@ -94,7 +109,7 @@ export async function sincronizarTudo(supabaseClient = supabase) {
                 
                 for (const item of pendentes) {
                     try {
-                        const { sincronizado, numero, atualizado_em, ...dadosParaSubir } = item;
+                        const { sincronizado, numero, atualizado_em, criado_em, ...dadosParaSubir } = item;
                         const { error } = await supabaseClient
                             .from(nomeTabela)
                             .upsert([dadosParaSubir], { onConflict: 'id' });
@@ -121,7 +136,18 @@ export async function sincronizarTudo(supabaseClient = supabase) {
 // Retorna o número total de registros pendentes
 export async function verificarPendencias() {
     let total = 0;
-    const tabelas = ['pedidos', 'produtos', 'categorias', 'mesas', 'comandas', 'movimentacoes_caixa', 'vendas_concluidas'];
+    const tabelas = [
+        'pedidos', 
+        'produtos', 
+        'categorias', 
+        'mesas', 
+        'comandas', 
+        'movimentacoes_caixa', 
+        'vendas_concluidas',
+        'chamadas_garcom',
+        'pedidos_delivery',
+        'itens_delivery'
+    ];
     
     for (const tabela of tabelas) {
         if (db[tabela]) {
