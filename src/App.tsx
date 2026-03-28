@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
+import { supabase } from "@/integrations/supabase/client";
+import { sincronizarPedidosPendentes } from "./lib/db";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -47,98 +49,112 @@ import AdminDesempenho from "@/pages/admin/AdminDesempenho";
 import AdminAvaliacoes from "@/pages/admin/AdminAvaliacoes";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 import ErrorBoundary from '@/components/ErrorBoundary';
 import CardapioDigitalDemo from '@/pages/CardapioDigitalDemo';
 
 const queryClient = new QueryClient();
 
-// Component to handle PWA manifest
 const PWAManifestHandler = () => {
   usePWAManifest();
   return null;
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <UpdateNotification />
-      <BrowserRouter>
-        <AuthProvider>
-          <SubscriptionHandler />
-          <PWAManifestHandler />
-          <ErrorBoundary>
-            <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/para-restaurantes" element={<LandingRestaurantes />} />
-            {/* Auth routes */}
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/auth/:empresaNome" element={<Auth />} />
-            <Route path="/auth/cliente" element={<AuthCliente />} />
-            {/* Public menu routes for customers - accessible without login */}
-            <Route path="/menu/:empresaId" element={<Menu />} />
-            <Route path="/menu/:empresaId/:mesaId" element={<Menu />} />
-            <Route path="/cardapio/:empresaId" element={<Menu />} />
-            <Route path="/cardapio/:empresaId/:mesaId" element={<Menu />} />
-            {/* PWA Install page */}
-            <Route path="/install" element={<Install />} />
-            {/* Demo - Cardápio Digital para teste UX */}
-            <Route path="/cardapio-demo" element={<CardapioDigitalDemo />} />
-            {/* Planos e Assinatura */}
-            <Route path="/planos" element={<Planos />} />
-            <Route path="/subscription/success" element={<SubscriptionSuccess />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/email-confirmation" element={<EmailConfirmation />} />
-            {/* Super Admin (Desenvolvedor) */}
-            <Route path="/super-admin" element={<SuperAdmin />} />
-            {/* Delivery marketplace */}
-            <Route path="/delivery" element={<Delivery />} />
-            <Route path="/delivery/auth" element={<DeliveryAuth />} />
-            <Route path="/delivery/orders" element={<DeliveryOrders />} />
-            <Route path="/delivery/profile" element={<DeliveryProfile />} />
-            <Route path="/delivery/:empresaId" element={<DeliveryRestaurant />} />
-            <Route path="/delivery/success" element={<DeliverySuccess />} />
-            <Route path="/delivery/tracking/:pedidoId" element={<DeliveryTracking />} />
-            <Route path="/admin" element={
-              <SubscriptionGuard>
-                <AdminLayout />
-              </SubscriptionGuard>
-            }>
-              <Route index element={<Dashboard />} />
-              <Route path="onboarding" element={<Onboarding />} />
-              <Route path="mesas" element={<Mesas />} />
-              <Route path="cardapio" element={<Cardapio />} />
-              <Route path="pedidos" element={<Pedidos />} />
-              <Route path="delivery" element={<PedidosDelivery />} />
-              <Route path="delivery/dashboard" element={<DeliveryDashboard />} />
-              <Route path="desempenho" element={<AdminDesempenho />} />
-              <Route path="avaliacoes" element={<AdminAvaliacoes />} />
-              <Route path="entregador" element={<EntregadorPanel />} />
-              <Route path="marketing" element={<Marketing />} />
-              <Route path="caixa" element={<Caixa />} />
-              <Route path="equipe" element={<Equipe />} />
-              <Route path="empresa" element={<Empresa />} />
-              <Route path="configuracoes" element={<Configuracoes />} />
-              <Route path="garcom" element={<Garcom />} /> 
-              <Route path="assinatura" element={<Assinatura />} /> 
-              <Route path="diagnostico-stripe" element={<DiagnosticoStripe />} /> 
-            </Route>
-            <Route path="*" element={<NotFound />} />
-            </Routes>
-          </ErrorBoundary>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+// --- ALTERAÇÃO AQUI: Transformamos o App para suportar o useEffect ---
+const App = () => {
+
+  // Lógica de Sincronização Automática (O Sentinela)
+  useEffect(() => {
+    const realizarSincronizacao = async () => {
+      if (navigator.onLine) {
+        console.log("🌐 Internet detectada! Sincronizando pedidos pendentes...");
+        await sincronizarPedidosPendentes(supabase);
+      }
+    };
+
+    // Tenta sincronizar ao abrir o app
+    realizarSincronizacao();
+
+    // Vigia a volta da internet
+    window.addEventListener('online', realizarSincronizacao);
+    return () => window.removeEventListener('online', realizarSincronizacao);
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <UpdateNotification />
+        <OfflineIndicator />
+        <BrowserRouter>
+          <AuthProvider>
+            <SubscriptionHandler />
+            <PWAManifestHandler />
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/para-restaurantes" element={<LandingRestaurantes />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/auth/:empresaNome" element={<Auth />} />
+                <Route path="/auth/cliente" element={<AuthCliente />} />
+                <Route path="/menu/:empresaId" element={<Menu />} />
+                <Route path="/menu/:empresaId/:mesaId" element={<Menu />} />
+                <Route path="/cardapio/:empresaId" element={<Menu />} />
+                <Route path="/cardapio/:empresaId/:mesaId" element={<Menu />} />
+                <Route path="/install" element={<Install />} />
+                <Route path="/cardapio-demo" element={<CardapioDigitalDemo />} />
+                <Route path="/planos" element={<Planos />} />
+                <Route path="/subscription/success" element={<SubscriptionSuccess />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/email-confirmation" element={<EmailConfirmation />} />
+                <Route path="/super-admin" element={<SuperAdmin />} />
+                <Route path="/delivery" element={<Delivery />} />
+                <Route path="/delivery/auth" element={<DeliveryAuth />} />
+                <Route path="/delivery/orders" element={<DeliveryOrders />} />
+                <Route path="/delivery/profile" element={<DeliveryProfile />} />
+                <Route path="/delivery/:empresaId" element={<DeliveryRestaurant />} />
+                <Route path="/delivery/success" element={<DeliverySuccess />} />
+                <Route path="/delivery/tracking/:pedidoId" element={<DeliveryTracking />} />
+                <Route path="/admin" element={
+                  <SubscriptionGuard>
+                    <AdminLayout />
+                  </SubscriptionGuard>
+                }>
+                  <Route index element={<Dashboard />} />
+                  <Route path="onboarding" element={<Onboarding />} />
+                  <Route path="mesas" element={<Mesas />} />
+                  <Route path="cardapio" element={<Cardapio />} />
+                  <Route path="pedidos" element={<Pedidos />} />
+                  <Route path="delivery" element={<PedidosDelivery />} />
+                  <Route path="delivery/dashboard" element={<DeliveryDashboard />} />
+                  <Route path="desempenho" element={<AdminDesempenho />} />
+                  <Route path="avaliacoes" element={<AdminAvaliacoes />} />
+                  <Route path="entregador" element={<EntregadorPanel />} />
+                  <Route path="marketing" element={<Marketing />} />
+                  <Route path="caixa" element={<Caixa />} />
+                  <Route path="equipe" element={<Equipe />} />
+                  <Route path="empresa" element={<Empresa />} />
+                  <Route path="configuracoes" element={<Configuracoes />} />
+                  <Route path="garcom" element={<Garcom />} />
+                  <Route path="assinatura" element={<Assinatura />} />
+                  <Route path="diagnostico-stripe" element={<DiagnosticoStripe />} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </ErrorBoundary>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 function SubscriptionHandler() {
   const navigate = useNavigate();
   const location = useLocation();
   useEffect(() => {
     try {
-      // Ignorar rotas de subscription (já tratam o fluxo)
       if (location.pathname.startsWith('/subscription')) {
         return;
       }
@@ -154,7 +170,6 @@ function SubscriptionHandler() {
             const { data: { user } } = await supabase.auth.getUser();
 
             if (user) {
-              // Usuário logado: verificar se tem empresa
               const { data: prof } = await supabase
                 .from('profiles')
                 .select('empresa_id')
@@ -162,7 +177,6 @@ function SubscriptionHandler() {
                 .single();
 
               if (prof?.empresa_id) {
-                // Upgrade: processar assinatura diretamente sem deslogar
                 if (sessionId) {
                   try {
                     await supabase.functions.invoke('process-subscription', {
@@ -172,13 +186,11 @@ function SubscriptionHandler() {
                     console.warn('Erro ao processar assinatura inline:', e);
                   }
                 }
-                // Redirecionar para o admin sem deslogar
                 navigate('/admin', { replace: true });
                 return;
               }
             }
 
-            // Novo usuário (sem empresa): redirecionar para /subscription/success
             const successParams = new URLSearchParams();
             if (sessionId) successParams.set('session_id', sessionId);
             if (planoId) successParams.set('planoId', planoId);
