@@ -1,114 +1,154 @@
-import { useState, useEffect } from 'react';
-import { WifiOff, Wifi, CloudOff, RefreshCw } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { verificarPendencias, sincronizarTudo } from '@/lib/db';
-import { supabase } from '@/integrations/supabase/client';
+/**
+ * OfflineIndicator - Indicador visual do status de conexão
+ * 
+ * Usa o ConnectionManager para mostrar:
+ * - Status atual (online/offline/syncing)
+ * - Quantidade de dados pendentes
+ * - Última sincronização
+ * - Botão para sincronizar manualmente
+ */
+
+import { useEffect, useRef } from 'react';
+import { WifiOff, Wifi, RefreshCw, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { useConnection } from '@/hooks/useConnection';
 import { toast } from 'sonner';
 
 export function OfflineIndicator() {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [pendencias, setPendencias] = useState<Record<string, number>>({});
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { 
+    isOnline, 
+    status, 
+    pendingCount, 
+    supabaseReachable,
+    lastSync,
+    forceSync 
+  } = useConnection();
+  
+  const previousStatus = useRef(status);
 
+  // Notificar usuário quando mudar de status
   useEffect(() => {
-    const handleOnline = async () => {
-      setIsOnline(true);
-      toast.success('Conexão restaurada! Sincronizando dados...', { duration: 3000 });
-      
-      // Sincronizar automaticamente ao voltar online
-      setIsSyncing(true);
-      try {
-        await sincronizarTudo(supabase);
-        toast.success('Dados sincronizados com sucesso!');
-      } catch (err) {
-        console.error('Erro na sincronização:', err);
-      } finally {
-        setIsSyncing(false);
-        atualizarPendencias();
+    if (previousStatus.current !== status) {
+      if (status === 'offline' && previousStatus.current !== 'checking') {
+        toast.warning('Modo Offline ativado. Dados salvos localmente.', { 
+          duration: 4000,
+          id: 'connection-status'
+        });
+      } else if (status === 'online' && previousStatus.current === 'offline') {
+        toast.success('Conexão restaurada! Sincronizando...', { 
+          duration: 3000,
+          id: 'connection-status'
+        });
+      } else if (status === 'syncing') {
+        // Não mostrar toast para syncing, apenas o indicador visual
       }
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-      toast.warning('Você está offline. Os dados serão salvos localmente.', { duration: 5000 });
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  const atualizarPendencias = async () => {
-    try {
-      const p = await verificarPendencias();
-      setPendencias(p);
-    } catch (err) {
-      // Ignora erros
+      previousStatus.current = status;
     }
-  };
-
-  // Verificar pendências periodicamente
-  useEffect(() => {
-    atualizarPendencias();
-    const interval = setInterval(atualizarPendencias, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const totalPendencias = Object.values(pendencias).reduce((a, b) => a + b, 0);
+  }, [status]);
 
   const handleSyncClick = async () => {
-    if (!isOnline || isSyncing) return;
+    if (status === 'syncing' || status === 'offline') return;
     
-    setIsSyncing(true);
-    try {
-      await sincronizarTudo(supabase);
+    const success = await forceSync();
+    if (success) {
       toast.success('Sincronização concluída!');
-      atualizarPendencias();
-    } catch (err) {
-      toast.error('Erro na sincronização');
-    } finally {
-      setIsSyncing(false);
+    } else {
+      toast.error('Erro na sincronização. Tente novamente.');
     }
   };
+
+  const formatLastSync = () => {
+    if (!lastSync) return null;
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - lastSync.getTime()) / 1000);
+    
+    if (diff < 60) return 'agora';
+    if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
+    return lastSync.toLocaleDateString('pt-BR');
+  };
+
+  const getStatusConfig = () => {
+    switch (status) {
+      case 'online':
+        return {
+          bgColor: 'bg-green-500/90',
+          textColor: 'text-white',
+          icon: <Wifi className="w-4 h-4" />,
+          label: 'Online',
+          animate: false
+        };
+      case 'syncing':
+        return {
+          bgColor: 'bg-blue-500/90',
+          textColor: 'text-white',
+          icon: <RefreshCw className="w-4 h-4 animate-spin" />,
+          label: 'Sincronizando...',
+          animate: false
+        };
+      case 'checking':
+        return {
+          bgColor: 'bg-gray-500/90',
+          textColor: 'text-white',
+          icon: <Loader2 className="w-4 h-4 animate-spin" />,
+          label: 'Verificando...',
+          animate: false
+        };
+      case 'offline':
+      default:
+        return {
+          bgColor: 'bg-red-500',
+          textColor: 'text-white',
+          icon: <WifiOff className="w-4 h-4" />,
+          label: 'Modo Offline',
+          animate: true
+        };
+    }
+  };
+
+  const statusConfig = getStatusConfig();
+  const lastSyncText = formatLastSync();
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
-      {/* Indicador de pendências */}
-      {totalPendencias > 0 && isOnline && (
+      {/* Indicador de pendências - só mostra se online e tem pendências */}
+      {pendingCount > 0 && status !== 'offline' && (
         <button
           onClick={handleSyncClick}
-          disabled={isSyncing}
-          className="flex items-center gap-2 bg-yellow-500/90 text-yellow-950 px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:bg-yellow-400 transition-colors"
+          disabled={status === 'syncing'}
+          className="flex items-center gap-2 bg-yellow-500/90 text-yellow-950 px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:bg-yellow-400 transition-colors disabled:opacity-50"
         >
-          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-          {isSyncing ? 'Sincronizando...' : `${totalPendencias} pendente(s)`}
+          <RefreshCw className={`w-4 h-4 ${status === 'syncing' ? 'animate-spin' : ''}`} />
+          {status === 'syncing' ? 'Sincronizando...' : `${pendingCount} pendente(s)`}
         </button>
       )}
 
-      {/* Status de conexão */}
+      {/* Status de conexão principal */}
       <div
         className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium shadow-lg transition-all ${
-          isOnline
-            ? 'bg-green-500/90 text-white'
-            : 'bg-red-500 text-white animate-pulse'
-        }`}
+          statusConfig.bgColor
+        } ${statusConfig.textColor} ${statusConfig.animate ? 'animate-pulse' : ''}`}
       >
-        {isOnline ? (
-          <>
-            <Wifi className="w-4 h-4" />
-            <span>Online</span>
-          </>
-        ) : (
-          <>
-            <WifiOff className="w-4 h-4" />
-            <span>Offline - Modo Local</span>
-          </>
+        {statusConfig.icon}
+        <span>{statusConfig.label}</span>
+        
+        {/* Indicador de Supabase */}
+        {status === 'online' && (
+          <span className="ml-1 opacity-70">
+            {supabaseReachable ? (
+              <Cloud className="w-3 h-3 inline" />
+            ) : (
+              <CloudOff className="w-3 h-3 inline" />
+            )}
+          </span>
         )}
       </div>
+
+      {/* Última sincronização - só mostra se offline e tem data */}
+      {status === 'offline' && lastSyncText && (
+        <div className="text-xs text-gray-400 bg-gray-800/80 px-2 py-1 rounded">
+          Última sync: {lastSyncText}
+        </div>
+      )}
     </div>
   );
 }

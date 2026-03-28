@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { sincronizarTudo } from "./lib/db";
+import { connectionManager } from "./lib/connectionManager";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -63,21 +64,14 @@ const PWAManifestHandler = () => {
 // --- ALTERAÇÃO AQUI: Transformamos o App para suportar o useEffect ---
 const App = () => {
 
-  // Lógica de Sincronização Automática (O Sentinela)
+  // Inicializar o ConnectionManager (Sistema de Detecção Automática)
   useEffect(() => {
-    const realizarSincronizacao = async () => {
-      if (navigator.onLine) {
-        console.log("🌐 Internet detectada! Sincronizando dados pendentes...");
-        await sincronizarTudo(supabase);
-      }
+    console.log("🚀 Inicializando sistema de conexão automática...");
+    connectionManager.init();
+
+    return () => {
+      connectionManager.destroy();
     };
-
-    // Tenta sincronizar ao abrir o app
-    realizarSincronizacao();
-
-    // Vigia a volta da internet
-    window.addEventListener('online', realizarSincronizacao);
-    return () => window.removeEventListener('online', realizarSincronizacao);
   }, []);
 
   return (

@@ -1,4 +1,5 @@
 import Dexie from 'dexie';
+import { supabase } from '@/integrations/supabase/client';
 
 // 1. CONFIGURAÇÃO DO BANCO LOCAL (INDEXEDDB)
 export const db = new Dexie('FoodComandaPro_DB');
@@ -17,7 +18,7 @@ db.version(3).stores({
 });
 
 // 2. DOWNLOAD INICIAL (POPULAR O PC DO RESTAURANTE)
-export async function baixarDadosIniciais(supabaseClient, empresaId) {
+export async function baixarDadosIniciais(empresaId, supabaseClient = supabase) {
     if (!navigator.onLine || !empresaId) return;
 
     console.log("📥 Atualizando banco local com dados da nuvem...");
@@ -74,7 +75,7 @@ export async function salvarLocal(tabela, dados) {
 }
 
 // 4. SINCRONIZADOR GLOBAL (ENVIO)
-export async function sincronizarTudo(supabaseClient) {
+export async function sincronizarTudo(supabaseClient = supabase) {
     if (!navigator.onLine) {
         console.log('[Sync] Offline - sincronização adiada');
         return;
@@ -117,20 +118,21 @@ export async function sincronizarTudo(supabaseClient) {
 }
 
 // 5. VERIFICAR PENDÊNCIAS DE SINCRONIZAÇÃO
+// Retorna o número total de registros pendentes
 export async function verificarPendencias() {
-    const pendencias = {};
-    const tabelas = ['pedidos', 'produtos', 'categorias', 'mesas', 'comandas'];
+    let total = 0;
+    const tabelas = ['pedidos', 'produtos', 'categorias', 'mesas', 'comandas', 'movimentacoes_caixa', 'vendas_concluidas'];
     
     for (const tabela of tabelas) {
         if (db[tabela]) {
             try {
                 const count = await db[tabela].where('sincronizado').equals(0).count();
-                if (count > 0) pendencias[tabela] = count;
+                total += count;
             } catch (e) {
                 // tabela pode não existir ainda
             }
         }
     }
     
-    return pendencias;
+    return total;
 }
