@@ -29,6 +29,9 @@ db.serialize(() => {
 app.post('/api/pedidos', (req, res) => {
     const { id, mesa_id, item } = req.body;
 
+    // LOG DE RASTREIO PARA DIAGNÓSTICO
+    console.log(`🔎 RECEBIDO DO CELULAR - ID Comanda: ${mesa_id} | Item: ${item}`);
+
     db.run(`INSERT INTO pedidos (id, mesa_id, item, status) VALUES (?, ?, ?, 'preparando')`,
         [id, mesa_id, item],
         function (err) {
@@ -36,9 +39,10 @@ app.post('/api/pedidos', (req, res) => {
                 console.error("❌ Erro ao salvar no SQLite:", err.message);
                 return res.status(500).json({ erro: err.message });
             }
-            console.log(`📦 Pedido recebido e salvo no caixa: ${item}`);
-            res.json({ sucesso: true, mensagem: 'Pedido salvo na cozinha e no caixa!' });
-        });
+            console.log(`📦 Pedido salvo no banco local. Aguardando sincronização...`);
+            res.json({ sucesso: true, mensagem: 'Pedido salvo no caixa!' });
+        }
+    );
 });
 
 // --- 🤖 ROBÔ DE SINCRONIZAÇÃO (OFFLINE-FIRST) ---
