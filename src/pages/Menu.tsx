@@ -979,9 +979,9 @@ export default function Menu() {
 
       // 5. ENVIAR PARA SERVIDOR LOCAL DO CAIXA
       try {
-        // Formatar itens como string legível para o servidor
-        const itensTexto = cart.map((item) => 
-          `${item.quantidade}x ${item.produto.nome}${item.tamanhoSelecionado ? ` (${item.tamanhoSelecionado})` : ''}${item.notas ? ` - ${item.notas}` : ''}`
+        // Criamos o resumo para o terminal do PC (1x Água, etc)
+        const resumoTexto = cart.map(item =>
+          `${item.quantidade}x ${item.produto.nome}${item.tamanhoSelecionado ? ` (${item.tamanhoSelecionado})` : ''}`
         ).join(', ');
 
         const res = await fetch('http://192.168.2.111:3000/api/pedidos', {
@@ -989,8 +989,10 @@ export default function Menu() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: crypto.randomUUID(),
-            mesa_id: currentComandaId, // UUID da comanda ativa
-            item: itensTexto,
+            // AQUI ESTÁ O PULO DO GATO:
+            // Usamos 'currentComandaId' que é o UUID real da conta aberta
+            mesa_id: currentComandaId,
+            item: resumoTexto,
           }),
         });
 
@@ -999,12 +1001,13 @@ export default function Menu() {
           setCart([]);
           setIsCartOpen(false);
           setFechamentoSolicitado(false);
-          fetchMeusPedidos(currentComandaId);
+          // Forçamos a atualização da lista usando o ID da comanda
+          if (currentComandaId) fetchMeusPedidos(currentComandaId);
         } else {
           throw new Error('Servidor retornou erro');
         }
       } catch (fetchErr) {
-        console.error('[Servidor Local] Erro ao enviar pedido:', fetchErr);
+        console.error('[Servidor Local] Erro:', fetchErr);
         toast.error('Erro: Servidor do Caixa está inacessível');
       }
 
