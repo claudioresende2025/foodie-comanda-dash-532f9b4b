@@ -4,11 +4,11 @@ const BASE_URL = `http://${LOCAL_IP}:3000/api/local`;
 
 /**
  * Service Layer para comunicação com o Servidor Local (Híbrido)
- * Ajustado para evitar erros de CORS e 401 (Unauthorized)
+ * Esta versão remove headers de autenticação automáticos para evitar erro 401 local.
  */
 export const apiLocal = {
 
-    // 1. Busca o Cardápio Completo
+    // 1. Busca o Cardápio Completo (Produtos + Categorias)
     async getCardapio() {
         try {
             const response = await fetch(`${BASE_URL}/cardapio`, {
@@ -23,7 +23,7 @@ export const apiLocal = {
         }
     },
 
-    // 2. Busca Status do Dashboard
+    // 2. Busca Status do Dashboard (Mesas + Comandas Ativas)
     async getStatusGeral() {
         try {
             const response = await fetch(`${BASE_URL}/status-geral`, {
@@ -38,7 +38,7 @@ export const apiLocal = {
         }
     },
 
-    // 3. Busca Mesas (Atalho)
+    // 3. Busca apenas o array de Mesas (atalho sobre getStatusGeral)
     async getMesas() {
         try {
             const response = await fetch(`${BASE_URL}/status-geral`, {
@@ -55,14 +55,16 @@ export const apiLocal = {
     },
 
     // 4. Cria uma nova Mesa no SQLite local
-    async criarMesa(dados: { id: string; numero_mesa: number; capacidade: number; empresa_id: string }) {
+    async criarMesa(dados: {
+        id: string;
+        empresa_id: string;
+        numero_mesa: number;
+        capacidade: number;
+    }) {
         try {
             const response = await fetch(`${BASE_URL}/mesas`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' }, // Sem Authorization header
                 body: JSON.stringify(dados),
             });
             return await response.json();
@@ -73,7 +75,10 @@ export const apiLocal = {
     },
 
     // 5. Junta mesas no SQLite local
-    async juntarMesas(dados: { masterMesaId: string; otherMesaIds: string[] }) {
+    async juntarMesas(dados: {
+        masterMesaId: string;
+        otherMesaIds: string[];
+    }) {
         try {
             const response = await fetch(`${BASE_URL}/mesas/juntar`, {
                 method: 'POST',
@@ -87,7 +92,7 @@ export const apiLocal = {
         }
     },
 
-    // 6. Separa uma mesa
+    // 6. Separa uma mesa em junção
     async separarMesa(dados: { mesaId: string }) {
         try {
             const response = await fetch(`${BASE_URL}/mesas/separar`, {
@@ -102,8 +107,13 @@ export const apiLocal = {
         }
     },
 
-    // 7. Abre uma nova Comanda
-    async abrirComanda(dados: { id: string; mesa_id: string; empresa_id: string; nome_cliente: string }) {
+    // 7. Abre uma nova Comanda (Ocupa a mesa no SQLite)
+    async abrirComanda(dados: {
+        id: string;
+        mesa_id: string;
+        empresa_id: string;
+        nome_cliente: string;
+    }) {
         try {
             const response = await fetch(`${BASE_URL}/abrir-comanda`, {
                 method: 'POST',
@@ -117,7 +127,7 @@ export const apiLocal = {
         }
     },
 
-    // 8. Envia o Carrinho de Pedidos
+    // 8. Envia o Carrinho de Pedidos (Lote de itens)
     async realizarPedido(pedidos: any[]) {
         try {
             const response = await fetch(`${BASE_URL}/realizar-pedido`, {
@@ -127,12 +137,12 @@ export const apiLocal = {
             });
             return await response.json();
         } catch (error) {
-            console.error("🚨 Erro realizar pedido local", error);
+            console.error("🚨 Erro ao enviar pedidos para o caixa local", error);
             throw error;
         }
     },
 
-    // 9. Login Local
+    // 9. Login de Contingência (Equipe sincronizada)
     async loginLocal(credentials: { email: string; senha_hash: string }) {
         try {
             const response = await fetch(`${BASE_URL}/login`, {
@@ -142,7 +152,7 @@ export const apiLocal = {
             });
             return await response.json();
         } catch (error) {
-            console.error("🚨 Erro Login Local", error);
+            console.error("🚨 Erro no Login Local", error);
             throw error;
         }
     },
