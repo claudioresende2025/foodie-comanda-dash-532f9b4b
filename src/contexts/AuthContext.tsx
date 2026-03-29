@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
 import { baixarDadosIniciais } from '@/lib/db';
+import { connectionManager } from '@/lib/connectionManager';
 
 interface Profile {
   id: string;
@@ -43,6 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     if (!error && data) {
       setProfile(data);
+      
+      // CONFIGURAR EMPRESA_ID NO CONNECTION MANAGER (Offline-First)
+      if (data.empresa_id) {
+        connectionManager.setEmpresaId(data.empresa_id);
+      }
       
       // BAIXAR DADOS PARA INDEXEDDB QUANDO TEMOS EMPRESA_ID (Offline-First)
       if (data.empresa_id && navigator.onLine) {

@@ -9,7 +9,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { db, sincronizarTudo, verificarPendencias } from './db';
+import { db, sincronizarTudo, verificarPendencias, baixarDadosIniciais } from './db';
 
 type ConnectionStatus = 'online' | 'offline' | 'syncing' | 'checking';
 
@@ -23,6 +23,7 @@ interface ConnectionState {
 }
 
 type ConnectionListener = (state: ConnectionState) => void;
+type OnConnectionRestoredCallback = () => void;
 
 class ConnectionManager {
   private state: ConnectionState = {
@@ -35,9 +36,11 @@ class ConnectionManager {
   };
 
   private listeners: Set<ConnectionListener> = new Set();
+  private onRestoredCallbacks: Set<OnConnectionRestoredCallback> = new Set();
   private checkInterval: number | null = null;
   private syncInterval: number | null = null;
   private isInitialized = false;
+  private empresaId: string | null = null;
 
   // Configurações
   private readonly CHECK_INTERVAL = 5000; // Verificar conexão a cada 5 segundos
@@ -132,6 +135,24 @@ class ConnectionManager {
     }
 
     return this.syncData();
+  }
+
+  /**
+   * Define o ID da empresa para sincronização bidirecional
+   */
+  setEmpresaId(id: string | null): void {
+    this.empresaId = id;
+    console.log('[ConnectionManager] Empresa ID configurado:', id);
+  }
+
+  /**
+   * Registra callback para quando a conexão é restaurada
+   */
+  onConnectionRestored(callback: OnConnectionRestoredCallback): () => void {
+    this.onRestoredCallbacks.add(callback);
+    return () => {
+      this.onRestoredCallbacks.delete(callback);
+    };
   }
 
   // ==================== MÉTODOS PRIVADOS ====================
@@ -231,10 +252,38 @@ class ConnectionManager {
       lastOnline: new Date(),
     });
 
-    // Se estava offline e voltou, sincronizar automaticamente
+    // Se estava offline e voltou, sincronização bidirecional
     if (wasOffline) {
-      console.log('[ConnectionManager] Conexão restaurada! Iniciando sincronização...');
-      this.syncData();
+      console.log('[ConnectionManager] Conexão restaurada! Iniciando sincronização bidirecional...');
+      this.fullSync();
+    }
+  }
+
+  /**
+   * Sincronização bidirecional: envia e recebe dados
+   */
+  private async fullSync(): Promise<void> {
+    try {
+      // 1. Primeiro baixar dados atualizados do Supabase
+      if (this.empresaId) {
+        console.log('[ConnectionManager] Baixando dados atualizados do servidor...');
+        await baixarDadosIniciais(this.empresaId);
+      }
+
+      // 2. Depois enviar dados locais pendentes
+      console.log('[ConnectionManager] Enviando dados locais pendentes...');
+      await this.syncData();
+
+      // 3. Notificar callbacks de que a conexão foi restaurada
+      this.onRestoredCallbacks.forEach(callback => {
+        try {
+          callback();
+        } catch (err) {
+          console.error('[ConnectionManager] Erro em callback onRestored:', err);
+        }
+      });
+    } catch (err) {
+      console.error('[ConnectionManager] Erro na sincronização completa:', err);
     }
   }
 

@@ -6,14 +6,25 @@
  * - Quantidade de dados pendentes
  * - Última sincronização
  * - Botão para sincronizar manualmente
+ * 
+ * Também invalida as queries quando a conexão é restaurada
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { WifiOff, Wifi, RefreshCw, Cloud, CloudOff, Loader2, Database } from 'lucide-react';
 import { useConnection } from '@/hooks/useConnection';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 export function OfflineIndicator() {
+  const queryClient = useQueryClient();
+  
+  // Callback para invalidar queries quando a conexão é restaurada
+  const handleConnectionRestored = useCallback(() => {
+    console.log('[OfflineIndicator] Conexão restaurada - invalidando queries...');
+    queryClient.invalidateQueries();
+  }, [queryClient]);
+
   const { 
     isOnline, 
     status, 
@@ -21,7 +32,7 @@ export function OfflineIndicator() {
     supabaseReachable,
     lastSync,
     forceSync 
-  } = useConnection();
+  } = useConnection({ onConnectionRestored: handleConnectionRestored });
   
   const previousStatus = useRef(status);
 

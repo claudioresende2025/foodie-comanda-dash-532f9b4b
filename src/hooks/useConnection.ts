@@ -3,10 +3,17 @@
  * 
  * Uso:
  * const { isOnline, status, pendingCount, forceSync } = useConnection();
+ * 
+ * Com callback de reconexão:
+ * useConnection({ onConnectionRestored: () => queryClient.invalidateQueries() });
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { connectionManager, ConnectionState, ConnectionStatus } from '@/lib/connectionManager';
+
+interface UseConnectionOptions {
+  onConnectionRestored?: () => void;
+}
 
 interface UseConnectionReturn {
   /** Se está online e conectado ao Supabase */
@@ -29,7 +36,7 @@ interface UseConnectionReturn {
   forceSync: () => Promise<boolean>;
 }
 
-export function useConnection(): UseConnectionReturn {
+export function useConnection(options?: UseConnectionOptions): UseConnectionReturn {
   const [state, setState] = useState<ConnectionState>(() => connectionManager.getState());
 
   useEffect(() => {
@@ -40,6 +47,14 @@ export function useConnection(): UseConnectionReturn {
 
     return unsubscribe;
   }, []);
+
+  // Registrar callback de reconexão
+  useEffect(() => {
+    if (options?.onConnectionRestored) {
+      const unsubscribe = connectionManager.onConnectionRestored(options.onConnectionRestored);
+      return unsubscribe;
+    }
+  }, [options?.onConnectionRestored]);
 
   const forceCheck = useCallback(async () => {
     return connectionManager.forceCheck();
