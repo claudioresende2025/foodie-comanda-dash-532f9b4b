@@ -35,6 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { SmartUpsellSection } from "@/components/smart/SmartUpsellSection";
+import { apiLocal } from '../services/api';
 
 // --- Tipos de Dados (Types) ---
 
@@ -147,7 +148,7 @@ const playNotificationSound = () => {
         gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
         osc2.start(audioContext.currentTime);
         osc2.stop(audioContext.currentTime + 0.5);
-      } catch (e) {}
+      } catch (e) { }
     }, 200);
   } catch (e) {
     console.log("Audio not supported");
@@ -205,7 +206,6 @@ export default function Menu() {
     if (empresaId) {
       fetchMenuData();
     } else {
-      // Se não houver empresaId na URL, mostrar erro
       setError("Link inválido. Verifique o QR Code e tente novamente.");
       setIsLoading(false);
     }
@@ -221,17 +221,14 @@ export default function Menu() {
         { event: 'UPDATE', schema: 'public', table: 'comandas', filter: `id=eq.${comandaId}` },
         (payload) => {
           const novoStatus = (payload.new as any).status;
-          
-          // Se comanda foi fechada externamente (pelo caixa)
+
           if (novoStatus === 'fechada' || novoStatus === 'cancelada') {
             setPixConfirmEnabled(novoStatus === 'fechada');
-            
-            // Limpar estado local - impede novos pedidos
             localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
             setComandaId(null);
             setCart([]);
-            setFechamentoSolicitado(false); // Resetar estado de fechamento
-            
+            setFechamentoSolicitado(false);
+
             if (novoStatus === 'fechada') {
               toast.info('Esta comanda foi fechada pelo caixa. Solicite uma nova para continuar pedindo.');
             } else {
@@ -244,11 +241,9 @@ export default function Menu() {
     return () => { supabase.removeChannel(channel); };
   }, [comandaId, empresaId, mesaId]);
 
-  // Marca a mesa como 'ocupada' ao carregar o cardápio via QR (garante persistência após refresh)
+  // Marca a mesa como 'ocupada' ao carregar o cardápio via QR
   useEffect(() => {
     if (!mesaId) return;
-    // Atualiza a mesa para ocupada quando o cliente acessa o cardápio
-    // Isso garante que mesmo após F5, a mesa permaneça ocupada
     const markMesaOcupada = async () => {
       try {
         const { data: mesa } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
@@ -256,7 +251,7 @@ export default function Menu() {
           await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
         }
       } catch (e) {
-        // Ignora erros silenciosamente - não é crítico
+        // Ignora erros silenciosamente
       }
     };
     markMesaOcupada();
@@ -265,7 +260,6 @@ export default function Menu() {
   // Check for existing comanda - BUSCAR DO BANCO para sincronizar entre dispositivos
   useEffect(() => {
     const validateAndLoadComanda = async () => {
-      // 1. Primeiro, buscar comanda ativa da MESA no banco (sincroniza entre dispositivos)
       const { data: comandaMesa } = await supabase
         .from("comandas")
         .select("id, status, nome_cliente, telefone_cliente")
@@ -277,11 +271,9 @@ export default function Menu() {
         .maybeSingle();
 
       if (comandaMesa) {
-        // Existe uma comanda ativa nesta mesa - usar ela
         setComandaId(comandaMesa.id);
         localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaMesa.id);
-        
-        // Sincronizar dados do cliente entre dispositivos
+
         if (comandaMesa.nome_cliente || comandaMesa.telefone_cliente) {
           const clientKey = `client_info_${empresaId}_${mesaId}`;
           const nameParts = (comandaMesa.nome_cliente || '').split(' ');
@@ -292,15 +284,13 @@ export default function Menu() {
           };
           localStorage.setItem(clientKey, JSON.stringify(clientInfo));
         }
-        
+
         fetchMeusPedidos(comandaMesa.id);
         return;
       }
 
-      // 2. Fallback: verificar localStorage (caso ainda não exista comanda)
       const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
       if (savedComandaId) {
-        // Verifica se a comanda ainda está aberta no banco de dados
         const { data: comanda } = await supabase
           .from("comandas")
           .select("id, status, nome_cliente, telefone_cliente")
@@ -308,10 +298,8 @@ export default function Menu() {
           .maybeSingle();
 
         if (comanda && comanda.status === "aberta") {
-          // Comanda ainda está aberta, pode usar
           setComandaId(savedComandaId);
-          
-          // Sincronizar dados do cliente entre dispositivos
+
           if (comanda.nome_cliente || comanda.telefone_cliente) {
             const clientKey = `client_info_${empresaId}_${mesaId}`;
             const nameParts = (comanda.nome_cliente || '').split(' ');
@@ -322,16 +310,14 @@ export default function Menu() {
             };
             localStorage.setItem(clientKey, JSON.stringify(clientInfo));
           }
-          
+
           fetchMeusPedidos(savedComandaId);
           return;
         } else {
-          // Comanda foi fechada/cancelada ou não existe mais - limpar localStorage
           localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
         }
       }
 
-      // Fallback: buscar comanda aberta da mesa no banco (sincronização entre dispositivos)
       if (mesaId && empresaId) {
         const { data: existingComanda } = await supabase
           .from("comandas")
@@ -346,8 +332,7 @@ export default function Menu() {
         if (existingComanda) {
           localStorage.setItem(`comanda_${empresaId}_${mesaId}`, existingComanda.id);
           setComandaId(existingComanda.id);
-          
-          // Sincronizar dados do cliente entre dispositivos
+
           if (existingComanda.nome_cliente || existingComanda.telefone_cliente) {
             const clientKey = `client_info_${empresaId}_${mesaId}`;
             const nameParts = (existingComanda.nome_cliente || '').split(' ');
@@ -358,13 +343,12 @@ export default function Menu() {
             };
             localStorage.setItem(clientKey, JSON.stringify(clientInfo));
           }
-          
+
           fetchMeusPedidos(existingComanda.id);
           return;
         }
       }
 
-      // Nenhuma comanda encontrada
       setComandaId(null);
       setMeusPedidos([]);
     };
@@ -390,18 +374,16 @@ export default function Menu() {
       setWaiterCallPending(!!data);
     };
 
-    // Verificar status da mesa para fechamento solicitado
     const checkMesaStatus = async () => {
       const { data: mesa } = await supabase
         .from("mesas")
         .select("status")
         .eq("id", mesaId)
         .maybeSingle();
-      
+
       if (mesa?.status === "solicitou_fechamento") {
         setFechamentoSolicitado(true);
       } else if (mesa?.status === "disponivel") {
-        // Mesa foi liberada, resetar estado
         setFechamentoSolicitado(false);
       }
     };
@@ -434,7 +416,6 @@ export default function Menu() {
             if (status === "preparando") {
               toast.info("Seu pedido está sendo preparado!");
             } else if (status === "pronto") {
-              // Play sound notification
               if (soundEnabled) {
                 playNotificationSound();
               }
@@ -482,7 +463,6 @@ export default function Menu() {
           filter: `mesa_id=eq.${mesaId}`,
         },
         (payload) => {
-          // Quando UPDATE: verificar se foi atendida
           if (payload.eventType === "UPDATE") {
             const newStatus = (payload.new as any).status;
             if (newStatus === "atendida") {
@@ -490,11 +470,9 @@ export default function Menu() {
               toast.success("O garçom está a caminho!");
             }
           }
-          // Quando DELETE: rechecar se ainda há pendentes
           if (payload.eventType === "DELETE") {
             checkPendingCall();
           }
-          // Quando INSERT: marcar como pendente
           if (payload.eventType === "INSERT") {
             const status = (payload.new as any).status;
             if (status === "pendente") {
@@ -510,7 +488,7 @@ export default function Menu() {
     };
   }, [empresaId, mesaId]);
 
-  // Realtime for mesa status changes (detectar quando garçom dá baixa)
+  // Realtime for mesa status changes
   useEffect(() => {
     if (!mesaId) return;
 
@@ -526,8 +504,7 @@ export default function Menu() {
         },
         (payload) => {
           const newStatus = (payload.new as any).status;
-          
-          // Se mesa foi liberada (garçom deu baixa), resetar estados
+
           if (newStatus === "disponivel") {
             setFechamentoSolicitado(false);
             setComandaId(null);
@@ -536,10 +513,8 @@ export default function Menu() {
             localStorage.removeItem(`client_info_${empresaId}_${mesaId}`);
             toast.info("Conta fechada! Obrigado pela visita.");
           }
-          
-          // Se mesa mudou para ocupada (novo pedido em outro dispositivo)
+
           if (newStatus === "ocupada" && !comandaId) {
-            // Recarregar comanda da mesa
             window.location.reload();
           }
         },
@@ -551,12 +526,29 @@ export default function Menu() {
     };
   }, [mesaId, empresaId, comandaId]);
 
+  // --- fetchMenuData (única versão) ---
   const fetchMenuData = async () => {
-    // Verificação de segurança
     if (!empresaId) {
-      setError("Link inválido. Verifique o QR Code e tente novamente.");
+      setError("Link inválido.");
       setIsLoading(false);
       return;
+    }
+
+    try {
+      // 🔥 Tenta carregar do Servidor Local (PC do Caixa) primeiro
+      const localData = await apiLocal.getCardapio();
+      if (localData && localData.produtos) {
+        setProdutos(localData.produtos);
+        setCategorias(localData.categorias);
+        // Mantém os dados da empresa (nome/logo)
+        const { data: emp } = await supabase.from("empresas").select("*").eq("id", empresaId).maybeSingle();
+        if (emp) setEmpresa(emp);
+
+        setIsLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.warn("Servidor Local Offline, seguindo para Nuvem/IndexedDB");
     }
 
     // ===============================
@@ -567,19 +559,18 @@ export default function Menu() {
     let produtosLocal: Produto[] = [];
     let mesaLocal: any = null;
 
-    // Buscar dados locais primeiro (sempre disponíveis)
     try {
       const empresaData = await db.empresa.where('id').equals(empresaId).first();
       if (empresaData) {
         empresaLocal = empresaData as Empresa;
       }
-      
+
       const catData = await db.categorias.where('empresa_id').equals(empresaId).toArray();
       categoriasLocal = catData.filter((c: any) => c.ativo !== false).sort((a: any, b: any) => (a.ordem || 0) - (b.ordem || 0));
-      
+
       const prodData = await db.produtos.where('empresa_id').equals(empresaId).toArray();
       produtosLocal = prodData.filter((p: any) => p.ativo !== false).sort((a: any, b: any) => (a.nome || '').localeCompare(b.nome || ''));
-      
+
       if (mesaId) {
         mesaLocal = await db.mesas.where('id').equals(mesaId).first();
       }
@@ -587,10 +578,8 @@ export default function Menu() {
       console.warn('[Offline-First] Erro ao ler dados locais:', e);
     }
 
-    // Tentar buscar do servidor (se online)
     if (navigator.onLine) {
       try {
-        // Busca empresa diretamente - RLS policy permite acesso público
         const { data: empresaData, error: empresaError } = await supabase
           .from("empresas")
           .select("id, nome_fantasia, logo_url, chave_pix, endereco_completo")
@@ -601,8 +590,7 @@ export default function Menu() {
 
         if (empresaData) {
           setEmpresa(empresaData as Empresa);
-          // Salvar localmente para uso offline
-          await db.empresa.put({ ...empresaData, sincronizado: 1 }).catch(() => {});
+          await db.empresa.put({ ...empresaData, sincronizado: 1 }).catch(() => { });
         } else if (empresaLocal) {
           setEmpresa(empresaLocal);
         } else {
@@ -629,9 +617,8 @@ export default function Menu() {
 
         if (!catError && catData) {
           setCategorias(catData || []);
-          // Salvar localmente
           const catsSync = catData.map((c: any) => ({ ...c, sincronizado: 1 }));
-          await db.categorias.bulkPut(catsSync).catch(() => {});
+          await db.categorias.bulkPut(catsSync).catch(() => { });
         } else {
           setCategorias(categoriasLocal);
         }
@@ -645,16 +632,14 @@ export default function Menu() {
 
         if (!prodError && prodData) {
           setProdutos(prodData || []);
-          // Salvar localmente
           const prodsSync = prodData.map((p: any) => ({ ...p, sincronizado: 1 }));
-          await db.produtos.bulkPut(prodsSync).catch(() => {});
+          await db.produtos.bulkPut(prodsSync).catch(() => { });
         } else {
           setProdutos(produtosLocal);
         }
       } catch (err) {
-        // Falha de rede - usar dados locais
         console.warn("[Offline-First] Supabase inacessível, usando dados locais:", err);
-        
+
         if (empresaLocal) {
           setEmpresa(empresaLocal);
           if (mesaLocal) {
@@ -667,9 +652,8 @@ export default function Menu() {
         }
       }
     } else {
-      // Offline - usar dados locais
       console.log('[Offline-First] Modo offline - usando dados do IndexedDB');
-      
+
       if (empresaLocal) {
         setEmpresa(empresaLocal);
         if (mesaLocal) {
@@ -681,13 +665,12 @@ export default function Menu() {
         setError("Sem conexão e sem dados salvos localmente. Conecte-se à internet pelo menos uma vez para carregar o cardápio.");
       }
     }
-    
+
     setIsLoading(false);
   };
 
   // Buscar pedidos - Offline-First
   const fetchMeusPedidos = async (cmdId: string) => {
-    // 1. Buscar pedidos locais primeiro
     let pedidosLocais: Pedido[] = [];
     try {
       const locais = await db.pedidos.where('comanda_id').equals(cmdId).toArray();
@@ -703,7 +686,6 @@ export default function Menu() {
       console.warn('[Offline-First] Erro ao buscar pedidos locais:', e);
     }
 
-    // 2. Se online, buscar do Supabase e mesclar
     if (navigator.onLine) {
       try {
         const { data, error } = await supabase
@@ -713,13 +695,12 @@ export default function Menu() {
           .order("created_at", { ascending: false });
 
         if (!error && data) {
-          // Mesclar: pedidos do Supabase + pedidos locais não sincronizados
           const idsSupabase = new Set(data.map((p: any) => p.id));
           const pedidosNaoSincronizados = pedidosLocais.filter(p => !idsSupabase.has(p.id));
-          
+
           const todosPedidos = [...data, ...pedidosNaoSincronizados]
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-          
+
           setMeusPedidos(todosPedidos);
           return;
         }
@@ -728,8 +709,7 @@ export default function Menu() {
       }
     }
 
-    // 3. Se offline ou falhou, usar dados locais
-    setMeusPedidos(pedidosLocais.sort((a, b) => 
+    setMeusPedidos(pedidosLocais.sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     ));
   };
@@ -763,7 +743,6 @@ export default function Menu() {
 
       if (error) {
         console.error("[WAITER CALL ERROR]", error);
-        // Provide more specific error messages
         if (error.code === "42501" || error.message?.includes("policy")) {
           toast.error("Permissão negada. Contate o restaurante.");
         } else if (error.code === "23503") {
@@ -785,7 +764,6 @@ export default function Menu() {
     }
   };
 
-  // Solicita fechamento da conta - cria chamada_garcom especial com motivo "fechamento"
   const handleSolicitarFechamento = async () => {
     if (!mesaId || !empresaId) {
       toast.error("Erro ao identificar mesa");
@@ -795,7 +773,6 @@ export default function Menu() {
     setIsRequestingFechamento(true);
 
     try {
-      // Usa função RPC SECURITY DEFINER para permitir acesso público
       const { error } = await supabase.rpc("solicitar_fechamento_mesa", {
         p_mesa_id: mesaId,
       });
@@ -828,7 +805,6 @@ export default function Menu() {
     return matchesCategory && matchesSearch;
   });
 
-  // Função para gerar chave única do item no carrinho
   const gerarCartKey = (produtoId: string, tamanho?: string | null): string => {
     return tamanho ? `${produtoId}__${tamanho}` : produtoId;
   };
@@ -836,7 +812,7 @@ export default function Menu() {
   const addToCart = (produto: Produto, tamanhoSelecionado?: string | null, precoVariacao?: number) => {
     const precoUnitario = precoVariacao ?? produto.preco;
     const cartKey = gerarCartKey(produto.id, tamanhoSelecionado);
-    
+
     setCart((prev) => {
       const existing = prev.find((item) => item.cartKey === cartKey);
       if (existing) {
@@ -844,16 +820,16 @@ export default function Menu() {
           item.cartKey === cartKey ? { ...item, quantidade: item.quantidade + 1 } : item,
         );
       }
-      return [...prev, { 
-        produto, 
-        quantidade: 1, 
-        notas: "", 
-        tamanhoSelecionado, 
-        precoUnitario, 
-        cartKey 
+      return [...prev, {
+        produto,
+        quantidade: 1,
+        notas: "",
+        tamanhoSelecionado,
+        precoUnitario,
+        cartKey
       }];
     });
-    
+
     const nomeExibicao = tamanhoSelecionado ? `${produto.nome} - ${tamanhoSelecionado}` : produto.nome;
     toast.success(`${nomeExibicao} adicionado ao carrinho`);
   };
@@ -874,19 +850,12 @@ export default function Menu() {
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantidade, 0);
 
   // #################################################################
-  // # FUNÇÃO handleSendOrder - OFFLINE-FIRST HÍBRIDO                #
+  // # FUNÇÃO handleSendOrder - VERSÃO ÚNICA E CONSOLIDADA           #
   // #################################################################
 
   const handleSendOrder = async () => {
-    if (cart.length === 0) {
-      toast.error("Adicione itens ao carrinho");
-      return;
-    }
-
-    if (!empresaId || !mesaId) {
-      toast.error("Erro ao identificar mesa");
-      return;
-    }
+    if (cart.length === 0) { toast.error("Adicione itens ao carrinho"); return; }
+    if (!empresaId || !mesaId) { toast.error("Erro ao identificar mesa"); return; }
 
     setIsSendingOrder(true);
 
@@ -894,135 +863,63 @@ export default function Menu() {
       let currentComandaId = comandaId;
       const agora = new Date().toISOString();
 
-      // 1. Se não tem comanda, criar uma nova
+      // 1. Criar comanda se não existir
       if (!currentComandaId) {
-        // Verificar se temos info do cliente
         const clientKey = `client_info_${empresaId}_${mesaId}`;
-        let nomeCliente: string | null = null;
-        let telefoneCliente: string | null = null;
-        
-        try {
-          const saved = localStorage.getItem(clientKey);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            nomeCliente = `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim() || null;
-            telefoneCliente = parsed.phone || null;
-          } else {
-            setShowClientModal(true);
-            setIsSendingOrder(false);
-            return;
-          }
-        } catch (e) {
-          setShowClientModal(true);
-          setIsSendingOrder(false);
-          return;
-        }
+        const saved = localStorage.getItem(clientKey);
+        if (!saved) { setShowClientModal(true); setIsSendingOrder(false); return; }
 
-        // Gerar UUID local para a comanda
+        const parsed = JSON.parse(saved);
+        const nomeCliente = `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim();
         currentComandaId = crypto.randomUUID();
-        const sessionId = crypto.randomUUID();
 
-        const novaComanda = {
-          id: currentComandaId,
-          empresa_id: empresaId,
-          mesa_id: mesaId,
-          qr_code_sessao: sessionId,
-          status: "aberta",
-          total: cartTotal,
-          nome_cliente: nomeCliente,
-          telefone_cliente: telefoneCliente,
-          criado_em: agora,
-          sincronizado: 0,
-        };
-
-        // 2. SALVAR COMANDA NO INDEXEDDB PRIMEIRO (Offline-First)
+        // Avisa o Servidor Local para mudar status da mesa no monitor do caixa
         try {
-          await db.comandas.put(novaComanda);
-        } catch (dbErr) {
-          console.warn('[Offline-First] Erro ao salvar comanda local:', dbErr);
-        }
+          await apiLocal.abrirComanda({ id: currentComandaId, mesa_id: mesaId, empresa_id: empresaId, nome_cliente: nomeCliente });
+        } catch (e) { console.warn("Erro ao sincronizar abertura de mesa local."); }
 
-        // Atualizar estado e localStorage
+        // Salva no navegador (Segurança)
+        await db.comandas.put({ id: currentComandaId, empresa_id: empresaId, mesa_id: mesaId, status: "aberta", nome_cliente: nomeCliente, sincronizado: 0 });
         setComandaId(currentComandaId);
         localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
-
-        // Atualizar mesa para ocupada no IndexedDB
-        try {
-          await db.mesas.where('id').equals(mesaId).modify({ status: 'ocupada', sincronizado: 0 });
-        } catch (e) {
-          console.warn('[Offline-First] Erro ao atualizar mesa local:', e);
-        }
       }
 
-      // 3. CRIAR PEDIDOS COM UUIDS LOCAIS
+      // 2. Preparar os itens
       const pedidosParaSalvar = cart.map((item) => ({
         id: crypto.randomUUID(),
-        comanda_id: currentComandaId,
+        comanda_id: currentComandaId!,
         produto_id: item.produto.id,
         quantidade: item.quantidade,
         preco_unitario: item.precoUnitario,
         subtotal: item.precoUnitario * item.quantidade,
-        notas_cliente: item.tamanhoSelecionado 
-          ? `[${item.tamanhoSelecionado}] ${item.notas || ''}`.trim() 
-          : (item.notas || null),
+        notas_cliente: item.tamanhoSelecionado ? `[${item.tamanhoSelecionado}] ${item.notas}` : item.notas,
         status_cozinha: "pendente",
-        criado_em: agora,
-        sincronizado: 0,
+        sincronizado: 0
       }));
 
-      // 4. SALVAR PEDIDOS NO INDEXEDDB PRIMEIRO
+      // 3. Salva no celular e tenta enviar para o Servidor Local do Caixa
+      await db.pedidos.bulkPut(pedidosParaSalvar);
+
       try {
-        await db.pedidos.bulkPut(pedidosParaSalvar);
-      } catch (dbErr) {
-        console.warn('[Offline-First] Erro ao salvar pedidos locais:', dbErr);
-      }
-
-      // 5. ENVIAR PARA SERVIDOR LOCAL DO CAIXA
-      try {
-        // Criamos o resumo para o terminal do PC (1x Água, etc)
-        const resumoTexto = cart.map(item =>
-          `${item.quantidade}x ${item.produto.nome}${item.tamanhoSelecionado ? ` (${item.tamanhoSelecionado})` : ''}`
-        ).join(', ');
-
-        const res = await fetch('http://192.168.2.111:3000/api/pedidos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: crypto.randomUUID(),
-            // AQUI ESTÁ O PULO DO GATO:
-            // Usamos 'currentComandaId' que é o UUID real da conta aberta
-            mesa_id: currentComandaId,
-            item: resumoTexto,
-          }),
-        });
-
-        if (res.ok) {
-          toast.success("Pedido enviado com sucesso!");
+        const res = await apiLocal.realizarPedido(pedidosParaSalvar);
+        if (res.success) {
+          toast.success("Pedido enviado para o caixa!");
           setCart([]);
           setIsCartOpen(false);
-          setFechamentoSolicitado(false);
-          // Forçamos a atualização da lista usando o ID da comanda
-          if (currentComandaId) fetchMeusPedidos(currentComandaId);
-        } else {
-          throw new Error('Servidor retornou erro');
+          fetchMeusPedidos(currentComandaId!);
         }
       } catch (fetchErr) {
-        console.error('[Servidor Local] Erro:', fetchErr);
-        toast.error('Erro: Servidor do Caixa está inacessível');
+        toast.warning("Caixa offline. O pedido está salvo no seu celular.");
+        setCart([]);
+        setIsCartOpen(false);
       }
-
     } catch (error) {
-      const errorMessage =
-        (error as any)?.message ||
-        (error as any)?.error_description ||
-        "Erro desconhecido ao enviar pedido.";
-
-      console.error("Error sending order:", error);
-      toast.error(`Erro ao enviar pedido: ${errorMessage}`);
+      toast.error("Erro ao processar pedido.");
     } finally {
       setIsSendingOrder(false);
     }
   };
+
   // #################################################################
 
   // --- Renderização de UI ---
@@ -1102,7 +999,6 @@ export default function Menu() {
             <Input placeholder="Telefone" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
             <div className="flex gap-2">
               <Button onClick={() => {
-                // validação simples
                 if (!clientFirstName || !clientPhone) { toast.error('Preencha primeiro nome e telefone'); return; }
                 const key = `client_info_${empresaId}_${mesaId}`;
                 localStorage.setItem(key, JSON.stringify({ firstName: clientFirstName, lastName: clientLastName, phone: clientPhone }));
@@ -1173,11 +1069,10 @@ export default function Menu() {
             <div className="flex gap-2 py-3">
               <button
                 onClick={() => setActiveCategory("all")}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeCategory === "all"
+                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeCategory === "all"
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
+                  }`}
               >
                 Todos
               </button>
@@ -1185,11 +1080,10 @@ export default function Menu() {
                 <button
                   key={cat.id}
                   onClick={() => setActiveCategory(cat.id)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                    activeCategory === cat.id
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeCategory === cat.id
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
+                    }`}
                 >
                   {cat.nome}
                 </button>
@@ -1212,17 +1106,15 @@ export default function Menu() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredProducts.map((produto) => {
               const hasVariacoes = produto.variacoes && Array.isArray(produto.variacoes) && produto.variacoes.length > 0;
-              const menorPreco = hasVariacoes 
+              const menorPreco = hasVariacoes
                 ? Math.min(...(produto.variacoes!.map(v => v.preco)))
                 : produto.preco;
-              // Para produtos sem variação, usa o id como cartKey
               const cartItemsSemVariacao = cart.filter((item) => item.produto.id === produto.id && !item.tamanhoSelecionado);
               const cartItem = cartItemsSemVariacao[0];
-              // Quantidade total (incluindo variações)
               const quantidadeTotal = cart
                 .filter((item) => item.produto.id === produto.id)
                 .reduce((sum, item) => sum + item.quantidade, 0);
-              
+
               return (
                 <Card key={produto.id} className="overflow-hidden border-0 shadow-fcd">
                   <div className="aspect-video bg-muted relative">
@@ -1233,7 +1125,6 @@ export default function Menu() {
                         <ChefHat className="w-12 h-12 text-muted-foreground/30" />
                       </div>
                     )}
-                    {/* Badge de quantidade quando tem variações */}
                     {hasVariacoes && quantidadeTotal > 0 && (
                       <Badge className="absolute top-2 right-2 bg-primary">
                         {quantidadeTotal} no carrinho
@@ -1262,7 +1153,6 @@ export default function Menu() {
                           </span>
                         )}
                       </div>
-                      {/* Para produtos COM variações: sempre mostra botão de adicionar (abre modal) */}
                       {hasVariacoes ? (
                         <div className="flex items-center gap-2">
                           <Button size="sm" onClick={() => {
@@ -1320,9 +1210,8 @@ export default function Menu() {
       <Button
         onClick={handleCallWaiter}
         disabled={isCallingWaiter || waiterCallPending}
-        className={`fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full shadow-lg ${
-          waiterCallPending ? "bg-yellow-500 hover:bg-yellow-600" : ""
-        }`}
+        className={`fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full shadow-lg ${waiterCallPending ? "bg-yellow-500 hover:bg-yellow-600" : ""
+          }`}
         size="icon"
       >
         {isCallingWaiter ? (
@@ -1352,7 +1241,7 @@ export default function Menu() {
               <SheetHeader>
                 <SheetTitle>Seu Carrinho</SheetTitle>
               </SheetHeader>
-              
+
               {/* Smart Upsell Section */}
               {empresaId && cart.length > 0 && (
                 <div className="mt-4 mb-2">
@@ -1366,7 +1255,6 @@ export default function Menu() {
                     }))}
                     cartProductIds={cart.map(item => item.produto.id)}
                     onAddToCart={(product) => {
-                      // Criar produto compatível com o tipo Produto
                       const produtoParaAdicionar: Produto = {
                         id: product.id,
                         nome: product.nome,
@@ -1403,7 +1291,7 @@ export default function Menu() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-sm">
-                          {item.tamanhoSelecionado 
+                          {item.tamanhoSelecionado
                             ? `${item.produto.nome} - ${item.tamanhoSelecionado}`
                             : item.produto.nome
                           }
@@ -1438,8 +1326,6 @@ export default function Menu() {
                       </div>
                     </div>
                   ))}
-
-                  {/* Upsell inline removido - agora usa UpsellDialog popup */}
                 </div>
               </ScrollArea>
               <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t">
@@ -1498,7 +1384,7 @@ export default function Menu() {
                 <p className="text-center text-muted-foreground py-8">Nenhum pedido ainda</p>
               )}
 
-              {/* Botão Fechar Conta - só aparece se tiver pedidos */}
+              {/* Botão Fechar Conta */}
               {meusPedidos.length > 0 && (
                 <div className="pt-4 border-t mt-4">
                   {fechamentoSolicitado ? (
@@ -1508,19 +1394,17 @@ export default function Menu() {
                     </div>
                   ) : (
                     (() => {
-                      // Verificar se TODOS os pedidos estão entregues
                       const todosEntregues = meusPedidos.every(p => p.status_cozinha === 'entregue');
                       const pedidosPendentes = meusPedidos.filter(p => p.status_cozinha !== 'entregue' && p.status_cozinha !== 'cancelado');
-                      
+
                       return (
                         <div className="space-y-2">
                           <Button
                             variant="outline"
-                            className={`w-full h-12 text-base ${
-                              todosEntregues 
-                                ? 'border-orange-500 text-orange-600 hover:bg-orange-50' 
+                            className={`w-full h-12 text-base ${todosEntregues
+                                ? 'border-orange-500 text-orange-600 hover:bg-orange-50'
                                 : 'border-gray-300 text-gray-400 cursor-not-allowed'
-                            }`}
+                              }`}
                             onClick={() => todosEntregues && setIsFecharContaDialogOpen(true)}
                             disabled={!todosEntregues}
                           >
@@ -1549,13 +1433,13 @@ export default function Menu() {
           <AlertDialogHeader>
             <AlertDialogTitle>Fechar Conta</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja solicitar o fechamento da conta? 
+              Tem certeza que deseja solicitar o fechamento da conta?
               O garçom virá até sua mesa para efetuar o pagamento.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRequestingFechamento}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleSolicitarFechamento}
               disabled={isRequestingFechamento}
               className="bg-orange-500 hover:bg-orange-600"
@@ -1572,7 +1456,6 @@ export default function Menu() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
 
       {/* UpsellDialog Popup */}
       {empresaId && (
