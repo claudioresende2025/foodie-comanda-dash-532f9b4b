@@ -193,26 +193,54 @@ export default function Auth() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateLogin()) return;
-    
+
     // Resetar flag de redirecionamento para permitir que useEffect redirecione após login
     hasRedirected.current = false;
-    
+
     setIsLoading(true);
+
+    // 1. TENTATIVA DE LOGIN ONLINE (SUPABASE)
     const { error } = await signIn(email, password);
 
     if (error) {
+      // 🔥 INÍCIO DA LÓGICA OFFLINE: Se falhar online, tenta o servidor local
+      console.warn("⚠️ Falha no login online, tentando modo local...");
+
+      try {
+        const localResponse = await fetch(`http://192.168.2.111:3000/api/local/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        if (localResponse.ok) {
+          const localData = await localResponse.json();
+          if (localData.success) {
+            setIsLoading(false);
+            toast.success('Login Offline realizado (Modo de Contingência)');
+            navigate('/admin'); // Redireciona para o painel principal offline
+            return;
+          }
+        }
+      } catch (localErr) {
+        console.error("🚨 Servidor local também está inacessível");
+      }
+      // 🔥 FIM DA LÓGICA OFFLINE
+
       setIsLoading(false);
       if (error.message.includes('Invalid login credentials')) {
         toast.error('E-mail ou senha incorretos');
       } else if (error.message.includes('Email not confirmed')) {
         toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
       } else {
-        toast.error('Erro ao fazer login. Tente novamente.');
+        toast.error('Erro ao fazer login ou sistema offline.');
       }
     } else {
+      // 2. LOGIN ONLINE COM SUCESSO (Sua lógica original preservada abaixo)
+
       // Verificar imediatamente se é super admin para redirecionar
       const { data: { user: loggedUser } } = await supabase.auth.getUser();
-      
+
       if (loggedUser?.id) {
         const { data: superAdmin } = await supabase
           .from('super_admins')
@@ -220,7 +248,7 @@ export default function Auth() {
           .eq('user_id', loggedUser.id)
           .eq('ativo', true)
           .maybeSingle();
-        
+
         if (superAdmin?.ativo) {
           setIsLoading(false);
           hasRedirected.current = true;
@@ -232,42 +260,13 @@ export default function Auth() {
           return;
         }
       }
-      
+
       setIsLoading(false);
       // Limpar flags de plano pendente após login bem-sucedido
       localStorage.removeItem('post_subscribe_plan');
       sessionStorage.removeItem('plan_toast_shown');
       toast.success('Login realizado com sucesso!');
       // O useEffect cuida do redirecionamento baseado no profile para outros usuários
-    }
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateSignup()) return;
-
-    // Marcar como já redirecionado ANTES do signup para evitar que o useEffect redirecione
-    hasRedirected.current = true;
-    
-    setIsLoading(true);
-    const { error } = await signUp(email, password, nome);
-    setIsLoading(false);
-
-    if (error) {
-      // Se deu erro, resetar a flag para permitir redirect futuro
-      hasRedirected.current = false;
-      if (error.message.includes('already registered')) {
-        toast.error('Este e-mail já está cadastrado');
-      } else {
-        toast.error('Erro ao criar conta. Tente novamente.');
-      }
-    } else {
-      // Limpar flags de plano pendente após cadastro bem-sucedido
-      localStorage.removeItem('post_subscribe_plan');
-      sessionStorage.removeItem('plan_toast_shown');
-      // Redirecionar para página de confirmação de email
-      toast.success('Conta criada! Verifique seu e-mail para confirmar.');
-      navigate(`/email-confirmation?email=${encodeURIComponent(email)}&type=proprietario`);
     }
   };
 
