@@ -979,25 +979,18 @@ export default function Menu() {
 
       // 5. ENVIAR PARA SERVIDOR LOCAL DO CAIXA
       try {
-        const itensFormatados = cart.map((item) => ({
-          produto_id: item.produto.id,
-          nome: item.produto.nome,
-          quantidade: item.quantidade,
-          preco_unitario: item.precoUnitario,
-          subtotal: item.precoUnitario * item.quantidade,
-          notas: item.tamanhoSelecionado 
-            ? `[${item.tamanhoSelecionado}] ${item.notas || ''}`.trim() 
-            : (item.notas || null),
-        }));
+        // Formatar itens como string legível para o servidor
+        const itensTexto = cart.map((item) => 
+          `${item.quantidade}x ${item.produto.nome}${item.tamanhoSelecionado ? ` (${item.tamanhoSelecionado})` : ''}${item.notas ? ` - ${item.notas}` : ''}`
+        ).join(', ');
 
         const res = await fetch('http://192.168.2.111:3000/api/pedidos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: crypto.randomUUID(),
-            comanda_id: currentComandaId,
-            mesa_id: mesaId,
-            item: itensFormatados,
+            mesa_id: currentComandaId, // UUID da comanda ativa
+            item: itensTexto,
           }),
         });
 
