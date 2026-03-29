@@ -41,11 +41,13 @@ class ConnectionManager {
   private syncInterval: number | null = null;
   private isInitialized = false;
   private empresaId: string | null = null;
+  private lastCheckTime: number = 0;
 
-  // Configurações
-  private readonly CHECK_INTERVAL = 5000; // Verificar conexão a cada 5 segundos
-  private readonly SYNC_INTERVAL = 30000; // Tentar sincronizar a cada 30 segundos
-  private readonly PING_TIMEOUT = 3000; // Timeout para teste de conexão
+  // Configurações OTIMIZADAS para detecção rápida
+  private readonly CHECK_INTERVAL = 3000; // Verificar conexão a cada 3 segundos (antes era 5s)
+  private readonly SYNC_INTERVAL = 15000; // Tentar sincronizar a cada 15 segundos (antes era 30s)
+  private readonly PING_TIMEOUT = 2000; // Timeout para teste de conexão (antes era 3s)
+  private readonly MIN_CHECK_INTERVAL = 1000; // Intervalo mínimo entre verificações
 
   /**
    * Inicializa o gerenciador de conexão
@@ -158,13 +160,17 @@ class ConnectionManager {
   // ==================== MÉTODOS PRIVADOS ====================
 
   private handleOnline = async (): Promise<void> => {
-    console.log('[ConnectionManager] Evento: online');
+    console.log('[ConnectionManager] Evento: online - verificando conexão imediatamente');
+    this.lastCheckTime = 0; // Reset para forçar verificação imediata
     this.updateState({ internetAvailable: true });
+    
+    // Verificação imediata + segunda verificação após 500ms (redundância)
     await this.checkConnection();
+    setTimeout(() => this.checkConnection(), 500);
   };
 
   private handleOffline = (): void => {
-    console.log('[ConnectionManager] Evento: offline');
+    console.log('[ConnectionManager] Evento: offline - modo local ativado');
     this.updateState({
       internetAvailable: false,
       supabaseReachable: false,
@@ -187,6 +193,13 @@ class ConnectionManager {
   }
 
   private async checkConnection(): Promise<boolean> {
+    // Evitar verificações muito frequentes
+    const now = Date.now();
+    if (now - this.lastCheckTime < this.MIN_CHECK_INTERVAL) {
+      return this.state.supabaseReachable;
+    }
+    this.lastCheckTime = now;
+
     // Se navegador diz que está offline, não precisa testar
     if (!navigator.onLine) {
       this.updateState({
@@ -198,29 +211,27 @@ class ConnectionManager {
     }
 
     try {
-      // Testar conexão com Supabase fazendo uma query simples
+      // OTIMIZAÇÃO: Usar HEAD request ao Supabase (mais leve que query)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.PING_TIMEOUT);
-
-      const { error } = await supabase
-        .from('mesas')
-        .select('id')
-        .limit(1)
-        .abortSignal(controller.signal);
+      
+      // Tentar um fetch HEAD ao endpoint do Supabase (mais rápido que query)
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqmunlilydcowndqxiir.supabase.co';
+      const response = await fetch(`${supabaseUrl}/rest/v1/`, {
+        method: 'HEAD',
+        signal: controller.signal,
+        cache: 'no-cache',
+      });
 
       clearTimeout(timeoutId);
 
-      if (error) {
-        // Erro de autenticação ou permissão não significa que está offline
-        if (error.code === 'PGRST301' || error.code === '42501') {
-          this.handleConnectionRestored();
-          return true;
-        }
-        throw error;
+      // Se chegou resposta (mesmo 401), significa que está online
+      if (response) {
+        this.handleConnectionRestored();
+        return true;
       }
 
-      this.handleConnectionRestored();
-      return true;
+      throw new Error('No response');
 
     } catch (err: any) {
       // Verificar se é erro de rede/timeout

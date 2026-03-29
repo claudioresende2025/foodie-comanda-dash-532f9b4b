@@ -197,11 +197,53 @@ export default function Pedidos() {
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
 
+      // ===============================
+      // HELPER: Reconstruir relacionamentos dos dados locais
+      // ===============================
+      const reconstruirRelacionamentos = async (pedidosLocais: any[]) => {
+        // Buscar todas as tabelas relacionadas do IndexedDB
+        const [comandas, mesas, produtos, categorias] = await Promise.all([
+          db.comandas.toArray(),
+          db.mesas.toArray(),
+          db.produtos.toArray(),
+          db.categorias.toArray()
+        ]);
+        
+        // Criar maps para lookup rápido
+        const comandasMap = new Map(comandas.map((c: any) => [c.id, c]));
+        const mesasMap = new Map(mesas.map((m: any) => [m.id, m]));
+        const produtosMap = new Map(produtos.map((p: any) => [p.id, p]));
+        const categoriasMap = new Map(categorias.map((c: any) => [c.id, c]));
+        
+        // Reconstruir estrutura aninhada como retornada pelo Supabase
+        return pedidosLocais.map((pedido: any) => {
+          const comanda = comandasMap.get(pedido.comanda_id);
+          const mesa = comanda ? mesasMap.get(comanda.mesa_id) : null;
+          const produto = produtosMap.get(pedido.produto_id);
+          const categoria = produto ? categoriasMap.get(produto.categoria_id) : null;
+          
+          return {
+            ...pedido,
+            produto: produto ? {
+              nome: produto.nome,
+              preco: produto.preco,
+              categoria: categoria ? { nome: categoria.nome } : null
+            } : null,
+            comanda: comanda ? {
+              id: comanda.id,
+              nome_cliente: comanda.nome_cliente,
+              empresa_id: comanda.empresa_id,
+              mesa: mesa ? { numero_mesa: mesa.numero_mesa || mesa.numero } : null
+            } : null
+          };
+        }).filter((p: any) => p.comanda?.empresa_id === profile.empresa_id);
+      };
+
       // 1. Buscar do banco local primeiro
       let dadosLocais: any[] = [];
       try {
         const pedidosLocais = await db.pedidos.toArray();
-        dadosLocais = pedidosLocais;
+        dadosLocais = await reconstruirRelacionamentos(pedidosLocais);
       } catch (err) {
         console.warn('[Offline-First] Erro ao ler pedidos do IndexedDB:', err);
       }

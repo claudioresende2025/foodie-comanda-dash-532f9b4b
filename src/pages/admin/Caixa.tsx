@@ -467,11 +467,48 @@ export default function Caixa() {
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
       
+      // ===============================
+      // HELPER: Reconstruir relacionamentos das comandas locais
+      // ===============================
+      const reconstruirRelacionamentos = async (comandasLocais: any[]) => {
+        const [mesas, pedidos, produtos] = await Promise.all([
+          db.mesas.toArray(),
+          db.pedidos.toArray(),
+          db.produtos.toArray()
+        ]);
+        
+        const mesasMap = new Map(mesas.map((m: any) => [m.id, m]));
+        const produtosMap = new Map(produtos.map((p: any) => [p.id, p]));
+        
+        return comandasLocais.map((comanda: any) => {
+          const mesa = mesasMap.get(comanda.mesa_id);
+          const pedidosComanda = pedidos
+            .filter((p: any) => p.comanda_id === comanda.id)
+            .map((p: any) => {
+              const produto = produtosMap.get(p.produto_id);
+              return {
+                id: p.id,
+                quantidade: p.quantidade,
+                preco_unitario: p.preco_unitario || produto?.preco || 0,
+                subtotal: p.subtotal || (p.quantidade * (p.preco_unitario || produto?.preco || 0)),
+                produto: produto ? { nome: produto.nome } : null
+              };
+            });
+          
+          return {
+            ...comanda,
+            mesa: mesa ? { numero_mesa: mesa.numero_mesa || mesa.numero } : null,
+            pedidos: pedidosComanda
+          };
+        });
+      };
+      
       // 1. Buscar do local primeiro
       let dadosLocais: any[] = [];
       try {
         const locais = await db.comandas.where('empresa_id').equals(profile.empresa_id).toArray();
-        dadosLocais = locais.filter((c: any) => c.status === 'aberta');
+        const abertasLocais = locais.filter((c: any) => c.status === 'aberta');
+        dadosLocais = await reconstruirRelacionamentos(abertasLocais);
       } catch (err) {
         console.warn('[Offline-First] Erro ao ler comandas do IndexedDB:', err);
       }
