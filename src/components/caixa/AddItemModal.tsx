@@ -136,30 +136,26 @@ export function AddItemModal({
 
     try {
       if (mode === 'comanda' && comandaId) {
-        // Adicionar à comanda existente
-        const { error } = await supabase.from('pedidos').insert({
-          comanda_id: comandaId,
-          produto_id: produto.id,
-          quantidade: 1,
-          preco_unitario: produto.preco,
-          subtotal: produto.preco,
-          status_cozinha: 'pronto', // Já está pronto pq é item de balcão
+        // Enviar para Servidor Local do Caixa
+        const res = await fetch('http://192.168.2.111:3000/api/pedidos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: crypto.randomUUID(),
+            mesa_id: comandaId, // usando comandaId como referência
+            item: [{
+              produto_id: produto.id,
+              nome: produto.nome,
+              quantidade: 1,
+              preco_unitario: produto.preco,
+              subtotal: produto.preco,
+              status_cozinha: 'pronto',
+            }],
+          }),
         });
 
-        if (error) throw error;
-
-        // Atualizar total da comanda
-        const { data: comanda } = await supabase
-          .from('comandas')
-          .select('total')
-          .eq('id', comandaId)
-          .single();
-
-        if (comanda) {
-          await supabase
-            .from('comandas')
-            .update({ total: (comanda.total || 0) + produto.preco })
-            .eq('id', comandaId);
+        if (!res.ok) {
+          throw new Error('Servidor retornou erro');
         }
 
         toast.success(`${produto.nome} adicionado à comanda!`);
@@ -178,7 +174,7 @@ export function AddItemModal({
       }
     } catch (err) {
       console.error('[AddItemModal] Erro ao adicionar:', err);
-      toast.error('Erro ao adicionar item');
+      toast.error('Erro: Servidor do Caixa está inacessível');
     } finally {
       setAddingProductId(null);
     }

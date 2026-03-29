@@ -977,78 +977,41 @@ export default function Menu() {
         console.warn('[Offline-First] Erro ao salvar pedidos locais:', dbErr);
       }
 
-      // 5. UI RESPONDE IMEDIATAMENTE
-      toast.success("Pedido enviado com sucesso!");
-      setCart([]);
-      setIsCartOpen(false);
-      setFechamentoSolicitado(false);
-      fetchMeusPedidos(currentComandaId);
+      // 5. ENVIAR PARA SERVIDOR LOCAL DO CAIXA
+      try {
+        const itensFormatados = cart.map((item) => ({
+          produto_id: item.produto.id,
+          nome: item.produto.nome,
+          quantidade: item.quantidade,
+          preco_unitario: item.precoUnitario,
+          subtotal: item.precoUnitario * item.quantidade,
+          notas: item.tamanhoSelecionado 
+            ? `[${item.tamanhoSelecionado}] ${item.notas || ''}`.trim() 
+            : (item.notas || null),
+        }));
 
-      // 6. SE ONLINE, SINCRONIZAR EM BACKGROUND
-      if (navigator.onLine) {
-        try {
-          // Buscar comanda se não foi criada ainda no Supabase
-          const { data: comandaExiste } = await supabase
-            .from("comandas")
-            .select("id")
-            .eq("id", currentComandaId)
-            .single();
+        const res = await fetch('http://192.168.2.111:3000/api/pedidos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: crypto.randomUUID(),
+            mesa_id: mesaId,
+            item: itensFormatados,
+          }),
+        });
 
-          if (!comandaExiste) {
-            // Criar comanda no Supabase
-            const comandaParaSync = {
-              id: currentComandaId,
-              empresa_id: empresaId,
-              mesa_id: mesaId,
-              qr_code_sessao: crypto.randomUUID(),
-              status: "aberta",
-              total: cartTotal,
-            };
-            
-            const { error: comandaError } = await supabase
-              .from("comandas")
-              .insert(comandaParaSync);
-
-            if (!comandaError) {
-              await db.comandas.update(currentComandaId, { sincronizado: 1 });
-            }
-          } else {
-            // Atualizar total da comanda existente
-            const { data: comandaAtual } = await supabase
-              .from("comandas")
-              .select("total")
-              .eq("id", currentComandaId)
-              .single();
-            
-            const totalAtual = Number(comandaAtual?.total) || 0;
-            await supabase
-              .from("comandas")
-              .update({ total: totalAtual + cartTotal })
-              .eq("id", currentComandaId);
-          }
-
-          // Inserir pedidos no Supabase
-          const pedidosParaSync = pedidosParaSalvar.map(p => {
-            const { sincronizado, criado_em, ...rest } = p;
-            return rest;
-          });
-
-          const { error: pedidosError } = await supabase
-            .from("pedidos")
-            .insert(pedidosParaSync);
-
-          if (!pedidosError) {
-            // Marcar como sincronizados
-            for (const p of pedidosParaSalvar) {
-              await db.pedidos.update(p.id, { sincronizado: 1 });
-            }
-          }
-
-          // Sincronizar tudo em background
-          sincronizarTudo().catch(console.warn);
-        } catch (syncErr) {
-          console.warn('[Offline-First] Erro na sincronização (será tentado depois):', syncErr);
+        if (res.ok) {
+          toast.success("Pedido enviado com sucesso!");
+          setCart([]);
+          setIsCartOpen(false);
+          setFechamentoSolicitado(false);
+          fetchMeusPedidos(currentComandaId);
+        } else {
+          throw new Error('Servidor retornou erro');
         }
+      } catch (fetchErr) {
+        console.error('[Servidor Local] Erro ao enviar pedido:', fetchErr);
+        toast.error('Erro: Servidor do Caixa está inacessível');
       }
 
     } catch (error) {
