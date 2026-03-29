@@ -138,8 +138,52 @@ export default function Cardapio() {
       return dadosLocais.sort((a, b) => a.ordem - b.ordem);
     },
     enabled: !!empresaId,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
+
+  // Hidratação inicial: Carregar categorias e produtos do IndexedDB IMEDIATAMENTE
+  useEffect(() => {
+    if (!empresaId) return;
+    
+    const hidratarCache = async () => {
+      try {
+        // Hidratar categorias
+        const catLocais = await db.categorias.where('empresa_id').equals(empresaId).toArray();
+        if (catLocais.length > 0) {
+          const dadosCat = catLocais.map((c: any) => ({
+            id: c.id,
+            nome: c.nome,
+            descricao: c.descricao || null,
+            ordem: c.ordem || 0,
+            ativo: c.ativo !== false,
+          })).sort((a, b) => a.ordem - b.ordem);
+          
+          const cacheCat = queryClient.getQueryData<Categoria[]>(['categorias', empresaId]);
+          if (!cacheCat || cacheCat.length === 0) {
+            queryClient.setQueryData(['categorias', empresaId], dadosCat);
+            console.log('[Cardapio Hidratação] Categorias carregadas:', dadosCat.length);
+          }
+        }
+        
+        // Hidratar produtos
+        const prodLocais = await db.produtos.where('empresa_id').equals(empresaId).toArray();
+        if (prodLocais.length > 0) {
+          const cacheProd = queryClient.getQueryData<Produto[]>(['produtos', empresaId]);
+          if (!cacheProd || cacheProd.length === 0) {
+            queryClient.setQueryData(['produtos', empresaId], prodLocais);
+            console.log('[Cardapio Hidratação] Produtos carregados:', prodLocais.length);
+          }
+        }
+      } catch (err) {
+        console.warn('[Cardapio Hidratação] Erro:', err);
+      }
+    };
+    
+    hidratarCache();
+  }, [empresaId, queryClient]);
 
   // Fetch produtos - Offline-First Híbrido
   const { data: produtos = [], isLoading: isLoadingProd, refetch: refetchProd } = useQuery({
@@ -188,7 +232,10 @@ export default function Cardapio() {
       return dadosLocais.sort((a, b) => a.nome.localeCompare(b.nome));
     },
     enabled: !!empresaId,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const isLoading = isLoadingCat || isLoadingProd;

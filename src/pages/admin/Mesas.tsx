@@ -88,37 +88,76 @@ export default function Mesas() {
         console.warn('[Offline-First] Erro ao ler IndexedDB:', err);
       }
       
-      // 2. Se online, buscar dados atualizados do Supabase e atualizar IndexedDB
-      if (navigator.onLine) {
-        try {
-          const { data, error } = await supabase
-            .from('mesas')
-            .select('*')
-            .eq('empresa_id', empresaId)
-            .order('numero_mesa');
-          
-          if (!error && data) {
-            // Atualizar banco local com dados da nuvem
-            const dadosComSync = data.map((item: any) => ({
-              ...item,
-              numero: item.numero_mesa,
-              sincronizado: 1,
-            }));
-            await db.mesas.bulkPut(dadosComSync);
-            console.log('[Offline-First] Mesas sincronizadas do Supabase:', data.length);
-            return data as Mesa[];
-          }
-        } catch (err) {
-          console.warn('[Offline-First] Supabase inacessível, usando dados locais:', err);
-        }
+      // 2. Se OFFLINE, retornar dados locais imediatamente
+      if (!navigator.onLine) {
+        console.log('[Offline-First] Modo offline - retornando dados locais');
+        return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
       }
       
-      // 3. Retornar dados locais ordenados
+      // 3. Se online, buscar dados atualizados do Supabase e atualizar IndexedDB
+      try {
+        const { data, error } = await supabase
+          .from('mesas')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .order('numero_mesa');
+        
+        if (!error && data) {
+          // Atualizar banco local com dados da nuvem
+          const dadosComSync = data.map((item: any) => ({
+            ...item,
+            numero: item.numero_mesa,
+            sincronizado: 1,
+          }));
+          await db.mesas.bulkPut(dadosComSync);
+          console.log('[Offline-First] Mesas sincronizadas do Supabase:', data.length);
+          return data as Mesa[];
+        }
+      } catch (err) {
+        console.warn('[Offline-First] Supabase inacessível, usando dados locais:', err);
+      }
+      
+      // 4. Fallback: retornar dados locais ordenados
       return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
     },
     enabled: !!empresaId,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    gcTime: 30 * 60 * 1000, // Manter cache por 30 minutos
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false, // ConnectionManager cuida disso
   });
+
+  // Hidratação inicial: Carregar dados do IndexedDB para o cache IMEDIATAMENTE
+  useEffect(() => {
+    if (!empresaId) return;
+    
+    const hidratarCache = async () => {
+      try {
+        const locais = await db.mesas.where('empresa_id').equals(empresaId).toArray();
+        if (locais.length > 0) {
+          const dadosFormatados = locais.map((m: any) => ({
+            id: m.id,
+            numero_mesa: m.numero_mesa ?? m.numero,
+            status: m.status || 'disponivel',
+            capacidade: m.capacidade || 4,
+            mesa_juncao_id: m.mesa_juncao_id || null,
+            nome: m.nome || null,
+          })).sort((a, b) => a.numero_mesa - b.numero_mesa);
+          
+          // Só atualizar se o cache estiver vazio ou se tiver menos dados
+          const cacheAtual = queryClient.getQueryData<Mesa[]>(['mesas', empresaId]);
+          if (!cacheAtual || cacheAtual.length < dadosFormatados.length) {
+            queryClient.setQueryData(['mesas', empresaId], dadosFormatados);
+            console.log('[Hidratação] Mesas carregadas do IndexedDB:', dadosFormatados.length);
+          }
+        }
+      } catch (err) {
+        console.warn('[Hidratação] Erro ao carregar mesas do IndexedDB:', err);
+      }
+    };
+    
+    hidratarCache();
+  }, [empresaId, queryClient]);
 
   // Realtime subscription
   // NOTA: A lógica de alteração de status da mesa é feita APENAS pelo trigger no banco de dados (update_mesa_status_on_comanda).
@@ -241,19 +280,25 @@ export default function Mesas() {
     try {
       // 1. Salvar imediatamente no banco local (fonte da verdade operacional)
       await db.mesas.put(novaMesa);
+      console.log('[Offline-First] Mesa salva no IndexedDB:', localId);
       
       // 2. ATUALIZAÇÃO OTIMISTA - Atualiza a UI IMEDIATAMENTE com o novo dado
-      queryClient.setQueryData(['mesas', empresaId], (old: Mesa[] = []) => {
-        const mesaParaUI: Mesa = {
-          id: localId,
-          numero_mesa: numero,
-          status: 'disponivel',
-          capacidade: parseInt(newMesa.capacidade),
-          mesa_juncao_id: null,
-          nome: null,
-        };
-        return [...old, mesaParaUI].sort((a, b) => a.numero_mesa - b.numero_mesa);
-      });
+      const mesaParaUI: Mesa = {
+        id: localId,
+        numero_mesa: numero,
+        status: 'disponivel',
+        capacidade: parseInt(newMesa.capacidade),
+        mesa_juncao_id: null,
+        nome: null,
+      };
+      
+      // Obter dados atuais do cache
+      const dadosAtuais = queryClient.getQueryData<Mesa[]>(['mesas', empresaId]) || [];
+      const novosDados = [...dadosAtuais, mesaParaUI].sort((a, b) => a.numero_mesa - b.numero_mesa);
+      
+      // Atualizar cache
+      queryClient.setQueryData(['mesas', empresaId], novosDados);
+      console.log('[Offline-First] UI atualizada com nova mesa. Total:', novosDados.length);
       
       toast.success('Mesa criada com sucesso!');
       setNewMesa({ numero_mesa: '', capacidade: '4' });

@@ -40,6 +40,36 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const empresaId = profile?.empresa_id;
 
+  // Hidratação inicial: Carregar dados do IndexedDB para o cache IMEDIATAMENTE
+  useEffect(() => {
+    if (!empresaId) return;
+    
+    const hidratarCache = async () => {
+      try {
+        // Hidratar mesas
+        const mesasLocais = await db.mesas.where('empresa_id').equals(empresaId).toArray();
+        if (mesasLocais.length > 0) {
+          const dadosFormatados = mesasLocais.map((m: any) => ({
+            id: m.id,
+            numero_mesa: m.numero_mesa ?? m.numero,
+            status: m.status || 'disponivel',
+            mesa_juncao_id: m.mesa_juncao_id || null,
+          })).sort((a, b) => a.numero_mesa - b.numero_mesa);
+          
+          const cacheAtual = queryClient.getQueryData<any[]>(['mesas', empresaId]);
+          if (!cacheAtual || cacheAtual.length === 0) {
+            queryClient.setQueryData(['mesas', empresaId], dadosFormatados);
+            console.log('[Dashboard Hidratação] Mesas carregadas:', dadosFormatados.length);
+          }
+        }
+      } catch (err) {
+        console.warn('[Dashboard Hidratação] Erro:', err);
+      }
+    };
+    
+    hidratarCache();
+  }, [empresaId, queryClient]);
+
   // Realtime: auto-refresh when comandas change
   useRealtimeSubscription(
     `dashboard-comandas-${empresaId}`,
@@ -140,7 +170,10 @@ export default function Dashboard() {
       return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
     },
     enabled: !!empresaId,
-    staleTime: 30 * 1000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   // Fetch today's comandas and calculate stats

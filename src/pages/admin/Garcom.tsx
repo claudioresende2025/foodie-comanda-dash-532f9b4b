@@ -118,9 +118,9 @@ export default function Garcom() {
 
   // ========== QUERIES - Offline-First ==========
 
-  // Mesas - Offline-First
+  // Mesas - Offline-First (usa mesma queryKey que outras páginas)
   const { data: mesas = [], isLoading: isLoadingMesas } = useQuery({
-    queryKey: ['mesas-garcom', profile?.empresa_id],
+    queryKey: ['mesas', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
       
@@ -162,8 +162,42 @@ export default function Garcom() {
       return dadosLocais.sort((a, b) => a.numero_mesa - b.numero_mesa);
     },
     enabled: !!profile?.empresa_id,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
+
+  // Hidratação inicial: Carregar dados do IndexedDB para o cache IMEDIATAMENTE
+  useEffect(() => {
+    if (!profile?.empresa_id) return;
+    
+    const hidratarCache = async () => {
+      try {
+        const locais = await db.mesas.where('empresa_id').equals(profile.empresa_id).toArray();
+        if (locais.length > 0) {
+          const dadosFormatados = locais.map((m: any) => ({
+            id: m.id,
+            numero_mesa: m.numero_mesa ?? m.numero,
+            status: m.status || 'disponivel',
+            capacidade: m.capacidade || 4,
+            mesa_juncao_id: m.mesa_juncao_id || null,
+            nome: m.nome || null,
+          })).sort((a, b) => a.numero_mesa - b.numero_mesa);
+          
+          const cacheAtual = queryClient.getQueryData<Mesa[]>(['mesas', profile.empresa_id]);
+          if (!cacheAtual || cacheAtual.length === 0) {
+            queryClient.setQueryData(['mesas', profile.empresa_id], dadosFormatados);
+            console.log('[Garcom Hidratação] Mesas carregadas:', dadosFormatados.length);
+          }
+        }
+      } catch (err) {
+        console.warn('[Garcom Hidratação] Erro:', err);
+      }
+    };
+    
+    hidratarCache();
+  }, [profile?.empresa_id, queryClient]);
 
   // Chamadas de garçom
   const { data: chamadasRaw = [], refetch: refetchChamadas } = useQuery({
