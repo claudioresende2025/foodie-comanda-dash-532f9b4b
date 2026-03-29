@@ -142,7 +142,7 @@ export function AddItemModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: crypto.randomUUID(),
-            mesa_id: comandaId, // usando comandaId como referência
+            comanda_id: comandaId,
             item: [{
               produto_id: produto.id,
               nome: produto.nome,

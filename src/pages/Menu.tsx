@@ -995,6 +995,7 @@ export default function Menu() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: crypto.randomUUID(),
+            comanda_id: currentComandaId,
             mesa_id: mesaId,
             item: itensFormatados,
           }),
