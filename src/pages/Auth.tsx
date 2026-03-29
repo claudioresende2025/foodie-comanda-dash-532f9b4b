@@ -287,7 +287,7 @@ export default function Auth() {
     setIsLoading(true);
     
     // URL de reset fixa para o domínio de produção
-    const resetRedirectUrl = 'https://foodie-comanda-dash.lovable.app/reset-password';
+    const resetRedirectUrl = 'https://foodcomandapro.servicecoding.com.br/reset-password';
     
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
       redirectTo: resetRedirectUrl,

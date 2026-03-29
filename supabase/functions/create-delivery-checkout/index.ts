@@ -139,7 +139,7 @@ serve(async (req) => {
       amountInCents: Math.round(validatedTotal * 100) 
     });
 
-    const origin = req.headers.get("origin") || "https://foodie-comanda-dash.lovable.app";
+    const origin = req.headers.get("origin") || "https://foodcomandapro.servicecoding.com.br";
     logStep("Using origin", { origin });
 
     const sessionPayload: any = {

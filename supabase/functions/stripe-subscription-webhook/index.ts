@@ -422,7 +422,7 @@ async function handleCheckoutCompleted(session: any, supabase: any, stripeKey: s
       plano: planoInfo?.nome || 'Plano',
       valor: `R$ ${valorPagamento.toFixed(2)}`,
       proximaCobranca: dataFim.toLocaleDateString('pt-BR'),
-      dashboardUrl: 'https://foodie-comanda-dash.lovable.app/admin'
+      dashboardUrl: 'https://foodcomandapro.servicecoding.com.br/admin'
     });
   }
 
@@ -573,7 +573,7 @@ async function handlePaymentFailed(invoice: any, supabase: any): Promise<{ succe
       nome: invoice.customer_name || 'Cliente',
       plano: assinatura.planos?.nome || 'Plano',
       diasRestantes: 0,
-      checkoutUrl: 'https://foodie-comanda-dash.lovable.app/planos'
+      checkoutUrl: 'https://foodcomandapro.servicecoding.com.br/planos'
     });
   }
 
@@ -620,7 +620,7 @@ async function handleSubscriptionUpdated(subscription: any, supabase: any, strip
           plano: plano.nome,
           valor: 'Conforme plano escolhido',
           proximaCobranca: new Date(subscription.current_period_end * 1000).toLocaleDateString('pt-BR'),
-          dashboardUrl: 'https://foodie-comanda-dash.lovable.app/admin'
+          dashboardUrl: 'https://foodcomandapro.servicecoding.com.br/admin'
         });
       }
     }
