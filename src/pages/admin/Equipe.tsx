@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { db } from '@/lib/db';
+import { connectionManager } from '@/lib/connectionManager';
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,40 +66,66 @@ export default function Equipe() {
     queryFn: async (): Promise<ProfileWithRoles[]> => {
       if (!profile?.empresa_id) return [];
 
-      // Buscar perfis da empresa que realmente estão vinculados
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("empresa_id", profile.empresa_id);
+      // 1. Buscar dados locais primeiro
+      const membrosLocais = await db.team_members
+        .where('empresa_id').equals(profile.empresa_id)
+        .toArray();
 
-      if (profilesError) throw profilesError;
+      // 2. Se offline, retornar dados locais
+      if (!connectionManager.isOnline()) {
+        console.log('📱 Equipe: Usando dados offline');
+        return membrosLocais as ProfileWithRoles[];
+      }
 
-      // Filtra apenas perfis que ainda possuem empresa_id igual ao da empresa
-      const filteredProfiles = (profiles || []).filter((p) => p.empresa_id === profile.empresa_id);
+      // 3. Buscar do Supabase
+      try {
+        // Buscar perfis da empresa que realmente estão vinculados
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("empresa_id", profile.empresa_id);
 
-      // Buscar roles de cada perfil
-      const profilesWithRoles: ProfileWithRoles[] = await Promise.all(
-        filteredProfiles.map(async (p) => {
-          const { data: roles, error: rolesError } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", p.id)
-            .eq("empresa_id", profile.empresa_id!);
+        if (profilesError) throw profilesError;
 
-          if (rolesError) {
-            console.error("Erro buscando roles do usuário", p.id, rolesError);
-          }
+        // Filtra apenas perfis que ainda possuem empresa_id igual ao da empresa
+        const filteredProfiles = (profiles || []).filter((p) => p.empresa_id === profile.empresa_id);
 
-          // Só retorna membros que realmente têm roles válidas
-          if (!roles || roles.length === 0) return null;
-          return { ...p, user_roles: roles };
-        })
-      );
+        // Buscar roles de cada perfil
+        const profilesWithRoles: ProfileWithRoles[] = await Promise.all(
+          filteredProfiles.map(async (p) => {
+            const { data: roles, error: rolesError } = await supabase
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", p.id)
+              .eq("empresa_id", profile.empresa_id!);
 
-      // Remove nulos (sem roles)
-      return profilesWithRoles.filter(Boolean);
+            if (rolesError) {
+              console.error("Erro buscando roles do usuário", p.id, rolesError);
+            }
+
+            // Só retorna membros que realmente têm roles válidas
+            if (!roles || roles.length === 0) return null;
+            return { ...p, user_roles: roles };
+          })
+        );
+
+        // Remove nulos (sem roles)
+        const validMembers = profilesWithRoles.filter(Boolean);
+
+        // 4. Salvar no IndexedDB
+        if (validMembers.length) {
+          await db.team_members.bulkPut(validMembers.map(m => ({ ...m, sincronizado: true })));
+        }
+
+        return validMembers;
+      } catch (err) {
+        console.warn('⚠️ Equipe: Erro ao buscar online, usando cache', err);
+        return membrosLocais as ProfileWithRoles[];
+      }
     },
     enabled: !!profile?.empresa_id,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   const userRole = useUserRole();

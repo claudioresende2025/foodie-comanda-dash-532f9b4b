@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/db';
+import { connectionManager } from '@/lib/connectionManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, TrendingUp, Clock, ShoppingBag, DollarSign } from 'lucide-react';
@@ -16,81 +18,107 @@ export default function DeliveryDashboard() {
       if (!profile?.empresa_id) return null;
 
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+      const today = new Date();
 
-      // Fetch all delivery orders from last 30 days
-      const { data: pedidos, error } = await supabase
-        .from('pedidos_delivery')
-        .select('*, itens_delivery(*)')
-        .eq('empresa_id', profile.empresa_id)
-        .gte('created_at', thirtyDaysAgo)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Calculate stats
-      const totalVendido = pedidos?.reduce((acc, p) => acc + (p.total || 0), 0) || 0;
-      const totalPedidos = pedidos?.length || 0;
-      const pedidosEntregues = pedidos?.filter(p => p.status === 'entregue') || [];
-      
-      // Calculate average delivery time (from confirmed to delivered)
-      let tempoMedio = 0;
-      const pedidosComTempo = pedidosEntregues.filter(p => p.updated_at && p.created_at);
-      if (pedidosComTempo.length > 0) {
-        const totalMinutos = pedidosComTempo.reduce((acc, p) => {
-          const inicio = new Date(p.created_at);
-          const fim = new Date(p.updated_at);
-          return acc + (fim.getTime() - inicio.getTime()) / 60000;
-        }, 0);
-        tempoMedio = Math.round(totalMinutos / pedidosComTempo.length);
-      }
-
-      // Group by day for chart
-      const pedidosPorDia: { [key: string]: { total: number; count: number } } = {};
-      for (let i = 29; i >= 0; i--) {
-        const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
-        pedidosPorDia[date] = { total: 0, count: 0 };
-      }
-      
-      pedidos?.forEach(p => {
-        const date = format(new Date(p.created_at), 'yyyy-MM-dd');
-        if (pedidosPorDia[date]) {
-          pedidosPorDia[date].total += p.total || 0;
-          pedidosPorDia[date].count += 1;
+      // Função auxiliar para processar pedidos
+      const processarPedidos = (pedidos: any[]) => {
+        const totalVendido = pedidos?.reduce((acc, p) => acc + (p.total || 0), 0) || 0;
+        const totalPedidos = pedidos?.length || 0;
+        const pedidosEntregues = pedidos?.filter(p => p.status === 'entregue') || [];
+        
+        let tempoMedio = 0;
+        const pedidosComTempo = pedidosEntregues.filter(p => p.updated_at && p.created_at);
+        if (pedidosComTempo.length > 0) {
+          const totalMinutos = pedidosComTempo.reduce((acc, p) => {
+            const inicio = new Date(p.created_at);
+            const fim = new Date(p.updated_at);
+            return acc + (fim.getTime() - inicio.getTime()) / 60000;
+          }, 0);
+          tempoMedio = Math.round(totalMinutos / pedidosComTempo.length);
         }
-      });
 
-      const chartData = Object.entries(pedidosPorDia).map(([date, data]) => ({
-        date: format(new Date(date), 'dd/MM', { locale: ptBR }),
-        total: data.total,
-        pedidos: data.count,
-      }));
+        const pedidosPorDia: { [key: string]: { total: number; count: number } } = {};
+        for (let i = 29; i >= 0; i--) {
+          const date = format(subDays(today, i), 'yyyy-MM-dd');
+          pedidosPorDia[date] = { total: 0, count: 0 };
+        }
+        
+        pedidos?.forEach(p => {
+          const date = format(new Date(p.created_at), 'yyyy-MM-dd');
+          if (pedidosPorDia[date]) {
+            pedidosPorDia[date].total += p.total || 0;
+            pedidosPorDia[date].count += 1;
+          }
+        });
 
-      // Status distribution
-      const statusCount: { [key: string]: number } = {};
-      pedidos?.forEach(p => {
-        statusCount[p.status] = (statusCount[p.status] || 0) + 1;
-      });
+        const chartData = Object.entries(pedidosPorDia).map(([date, data]) => ({
+          date: format(new Date(date), 'dd/MM', { locale: ptBR }),
+          total: data.total,
+          pedidos: data.count,
+        }));
 
-      const statusData = Object.entries(statusCount).map(([status, count]) => ({
-        status: status === 'pendente' ? 'Pendente' :
-                status === 'confirmado' ? 'Confirmado' :
-                status === 'em_preparo' ? 'Em Preparo' :
-                status === 'saiu_entrega' ? 'Saiu p/ Entrega' :
-                status === 'entregue' ? 'Entregue' :
-                status === 'cancelado' ? 'Cancelado' : status,
-        count,
-      }));
+        const statusCount: { [key: string]: number } = {};
+        pedidos?.forEach(p => {
+          statusCount[p.status] = (statusCount[p.status] || 0) + 1;
+        });
 
-      return {
-        totalVendido,
-        totalPedidos,
-        tempoMedio,
-        ticketMedio: totalPedidos > 0 ? totalVendido / totalPedidos : 0,
-        chartData,
-        statusData,
+        const statusData = Object.entries(statusCount).map(([status, count]) => ({
+          status: status === 'pendente' ? 'Pendente' :
+                  status === 'confirmado' ? 'Confirmado' :
+                  status === 'em_preparo' ? 'Em Preparo' :
+                  status === 'saiu_entrega' ? 'Saiu p/ Entrega' :
+                  status === 'entregue' ? 'Entregue' :
+                  status === 'cancelado' ? 'Cancelado' : status,
+          count,
+        }));
+
+        return {
+          totalVendido,
+          totalPedidos,
+          tempoMedio,
+          ticketMedio: totalPedidos > 0 ? totalVendido / totalPedidos : 0,
+          chartData,
+          statusData,
+        };
       };
+
+      // 1. Buscar dados locais primeiro
+      const pedidosLocais = await db.pedidos_delivery
+        .where('empresa_id').equals(profile.empresa_id)
+        .filter(p => new Date(p.created_at) >= new Date(thirtyDaysAgo))
+        .toArray();
+      
+      // 2. Se offline, processar dados locais
+      if (!connectionManager.isOnline()) {
+        console.log('📱 DeliveryDashboard: Usando dados offline');
+        return processarPedidos(pedidosLocais);
+      }
+
+      // 3. Buscar do Supabase
+      try {
+        const { data: pedidos, error } = await supabase
+          .from('pedidos_delivery')
+          .select('*, itens_delivery(*)')
+          .eq('empresa_id', profile.empresa_id)
+          .gte('created_at', thirtyDaysAgo)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // 4. Salvar no IndexedDB
+        if (pedidos?.length) {
+          await db.pedidos_delivery.bulkPut(pedidos.map(p => ({ ...p, sincronizado: true })));
+        }
+
+        return processarPedidos(pedidos || []);
+      } catch (err) {
+        console.warn('⚠️ DeliveryDashboard: Erro ao buscar online, usando cache', err);
+        return processarPedidos(pedidosLocais);
+      }
     },
     enabled: !!profile?.empresa_id,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   if (isLoading) {

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/db';
+import { connectionManager } from '@/lib/connectionManager';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -152,57 +154,91 @@ export default function EntregadorPanel() {
         return [];
       }
 
-      // DEBUG: Buscar todos os pedidos para ver os status
-      const { data: allPedidos } = await supabase
-        .from('pedidos_delivery')
-        .select('id, status, created_at')
-        .eq('empresa_id', resolvedEmpresaId)
-        .order('created_at', { ascending: false })
-        .limit(10);
-      
-      console.log('EntregadorPanel DEBUG - Todos os pedidos recentes:', allPedidos);
+      const statusFiltros = ['confirmado', 'em_preparo', 'saiu_entrega'];
 
-      const { data, error } = await supabase
-        .from('pedidos_delivery')
-        .select(`
-          id,
-          status,
-          total,
-          created_at,
-          forma_pagamento,
-          troco_para,
-          endereco:enderecos_cliente(
-            nome_cliente,
-            telefone,
-            rua,
-            numero,
-            bairro,
-            cidade,
-            estado,
-            complemento,
-            referencia
-          ),
-          empresa:empresas(nome_fantasia)
-        `)
-        .eq('empresa_id', resolvedEmpresaId)
-        .in('status', ['confirmado', 'em_preparo', 'saiu_entrega'])
-        .order('created_at', { ascending: true });
+      // 1. Buscar dados locais primeiro
+      const pedidosLocais = await db.pedidos_delivery
+        .where('empresa_id').equals(resolvedEmpresaId)
+        .filter(p => statusFiltros.includes(p.status))
+        .toArray();
 
-      if (error) {
-        console.error('EntregadorPanel: Erro na query:', error);
-        throw error;
+      // 2. Se offline, retornar dados locais
+      if (!connectionManager.isOnline()) {
+        console.log('📱 EntregadorPanel: Usando dados offline', pedidosLocais.length);
+        return pedidosLocais.map((p: any) => ({
+          ...p,
+          endereco: p.endereco || null,
+          empresa: p.empresa || null,
+        })) as PedidoEntrega[];
       }
 
-      console.log('EntregadorPanel: Pedidos para entrega:', data?.length || 0, data);
+      // 3. Buscar do Supabase
+      try {
+        // DEBUG: Buscar todos os pedidos para ver os status
+        const { data: allPedidos } = await supabase
+          .from('pedidos_delivery')
+          .select('id, status, created_at')
+          .eq('empresa_id', resolvedEmpresaId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        
+        console.log('EntregadorPanel DEBUG - Todos os pedidos recentes:', allPedidos);
 
-      return (data || []).map((p: any) => ({
-        ...p,
-        endereco: p.endereco,
-        empresa: p.empresa,
-      })) as PedidoEntrega[];
+        const { data, error } = await supabase
+          .from('pedidos_delivery')
+          .select(`
+            id,
+            status,
+            total,
+            created_at,
+            forma_pagamento,
+            troco_para,
+            endereco:enderecos_cliente(
+              nome_cliente,
+              telefone,
+              rua,
+              numero,
+              bairro,
+              cidade,
+              estado,
+              complemento,
+              referencia
+            ),
+            empresa:empresas(nome_fantasia)
+          `)
+          .eq('empresa_id', resolvedEmpresaId)
+          .in('status', statusFiltros)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.error('EntregadorPanel: Erro na query:', error);
+          throw error;
+        }
+
+        console.log('EntregadorPanel: Pedidos para entrega:', data?.length || 0, data);
+
+        // 4. Salvar no IndexedDB
+        if (data?.length) {
+          await db.pedidos_delivery.bulkPut(data.map(p => ({ ...p, sincronizado: true })));
+        }
+
+        return (data || []).map((p: any) => ({
+          ...p,
+          endereco: p.endereco,
+          empresa: p.empresa,
+        })) as PedidoEntrega[];
+      } catch (err) {
+        console.warn('⚠️ EntregadorPanel: Erro ao buscar online, usando cache', err);
+        return pedidosLocais.map((p: any) => ({
+          ...p,
+          endereco: p.endereco || null,
+          empresa: p.empresa || null,
+        })) as PedidoEntrega[];
+      }
     },
     enabled: !!resolvedEmpresaId,
     refetchInterval: 30000,
+    networkMode: 'offlineFirst',
   });
 
   // Mutation para atualizar status do pedido

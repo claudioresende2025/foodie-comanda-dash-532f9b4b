@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/db';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -83,57 +84,112 @@ export default function PedidosDelivery() {
         return [];
       }
 
-      console.log('[PedidosDelivery] Fetching orders for empresa:', profile.empresa_id);
-
-      const { data, error } = await supabase
-        .from('pedidos_delivery')
-        .select(`
-          id,
-          status,
-          subtotal,
-          taxa_entrega,
-          total,
-          notas,
-          forma_pagamento,
-          created_at,
-          enderecos_cliente!pedidos_delivery_endereco_id_fkey (
-            nome_cliente,
-            telefone,
-            rua,
-            numero,
-            bairro,
-            cidade,
-            estado,
-            complemento,
-            referencia
-          ),
-          itens_delivery (
-            id,
-            nome_produto,
-            quantidade,
-            preco_unitario,
-            subtotal,
-            notas
-          )
-        `)
-        .eq('empresa_id', profile.empresa_id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('[PedidosDelivery] Query error:', error);
-        throw error;
+      // ===============================
+      // OFFLINE-FIRST: Buscar do IndexedDB primeiro
+      // ===============================
+      let dadosLocais: any[] = [];
+      try {
+        const pedidosLocais = await db.pedidos_delivery.where('empresa_id').equals(profile.empresa_id).toArray();
+        const itensLocais = await db.itens_delivery.toArray();
+        
+        // Reconstruir relacionamentos
+        dadosLocais = pedidosLocais.map((p: any) => ({
+          ...p,
+          enderecos_cliente: p.enderecos_cliente || null,
+          itens_delivery: itensLocais.filter((i: any) => i.pedido_delivery_id === p.id),
+        })).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler pedidos_delivery do IndexedDB:', err);
       }
 
-      console.log('[PedidosDelivery] Found orders:', data?.length || 0);
+      // Se OFFLINE, retornar dados locais
+      if (!navigator.onLine) {
+        console.log('[PedidosDelivery] Offline - usando dados locais:', dadosLocais.length);
+        return dadosLocais.map((p: any) => ({
+          ...p,
+          endereco: p.enderecos_cliente,
+          itens: p.itens_delivery || [],
+        }));
+      }
 
-      return (data || []).map((p: any) => ({
-        ...p,
-        endereco: p.enderecos_cliente,
-        itens: p.itens_delivery || [],
-      })) as PedidoDelivery[];
+      console.log('[PedidosDelivery] Fetching orders for empresa:', profile.empresa_id);
+
+      try {
+        const { data, error } = await supabase
+          .from('pedidos_delivery')
+          .select(`
+            id,
+            status,
+            subtotal,
+            taxa_entrega,
+            total,
+            notas,
+            forma_pagamento,
+            created_at,
+            enderecos_cliente!pedidos_delivery_endereco_id_fkey (
+              nome_cliente,
+              telefone,
+              rua,
+              numero,
+              bairro,
+              cidade,
+              estado,
+              complemento,
+              referencia
+            ),
+            itens_delivery (
+              id,
+              nome_produto,
+              quantidade,
+              preco_unitario,
+              subtotal,
+              notas
+            )
+          `)
+          .eq('empresa_id', profile.empresa_id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('[PedidosDelivery] Query error:', error);
+          throw error;
+        }
+
+        console.log('[PedidosDelivery] Found orders:', data?.length || 0);
+
+        // Salvar no IndexedDB
+        if (data && data.length > 0) {
+          const pedidosComSync = data.map((p: any) => ({
+            ...p,
+            empresa_id: profile.empresa_id,
+            sincronizado: 1,
+          }));
+          await db.pedidos_delivery.bulkPut(pedidosComSync).catch(() => {});
+          
+          // Salvar itens também
+          const todosItens = data.flatMap((p: any) => 
+            (p.itens_delivery || []).map((i: any) => ({ ...i, pedido_delivery_id: p.id, sincronizado: 1 }))
+          );
+          if (todosItens.length > 0) {
+            await db.itens_delivery.bulkPut(todosItens).catch(() => {});
+          }
+        }
+
+        return (data || []).map((p: any) => ({
+          ...p,
+          endereco: p.enderecos_cliente,
+          itens: p.itens_delivery || [],
+        })) as PedidoDelivery[];
+      } catch (err) {
+        console.warn('[Offline-First] Supabase inacessível para pedidos_delivery:', err);
+        return dadosLocais.map((p: any) => ({
+          ...p,
+          endereco: p.enderecos_cliente,
+          itens: p.itens_delivery || [],
+        }));
+      }
     },
     enabled: !!profile?.empresa_id,
-    refetchInterval: 10000,
+    refetchInterval: navigator.onLine ? 10000 : false,
   });
 
   // Debug logging

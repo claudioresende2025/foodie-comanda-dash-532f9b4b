@@ -193,19 +193,45 @@ export default function Caixa() {
   const [vendaAvulsaDialogOpen, setVendaAvulsaDialogOpen] = useState(false);
   const [vendaAvulsaFormaPagamento, setVendaAvulsaFormaPagamento] = useState<PaymentMethod>('dinheiro');
 
-  // Produtos para venda avulsa
+  // Produtos para venda avulsa - Offline-First
   const { data: produtosCardapio = [] } = useQuery({
     queryKey: ['produtos-venda-avulsa', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
-      const { data, error } = await supabase
-        .from('produtos')
-        .select('id, nome, preco')
-        .eq('empresa_id', profile.empresa_id)
-        .eq('ativo', true)
-        .order('nome');
-      if (error) throw error;
-      return data || [];
+      
+      // 1. Buscar do IndexedDB primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const locais = await db.produtos.where('empresa_id').equals(profile.empresa_id).toArray();
+        dadosLocais = locais
+          .filter((p: any) => p.ativo !== false)
+          .map((p: any) => ({ id: p.id, nome: p.nome, preco: p.preco }))
+          .sort((a: any, b: any) => a.nome.localeCompare(b.nome));
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler produtos do IndexedDB:', err);
+      }
+      
+      // 2. Se offline, retornar dados locais
+      if (!navigator.onLine) {
+        return dadosLocais;
+      }
+      
+      // 3. Se online, buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from('produtos')
+          .select('id, nome, preco')
+          .eq('empresa_id', profile.empresa_id)
+          .eq('ativo', true)
+          .order('nome');
+        if (!error && data) {
+          return data;
+        }
+      } catch (err) {
+        console.warn('[Offline-First] Supabase inacessível para produtos:', err);
+      }
+      
+      return dadosLocais;
     },
     enabled: !!profile?.empresa_id && vendaAvulsaOpen,
   });

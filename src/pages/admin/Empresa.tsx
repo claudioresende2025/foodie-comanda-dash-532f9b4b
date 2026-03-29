@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/db';
+import { connectionManager } from '@/lib/connectionManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -126,15 +128,38 @@ export default function Empresa() {
     queryKey: ['empresa', profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return null;
-      const { data, error } = await supabase
-        .from('empresas')
-        .select('*')
-        .eq('id', profile.empresa_id)
-        .single();
-      if (error) throw error;
-      return data;
+      
+      // 1. Buscar dados locais primeiro
+      const empresaLocal = await db.empresa.get(profile.empresa_id);
+      
+      // 2. Se offline, retornar dados locais
+      if (!connectionManager.isOnline()) {
+        console.log('📱 Empresa: Usando dados offline');
+        return empresaLocal || null;
+      }
+      
+      // 3. Buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from('empresas')
+          .select('*')
+          .eq('id', profile.empresa_id)
+          .single();
+        if (error) throw error;
+        
+        // 4. Salvar no IndexedDB
+        if (data) {
+          await db.empresa.put({ ...data, sincronizado: true });
+        }
+        return data;
+      } catch (err) {
+        console.warn('⚠️ Empresa: Erro ao buscar online, usando cache local', err);
+        return empresaLocal || null;
+      }
     },
     enabled: !!profile?.empresa_id,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   const [formData, setFormData] = useState<any>({

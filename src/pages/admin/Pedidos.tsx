@@ -286,22 +286,50 @@ export default function Pedidos() {
     refetchInterval: navigator.onLine ? 8000 : false,
   });
 
-  // Query para chamadas de garçom pendentes
+  // Query para chamadas de garçom pendentes - Offline-First
   const { data: chamadas = [] } = useQuery<ChamadaGarcom[]>({
     queryKey: ["chamadas-garcom-kds", profile?.empresa_id],
     queryFn: async () => {
       if (!profile?.empresa_id) return [];
-      const { data, error } = await supabase
-        .from("chamadas_garcom")
-        .select("id, mesa_id, status, created_at")
-        .eq("empresa_id", profile.empresa_id)
-        .eq("status", "pendente")
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return data || [];
+      
+      // 1. Buscar do IndexedDB primeiro
+      let dadosLocais: ChamadaGarcom[] = [];
+      try {
+        const locais = await db.chamadas_garcom.where('empresa_id').equals(profile.empresa_id).toArray();
+        dadosLocais = locais
+          .filter((c: any) => c.status === 'pendente')
+          .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) as ChamadaGarcom[];
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler chamadas_garcom do IndexedDB:', err);
+      }
+      
+      // 2. Se offline, retornar dados locais
+      if (!navigator.onLine) {
+        return dadosLocais;
+      }
+      
+      // 3. Se online, buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from("chamadas_garcom")
+          .select("id, mesa_id, status, created_at")
+          .eq("empresa_id", profile.empresa_id)
+          .eq("status", "pendente")
+          .order("created_at", { ascending: true });
+        if (!error && data) {
+          // Salvar no IndexedDB
+          const dadosComSync = data.map((c: any) => ({ ...c, empresa_id: profile.empresa_id, sincronizado: 1 }));
+          await db.chamadas_garcom.bulkPut(dadosComSync).catch(() => {});
+          return data;
+        }
+      } catch (err) {
+        console.warn('[Offline-First] Supabase inacessível para chamadas_garcom:', err);
+      }
+      
+      return dadosLocais;
     },
     enabled: !!profile?.empresa_id,
-    refetchInterval: 5000,
+    refetchInterval: navigator.onLine ? 5000 : false,
   });
 
   // Query para mesas (para exibir nome/número) - Offline-First

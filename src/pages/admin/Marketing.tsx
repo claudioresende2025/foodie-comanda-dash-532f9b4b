@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { db } from '@/lib/db';
+import { connectionManager } from '@/lib/connectionManager';
 
 export default function Marketing() {
   const { profile } = useAuth();
@@ -50,15 +52,38 @@ export default function Marketing() {
     queryKey: ['cupons', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('cupons')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
+      
+      // 1. Buscar dados locais primeiro
+      const cuponsLocais = await db.cupons.where('empresa_id').equals(empresaId).toArray();
+      
+      // 2. Se offline, retornar dados locais
+      if (!connectionManager.isOnline()) {
+        console.log('📱 Cupons: Usando dados offline');
+        return cuponsLocais || [];
+      }
+      
+      // 3. Buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from('cupons')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        
+        // 4. Salvar no IndexedDB
+        if (data?.length) {
+          await db.cupons.bulkPut(data.map(c => ({ ...c, sincronizado: true })));
+        }
+        return data || [];
+      } catch (err) {
+        console.warn('⚠️ Cupons: Erro ao buscar online, usando cache', err);
+        return cuponsLocais || [];
+      }
     },
     enabled: !!empresaId,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   // Buscar config de fidelidade
@@ -66,15 +91,38 @@ export default function Marketing() {
     queryKey: ['fidelidade_config', empresaId],
     queryFn: async () => {
       if (!empresaId) return null;
-      const { data, error } = await supabase
-        .from('fidelidade_config')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .single();
-      if (error && error.code !== 'PGRST116') throw error;
-      return data;
+      
+      // 1. Buscar local primeiro
+      const configLocal = await db.fidelidade_config.where('empresa_id').equals(empresaId).first();
+      
+      // 2. Se offline, retornar local
+      if (!connectionManager.isOnline()) {
+        console.log('📱 Fidelidade: Usando dados offline');
+        return configLocal || null;
+      }
+      
+      // 3. Buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from('fidelidade_config')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .single();
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        // 4. Salvar no IndexedDB
+        if (data) {
+          await db.fidelidade_config.put({ ...data, sincronizado: true });
+        }
+        return data;
+      } catch (err) {
+        console.warn('⚠️ Fidelidade: Erro ao buscar online, usando cache', err);
+        return configLocal || null;
+      }
     },
     enabled: !!empresaId,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   // Buscar combos
@@ -82,15 +130,38 @@ export default function Marketing() {
     queryKey: ['combos', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('combos')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
+      
+      // 1. Buscar local primeiro
+      const combosLocais = await db.combos.where('empresa_id').equals(empresaId).toArray();
+      
+      // 2. Se offline, retornar local
+      if (!connectionManager.isOnline()) {
+        console.log('📱 Combos: Usando dados offline');
+        return combosLocais || [];
+      }
+      
+      // 3. Buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from('combos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        
+        // 4. Salvar no IndexedDB
+        if (data?.length) {
+          await db.combos.bulkPut(data.map(c => ({ ...c, sincronizado: true })));
+        }
+        return data || [];
+      } catch (err) {
+        console.warn('⚠️ Combos: Erro ao buscar online, usando cache', err);
+        return combosLocais || [];
+      }
     },
     enabled: !!empresaId,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   // Buscar promoções
@@ -98,15 +169,38 @@ export default function Marketing() {
     queryKey: ['promocoes', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('promocoes')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
+      
+      // 1. Buscar local primeiro
+      const promocoesLocais = await db.promocoes.where('empresa_id').equals(empresaId).toArray();
+      
+      // 2. Se offline, retornar local
+      if (!connectionManager.isOnline()) {
+        console.log('📱 Promoções: Usando dados offline');
+        return promocoesLocais || [];
+      }
+      
+      // 3. Buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from('promocoes')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        
+        // 4. Salvar no IndexedDB
+        if (data?.length) {
+          await db.promocoes.bulkPut(data.map(p => ({ ...p, sincronizado: true })));
+        }
+        return data || [];
+      } catch (err) {
+        console.warn('⚠️ Promoções: Erro ao buscar online, usando cache', err);
+        return promocoesLocais || [];
+      }
     },
     enabled: !!empresaId,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   // Buscar produtos para montar combos
@@ -114,16 +208,39 @@ export default function Marketing() {
     queryKey: ['produtos', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
-      const { data, error } = await supabase
-        .from('produtos')
-        .select('*')
-        .eq('empresa_id', empresaId)
-        .eq('ativo', true)
-        .order('nome');
-      if (error) throw error;
-      return data || [];
+      
+      // 1. Buscar local primeiro
+      const produtosLocais = await db.produtos.where('empresa_id').equals(empresaId).filter(p => p.ativo).toArray();
+      
+      // 2. Se offline, retornar local
+      if (!connectionManager.isOnline()) {
+        console.log('📱 Produtos: Usando dados offline');
+        return produtosLocais || [];
+      }
+      
+      // 3. Buscar do Supabase
+      try {
+        const { data, error } = await supabase
+          .from('produtos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('ativo', true)
+          .order('nome');
+        if (error) throw error;
+        
+        // 4. Salvar no IndexedDB
+        if (data?.length) {
+          await db.produtos.bulkPut(data.map(p => ({ ...p, sincronizado: true })));
+        }
+        return data || [];
+      } catch (err) {
+        console.warn('⚠️ Produtos: Erro ao buscar online, usando cache', err);
+        return produtosLocais || [];
+      }
     },
     enabled: !!empresaId,
+    networkMode: 'offlineFirst',
+    staleTime: 1000 * 60,
   });
 
   // Preencher formulário de fidelidade quando carregar os dados

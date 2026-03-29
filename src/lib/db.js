@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 // 1. CONFIGURAÇÃO DO BANCO LOCAL (INDEXEDDB)
 export const db = new Dexie('FoodComandaPro_DB');
 
-db.version(4).stores({
+db.version(6).stores({
     // Tabelas do salão
     pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em',
     comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em',
@@ -19,6 +19,13 @@ db.version(4).stores({
     // Tabelas de delivery
     pedidos_delivery: 'id, empresa_id, user_id, status, total, sincronizado',
     itens_delivery: 'id, pedido_delivery_id, produto_id, sincronizado',
+    // Tabelas de marketing
+    cupons: 'id, empresa_id, codigo, ativo, sincronizado',
+    fidelidade_config: 'id, empresa_id, sincronizado',
+    combos: 'id, empresa_id, nome, ativo, sincronizado',
+    promocoes: 'id, empresa_id, nome, ativo, sincronizado',
+    // Tabela de equipe
+    team_members: 'id, empresa_id, nome, email, sincronizado',
 });
 
 // 2. DOWNLOAD INICIAL (POPULAR O PC DO RESTAURANTE)
