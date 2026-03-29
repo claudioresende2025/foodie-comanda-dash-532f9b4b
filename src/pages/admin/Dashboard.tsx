@@ -112,17 +112,39 @@ export default function Dashboard() {
     !!empresaId
   );
 
-  // Fetch empresa data
+  // Fetch empresa data - Offline-First
   const { data: empresa } = useQuery({
     queryKey: ['empresa', empresaId],
     queryFn: async () => {
       if (!empresaId) return null;
-      const { data } = await supabase
-        .from('empresas')
-        .select('nome_fantasia')
-        .eq('id', empresaId)
-        .single();
-      return data;
+      
+      // 1. Buscar dados locais primeiro
+      let empresaLocal = null;
+      try {
+        empresaLocal = await db.empresa.where('id').equals(empresaId).first();
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler empresa do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data } = await supabase
+            .from('empresas')
+            .select('nome_fantasia')
+            .eq('id', empresaId)
+            .single();
+          if (data) {
+            // Salvar localmente
+            await db.empresa.put({ id: empresaId, ...data, sincronizado: 1 }).catch(() => {});
+            return data;
+          }
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para empresa:', err);
+        }
+      }
+      
+      return empresaLocal ? { nome_fantasia: empresaLocal.nome_fantasia } : null;
     },
     enabled: !!empresaId,
     staleTime: 5 * 60 * 1000,
@@ -176,115 +198,244 @@ export default function Dashboard() {
     refetchOnReconnect: false,
   });
 
-  // Fetch today's comandas and calculate stats
+  // Fetch today's comandas and calculate stats - Offline-First
   const { data: comandasHoje = [], isLoading: isLoadingComandas } = useQuery({
     queryKey: ['comandas-hoje', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
       const today = new Date();
-      const { data } = await supabase
-        .from('comandas')
-        .select('id, total, status, created_at')
-        .eq('empresa_id', empresaId)
-        .gte('created_at', startOfDay(today).toISOString())
-        .lte('created_at', endOfDay(today).toISOString());
-      return data || [];
+      const startOfToday = startOfDay(today).toISOString();
+      const endOfToday = endOfDay(today).toISOString();
+      
+      // 1. Buscar dados locais primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const locais = await db.comandas.where('empresa_id').equals(empresaId).toArray();
+        dadosLocais = locais.filter((c: any) => {
+          const createdAt = new Date(c.created_at).toISOString();
+          return createdAt >= startOfToday && createdAt <= endOfToday;
+        }).map((c: any) => ({
+          id: c.id,
+          total: c.total || 0,
+          status: c.status,
+          created_at: c.created_at,
+        }));
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler comandas do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data } = await supabase
+            .from('comandas')
+            .select('id, total, status, created_at')
+            .eq('empresa_id', empresaId)
+            .gte('created_at', startOfToday)
+            .lte('created_at', endOfToday);
+          if (data) return data;
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para comandas:', err);
+        }
+      }
+      
+      return dadosLocais;
     },
     enabled: !!empresaId,
     staleTime: 30 * 1000,
-    refetchInterval: 30000,
+    refetchInterval: navigator.onLine ? 30000 : false,
   });
 
-  // Fetch today's vendas_concluidas (standalone sales)
+  // Fetch today's vendas_concluidas (standalone sales) - Offline-First
   const { data: vendasHoje = [] } = useQuery({
     queryKey: ['vendas-concluidas-hoje', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
       const today = new Date();
-      const { data } = await (supabase as any)
-        .from('vendas_concluidas')
-        .select('valor_total, created_at')
-        .eq('empresa_id', empresaId)
-        .is('comanda_id', null)
-        .gte('created_at', startOfDay(today).toISOString())
-        .lte('created_at', endOfDay(today).toISOString());
-      return data || [];
+      const startOfToday = startOfDay(today).toISOString();
+      const endOfToday = endOfDay(today).toISOString();
+      
+      // 1. Buscar dados locais primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const locais = await db.vendas_concluidas.where('empresa_id').equals(empresaId).toArray();
+        dadosLocais = locais.filter((v: any) => {
+          const createdAt = new Date(v.created_at).toISOString();
+          return !v.comanda_id && createdAt >= startOfToday && createdAt <= endOfToday;
+        }).map((v: any) => ({
+          valor_total: v.valor_total || 0,
+          created_at: v.created_at,
+        }));
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler vendas_concluidas do IndexedDB:', err);
+      }
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data } = await (supabase as any)
+            .from('vendas_concluidas')
+            .select('valor_total, created_at')
+            .eq('empresa_id', empresaId)
+            .is('comanda_id', null)
+            .gte('created_at', startOfToday)
+            .lte('created_at', endOfToday);
+          if (data) return data;
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para vendas_concluidas:', err);
+        }
+      }
+      
+      return dadosLocais;
     },
     enabled: !!empresaId,
     staleTime: 30 * 1000,
-    refetchInterval: 30000,
+    refetchInterval: navigator.onLine ? 30000 : false,
   });
 
-  // Fetch today's pedidos count - fix: filter by empresa through comandas
+  // Fetch today's pedidos count - Offline-First
   const { data: pedidosHoje = 0 } = useQuery({
     queryKey: ['pedidos-count-hoje', empresaId],
     queryFn: async () => {
       if (!empresaId) return 0;
       const today = new Date();
+      const startOfToday = startOfDay(today).toISOString();
+      const endOfToday = endOfDay(today).toISOString();
       
-      // First get comandas IDs for this empresa
-      const { data: comandas } = await supabase
-        .from('comandas')
-        .select('id')
-        .eq('empresa_id', empresaId);
+      // 1. Buscar dados locais primeiro
+      let countLocal = 0;
+      try {
+        const comandasLocais = await db.comandas.where('empresa_id').equals(empresaId).toArray();
+        const comandaIds = comandasLocais.map((c: any) => c.id);
+        if (comandaIds.length > 0) {
+          const pedidosLocais = await db.pedidos.toArray();
+          countLocal = pedidosLocais.filter((p: any) => {
+            if (!comandaIds.includes(p.comanda_id)) return false;
+            const createdAt = new Date(p.created_at || p.criado_em).toISOString();
+            return createdAt >= startOfToday && createdAt <= endOfToday;
+          }).length;
+        }
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao contar pedidos do IndexedDB:', err);
+      }
       
-      if (!comandas || comandas.length === 0) return 0;
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const { data: comandas } = await supabase
+            .from('comandas')
+            .select('id')
+            .eq('empresa_id', empresaId);
+          
+          if (!comandas || comandas.length === 0) return 0;
+          
+          const comandaIds = comandas.map(c => c.id);
+          
+          const { count } = await supabase
+            .from('pedidos')
+            .select('id', { count: 'exact', head: true })
+            .in('comanda_id', comandaIds)
+            .gte('created_at', startOfToday)
+            .lte('created_at', endOfToday);
+          
+          if (count !== null) return count;
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para pedidos count:', err);
+        }
+      }
       
-      const comandaIds = comandas.map(c => c.id);
-      
-      const { count } = await supabase
-        .from('pedidos')
-        .select('id', { count: 'exact', head: true })
-        .in('comanda_id', comandaIds)
-        .gte('created_at', startOfDay(today).toISOString())
-        .lte('created_at', endOfDay(today).toISOString());
-      
-      return count || 0;
+      return countLocal;
     },
     enabled: !!empresaId,
     staleTime: 30 * 1000,
-    refetchInterval: 30000,
+    refetchInterval: navigator.onLine ? 30000 : false,
   });
 
-  // Fetch recent orders - fix: filter by empresa
+  // Fetch recent orders - Offline-First
   const { data: recentOrders = [] } = useQuery({
     queryKey: ['recent-orders', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
       
-      // Get comandas for this empresa
-      const { data: comandas } = await supabase
-        .from('comandas')
-        .select('id')
-        .eq('empresa_id', empresaId);
+      // 1. Buscar dados locais primeiro
+      let dadosLocais: any[] = [];
+      try {
+        const [pedidos, produtos, comandas, mesas] = await Promise.all([
+          db.pedidos.toArray(),
+          db.produtos.toArray(),
+          db.comandas.where('empresa_id').equals(empresaId).toArray(),
+          db.mesas.where('empresa_id').equals(empresaId).toArray()
+        ]);
+        
+        const comandaIds = comandas.map((c: any) => c.id);
+        const produtosMap = new Map(produtos.map((p: any) => [p.id, p]));
+        const comandasMap = new Map(comandas.map((c: any) => [c.id, c]));
+        const mesasMap = new Map(mesas.map((m: any) => [m.id, m]));
+        
+        dadosLocais = pedidos
+          .filter((p: any) => comandaIds.includes(p.comanda_id))
+          .sort((a: any, b: any) => new Date(b.created_at || b.criado_em).getTime() - new Date(a.created_at || a.criado_em).getTime())
+          .slice(0, 5)
+          .map((p: any) => {
+            const produto = produtosMap.get(p.produto_id);
+            const comanda = comandasMap.get(p.comanda_id);
+            const mesa = comanda ? mesasMap.get(comanda.mesa_id) : null;
+            return {
+              id: p.id,
+              quantidade: p.quantidade,
+              subtotal: p.subtotal || (p.quantidade * (p.preco_unitario || produto?.preco || 0)),
+              status_cozinha: p.status_cozinha,
+              created_at: p.created_at || p.criado_em,
+              produto: produto ? { nome: produto.nome } : null,
+              comanda: comanda ? { mesa: mesa ? { numero_mesa: mesa.numero_mesa || mesa.numero } : null } : null
+            };
+          });
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao ler pedidos recentes do IndexedDB:', err);
+      }
       
-      if (!comandas || comandas.length === 0) return [];
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          // Get comandas for this empresa
+          const { data: comandas } = await supabase
+            .from('comandas')
+            .select('id')
+            .eq('empresa_id', empresaId);
+          
+          if (!comandas || comandas.length === 0) return dadosLocais;
+          
+          const comandaIds = comandas.map(c => c.id);
+          
+          const { data } = await supabase
+            .from('pedidos')
+            .select(`
+              id,
+              quantidade,
+              subtotal,
+              status_cozinha,
+              created_at,
+              produto:produtos(nome),
+              comanda:comandas(mesa:mesas(numero_mesa))
+            `)
+            .in('comanda_id', comandaIds)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          
+          if (data) return data;
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para pedidos recentes:', err);
+        }
+      }
       
-      const comandaIds = comandas.map(c => c.id);
-      
-      const { data } = await supabase
-        .from('pedidos')
-        .select(`
-          id,
-          quantidade,
-          subtotal,
-          status_cozinha,
-          created_at,
-          produto:produtos(nome),
-          comanda:comandas(mesa:mesas(numero_mesa))
-        `)
-        .in('comanda_id', comandaIds)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      
-      return data || [];
+      return dadosLocais;
     },
     enabled: !!empresaId,
     staleTime: 30 * 1000,
-    refetchInterval: 30000,
+    refetchInterval: navigator.onLine ? 30000 : false,
   });
 
-  // Fetch last 7 days sales
+  // Fetch last 7 days sales - Offline-First
   const { data: dailySales = [] } = useQuery({
     queryKey: ['daily-sales', empresaId],
     queryFn: async () => {
@@ -292,72 +443,138 @@ export default function Dashboard() {
       const today = new Date();
       const weekStart = startOfDay(subDays(today, 6)).toISOString();
       const weekEnd = endOfDay(today).toISOString();
-
-      const [comandasRes, pedidosRes, vendasRes] = await Promise.all([
-        supabase
-          .from('comandas')
-          .select('total, created_at')
-          .eq('empresa_id', empresaId)
-          .eq('status', 'fechada')
-          .gte('created_at', weekStart)
-          .lte('created_at', weekEnd),
-        supabase
-          .from('pedidos')
-          .select('created_at, comanda:comandas!inner(empresa_id)')
-          .eq('comanda.empresa_id', empresaId)
-          .gte('created_at', weekStart)
-          .lte('created_at', weekEnd),
-        (supabase as any)
-          .from('vendas_concluidas')
-          .select('valor_total, created_at')
-          .eq('empresa_id', empresaId)
-          .is('comanda_id', null)
-          .gte('created_at', weekStart)
-          .lte('created_at', weekEnd),
-      ]);
-
-      const weekComandas = comandasRes.data || [];
-      const weekPedidos = pedidosRes.data || [];
-      const weekVendas = vendasRes.data || [];
-
-      const salesData: DailySales[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const date = subDays(today, i);
-        const dayStart = startOfDay(date);
-        const dayEnd = endOfDay(date);
-
-        const dayTotalComandas = weekComandas
-          .filter(c => {
-            const createdAt = new Date(c.created_at);
-            return createdAt >= dayStart && createdAt <= dayEnd;
-          })
-          .reduce((sum, c) => sum + (c.total || 0), 0);
-
-        const dayTotalVendas = weekVendas
-          .filter((v: any) => {
-            const createdAt = new Date(v.created_at);
-            return createdAt >= dayStart && createdAt <= dayEnd;
-          })
-          .reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
-
-        const dayTotal = dayTotalComandas + dayTotalVendas;
-
-        const dayPedidosCount = weekPedidos
-          .filter(p => {
-            const createdAt = new Date(p.created_at);
-            return createdAt >= dayStart && createdAt <= dayEnd;
-          }).length;
-
-        salesData.push({
-          date: format(date, 'EEE', { locale: ptBR }),
-          total: dayTotal,
-          pedidos: dayPedidosCount,
+      
+      // 1. Buscar dados locais primeiro
+      let dadosLocais: { date: string; faturamento: number; pedidos: number }[] = [];
+      try {
+        const [comandas, pedidos] = await Promise.all([
+          db.comandas.where('empresa_id').equals(empresaId).toArray(),
+          db.pedidos.toArray()
+        ]);
+        
+        const comandasFechadas = comandas.filter((c: any) => {
+          const createdAt = new Date(c.created_at).toISOString();
+          return c.status === 'fechada' && createdAt >= weekStart && createdAt <= weekEnd;
         });
+        
+        const comandaIds = comandasFechadas.map((c: any) => c.id);
+        const pedidosFiltrados = pedidos.filter((p: any) => {
+          const createdAt = new Date(p.created_at || p.criado_em).toISOString();
+          return createdAt >= weekStart && createdAt <= weekEnd && comandaIds.includes(p.comanda_id);
+        });
+        
+        // Agrupar por dia
+        const salesByDay = new Map<string, { faturamento: number; pedidos: number }>();
+        for (let i = 6; i >= 0; i--) {
+          const date = subDays(today, i);
+          const dateStr = date.toISOString().split('T')[0];
+          salesByDay.set(dateStr, { faturamento: 0, pedidos: 0 });
+        }
+        
+        comandasFechadas.forEach((c: any) => {
+          const dateStr = new Date(c.created_at).toISOString().split('T')[0];
+          const existing = salesByDay.get(dateStr);
+          if (existing) {
+            existing.faturamento += c.total || 0;
+          }
+        });
+        
+        pedidosFiltrados.forEach((p: any) => {
+          const dateStr = new Date(p.created_at || p.criado_em).toISOString().split('T')[0];
+          const existing = salesByDay.get(dateStr);
+          if (existing) {
+            existing.pedidos += 1;
+          }
+        });
+        
+        dadosLocais = Array.from(salesByDay.entries()).map(([date, data]) => ({
+          date,
+          ...data
+        }));
+      } catch (err) {
+        console.warn('[Offline-First] Erro ao calcular vendas diárias do IndexedDB:', err);
       }
-      return salesData;
+      
+      // 2. Se online, buscar do Supabase
+      if (navigator.onLine) {
+        try {
+          const [comandasRes, pedidosRes, vendasRes] = await Promise.all([
+            supabase
+              .from('comandas')
+              .select('total, created_at')
+              .eq('empresa_id', empresaId)
+              .eq('status', 'fechada')
+              .gte('created_at', weekStart)
+              .lte('created_at', weekEnd),
+            supabase
+              .from('pedidos')
+              .select('created_at, comanda:comandas!inner(empresa_id)')
+              .eq('comanda.empresa_id', empresaId)
+              .gte('created_at', weekStart)
+              .lte('created_at', weekEnd),
+            (supabase as any)
+              .from('vendas_concluidas')
+              .select('valor_total, created_at')
+              .eq('empresa_id', empresaId)
+              .is('comanda_id', null)
+              .gte('created_at', weekStart)
+              .lte('created_at', weekEnd),
+          ]);
+
+          const weekComandas = comandasRes.data || [];
+          const weekPedidos = pedidosRes.data || [];
+          const weekVendas = vendasRes.data || [];
+
+          const salesData: DailySales[] = [];
+          for (let i = 6; i >= 0; i--) {
+            const date = subDays(today, i);
+            const dayStart = startOfDay(date);
+            const dayEnd = endOfDay(date);
+
+            const dayTotalComandas = weekComandas
+              .filter(c => {
+                const createdAt = new Date(c.created_at);
+                return createdAt >= dayStart && createdAt <= dayEnd;
+              })
+              .reduce((sum, c) => sum + (c.total || 0), 0);
+
+            const dayTotalVendas = weekVendas
+              .filter((v: any) => {
+                const createdAt = new Date(v.created_at);
+                return createdAt >= dayStart && createdAt <= dayEnd;
+              })
+              .reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
+
+            const dayTotal = dayTotalComandas + dayTotalVendas;
+
+            const dayPedidosCount = weekPedidos
+              .filter(p => {
+                const createdAt = new Date(p.created_at);
+                return createdAt >= dayStart && createdAt <= dayEnd;
+              }).length;
+
+            salesData.push({
+              date: format(date, 'EEE', { locale: ptBR }),
+              total: dayTotal,
+              pedidos: dayPedidosCount,
+            });
+          }
+          return salesData;
+        } catch (err) {
+          console.warn('[Offline-First] Supabase inacessível para vendas diárias:', err);
+        }
+      }
+      
+      // Retornar dados locais formatados
+      return dadosLocais.map(d => ({
+        date: format(new Date(d.date), 'EEE', { locale: ptBR }),
+        total: d.faturamento,
+        pedidos: d.pedidos,
+      }));
     },
     enabled: !!empresaId,
     staleTime: 5 * 60 * 1000,
+    refetchInterval: navigator.onLine ? 60000 : false,
   });
 
   // Calculate derived stats

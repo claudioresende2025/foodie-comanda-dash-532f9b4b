@@ -150,6 +150,47 @@ export function useUserRole(): UserRoleData {
       return;
     }
 
+    // ===============================
+    // OFFLINE-FIRST: Se offline e houver cache, usa o cache
+    // ===============================
+    if (!navigator.onLine) {
+      const cache = (window as any).__empresaFeatureCache;
+      if (cache) {
+        console.log('[useUserRole] Offline - usando cache');
+        setIsSuperAdmin(cache.isSuperAdmin || false);
+        // Se tiver role salva no localStorage
+        const savedRole = localStorage.getItem(`user_role_${user.id}_${profile.empresa_id}`);
+        setRole(savedRole as AppRole || 'proprietario'); // Default to proprietario for offline
+        setPlanData({
+          planoSlug: cache.planoSlug || 'bronze',
+          planoNome: cache.planoNome || 'Básico',
+          recursos: cache.planoRecursos || defaultPlanResources['bronze'].recursos,
+          kdsScreensLimit: cache.computedKdsScreens ?? null,
+          staffLimit: cache.computedStaffLimit ?? null,
+          mesasLimit: cache.computedMesasLimit ?? null,
+          garcomLimit: cache.computedGarcomLimit ?? null,
+        });
+        setIsLoading(false);
+        return;
+      } else {
+        // Sem cache mas offline - permitir acesso básico para proprietário
+        console.log('[useUserRole] Offline sem cache - usando padrões');
+        const savedRole = localStorage.getItem(`user_role_${user.id}_${profile.empresa_id}`);
+        setRole(savedRole as AppRole || 'proprietario');
+        setPlanData({
+          planoSlug: 'bronze',
+          planoNome: 'Básico (Offline)',
+          recursos: defaultPlanResources['bronze'].recursos,
+          kdsScreensLimit: null,
+          staffLimit: null,
+          mesasLimit: null,
+          garcomLimit: null,
+        });
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       // Buscar role, overrides e assinatura em paralelo
       const [roleResult, overridesResult, assinaturaResult, empresaResult] = await Promise.all([
@@ -204,7 +245,12 @@ export function useUserRole(): UserRoleData {
         console.error('Error fetching user role:', roleResult.error);
         setRole(null);
       } else {
-        setRole(roleResult.data?.role as AppRole || null);
+        const fetchedRole = roleResult.data?.role as AppRole || null;
+        setRole(fetchedRole);
+        // Salvar no localStorage para uso offline
+        if (fetchedRole && user?.id && profile?.empresa_id) {
+          localStorage.setItem(`user_role_${user.id}_${profile.empresa_id}`, fetchedRole);
+        }
       }
 
       // Process overrides and plan data

@@ -204,6 +204,10 @@ export default function Menu() {
   useEffect(() => {
     if (empresaId) {
       fetchMenuData();
+    } else {
+      // Se não houver empresaId na URL, mostrar erro
+      setError("Link inválido. Verifique o QR Code e tente novamente.");
+      setIsLoading(false);
     }
   }, [empresaId, mesaId]);
 
@@ -548,6 +552,13 @@ export default function Menu() {
   }, [mesaId, empresaId, comandaId]);
 
   const fetchMenuData = async () => {
+    // Verificação de segurança
+    if (!empresaId) {
+      setError("Link inválido. Verifique o QR Code e tente novamente.");
+      setIsLoading(false);
+      return;
+    }
+
     // ===============================
     // OFFLINE-FIRST: Busca dados do IndexedDB primeiro
     // ===============================

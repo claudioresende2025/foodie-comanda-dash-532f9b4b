@@ -98,8 +98,11 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
   };
 
   const handleOpenMenu = async () => {
-    // Atualiza status da mesa para 'ocupada' ao visualizar o cardápio
-    if (mesaId && empresaId) {
+    // Abrir o menu PRIMEIRO, para não bloquear a experiência do cliente
+    window.open(menuUrl, '_blank');
+    
+    // Depois, tentar atualizar status da mesa para 'ocupada' (background)
+    if (mesaId && empresaId && navigator.onLine) {
       try {
         await supabase
           .from('mesas')
@@ -109,7 +112,6 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
         // Silencia erro para não bloquear a experiência do cliente
       }
     }
-    window.open(menuUrl, '_blank');
   };
 
   const handleCancelarComanda = async () => {
