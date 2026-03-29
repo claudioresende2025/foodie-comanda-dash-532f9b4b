@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
+import { baixarDadosIniciais } from '@/lib/db';
 
 interface Profile {
   id: string;
@@ -42,6 +43,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     if (!error && data) {
       setProfile(data);
+      
+      // BAIXAR DADOS PARA INDEXEDDB QUANDO TEMOS EMPRESA_ID (Offline-First)
+      if (data.empresa_id && navigator.onLine) {
+        console.log('📥 Baixando dados para modo offline...');
+        baixarDadosIniciais(data.empresa_id).catch(err => {
+          console.warn('Erro ao baixar dados iniciais:', err);
+        });
+      }
+      
       // Aplicar associação pendente (ex: usuário veio via e-mail pós-checkout)
       try {
         if (!data.empresa_id && typeof window !== 'undefined') {

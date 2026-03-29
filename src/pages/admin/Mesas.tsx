@@ -71,10 +71,10 @@ export default function Mesas() {
     queryFn: async () => {
       if (!empresaId) return [];
       
-      // 1. Buscar dados do banco local primeiro (fonte da verdade operacional)
+      // 1. Buscar dados do banco local primeiro (filtrar por empresa_id)
       let dadosLocais: Mesa[] = [];
       try {
-        const locais = await db.mesas.toArray();
+        const locais = await db.mesas.where('empresa_id').equals(empresaId).toArray();
         dadosLocais = locais.map((m: any) => ({
           id: m.id,
           numero_mesa: m.numero_mesa ?? m.numero,
@@ -83,6 +83,7 @@ export default function Mesas() {
           mesa_juncao_id: m.mesa_juncao_id || null,
           nome: m.nome || null,
         })) as Mesa[];
+        console.log('[Offline-First] Mesas locais encontradas:', dadosLocais.length);
       } catch (err) {
         console.warn('[Offline-First] Erro ao ler IndexedDB:', err);
       }
@@ -104,6 +105,7 @@ export default function Mesas() {
               sincronizado: 1,
             }));
             await db.mesas.bulkPut(dadosComSync);
+            console.log('[Offline-First] Mesas sincronizadas do Supabase:', data.length);
             return data as Mesa[];
           }
         } catch (err) {
