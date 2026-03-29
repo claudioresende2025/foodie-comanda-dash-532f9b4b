@@ -3,10 +3,10 @@
 // Service Worker com suporte a Web Push Notifications
 // Este arquivo é usado pelo VitePWA injectManifest
 
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
-import { registerRoute } from 'workbox-routing';
-import { CacheFirst, NetworkFirst } from 'workbox-strategies';
+import { registerRoute, NavigationRoute } from 'workbox-routing';
+import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -27,6 +27,27 @@ clientsClaim();
 precacheAndRoute(self.__WB_MANIFEST);
 
 // Cleanup old caches
+cleanupOutdatedCaches();
+
+// ============================================
+// NAVIGATION ROUTE - CRÍTICO PARA SPA OFFLINE
+// ============================================
+// Para SPAs, todas as rotas devem retornar o index.html
+// Isso permite navegar entre páginas (/admin/mesas, /admin/pedidos, etc) offline
+const navigationHandler = createHandlerBoundToURL('/index.html');
+const navigationRoute = new NavigationRoute(navigationHandler, {
+  // Exclusões: não interceptar chamadas de API ou arquivos estáticos
+  denylist: [
+    /^\/api\//,
+    /^\/__/,
+    /\/[^/?]+\.[^/]+$/, // arquivos com extensão (ex: .json, .js, .css)
+  ],
+});
+registerRoute(navigationRoute);
+
+// ============================================
+// CACHE DE ASSETS ESTÁTICOS
+// ============================================
 cleanupOutdatedCaches();
 
 // Cache Google Fonts

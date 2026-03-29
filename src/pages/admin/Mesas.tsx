@@ -242,13 +242,24 @@ export default function Mesas() {
       // 1. Salvar imediatamente no banco local (fonte da verdade operacional)
       await db.mesas.put(novaMesa);
       
-      // 2. Atualizar UI imediatamente
-      queryClient.invalidateQueries({ queryKey: ['mesas', empresaId] });
+      // 2. ATUALIZAÇÃO OTIMISTA - Atualiza a UI IMEDIATAMENTE com o novo dado
+      queryClient.setQueryData(['mesas', empresaId], (old: Mesa[] = []) => {
+        const mesaParaUI: Mesa = {
+          id: localId,
+          numero_mesa: numero,
+          status: 'disponivel',
+          capacidade: parseInt(newMesa.capacidade),
+          mesa_juncao_id: null,
+          nome: null,
+        };
+        return [...old, mesaParaUI].sort((a, b) => a.numero_mesa - b.numero_mesa);
+      });
+      
       toast.success('Mesa criada com sucesso!');
       setNewMesa({ numero_mesa: '', capacidade: '4' });
       setIsDialogOpen(false);
       
-      // 3. Se online, sincronizar em background
+      // 3. Se online, sincronizar em background (não bloqueia a UI)
       if (navigator.onLine) {
         try {
           const { error } = await supabase.from('mesas').insert({

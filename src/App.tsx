@@ -54,7 +54,36 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import ErrorBoundary from '@/components/ErrorBoundary';
 import CardapioDigitalDemo from '@/pages/CardapioDigitalDemo';
 
-const queryClient = new QueryClient();
+// QueryClient configurado para Offline-First
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Manter dados em cache por 5 minutos mesmo quando stale
+      staleTime: 5 * 60 * 1000,
+      // Manter dados em cache por 30 minutos
+      gcTime: 30 * 60 * 1000,
+      // Não refetch automático em reconexão (o ConnectionManager cuida disso)
+      refetchOnReconnect: false,
+      // Não refetch em foco de janela offline
+      refetchOnWindowFocus: false,
+      // Retry apenas quando online
+      retry: (failureCount, error) => {
+        if (!navigator.onLine) return false;
+        return failureCount < 3;
+      },
+      // Permitir dados stale quando offline (não mostrar loading)
+      networkMode: 'offlineFirst',
+    },
+    mutations: {
+      // Mutations também funcionam offline
+      networkMode: 'offlineFirst',
+      retry: (failureCount, error) => {
+        if (!navigator.onLine) return false;
+        return failureCount < 3;
+      },
+    },
+  },
+});
 
 const PWAManifestHandler = () => {
   usePWAManifest();

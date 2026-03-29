@@ -241,6 +241,11 @@ export default function Cardapio() {
           sincronizado: 0,
         };
         await db.categorias.put(novaCategoria);
+        
+        // UI OTIMISTA: Atualizar cache imediatamente
+        queryClient.setQueryData(['categorias', empresaId], (old: Categoria[] = []) => {
+          return [...old, { id: localId, nome: catForm.nome, descricao: catForm.descricao || null, ordem: categorias.length, ativo: true }];
+        });
         toast.success('Categoria criada!');
         
         // Sincronizar em background se online
@@ -281,8 +286,12 @@ export default function Cardapio() {
     try {
       // Excluir do local primeiro
       await db.categorias.delete(id);
+      
+      // UI OTIMISTA: Remover do cache imediatamente
+      queryClient.setQueryData(['categorias', empresaId], (old: Categoria[] = []) => {
+        return old.filter(c => c.id !== id);
+      });
       toast.success('Categoria excluída!');
-      queryClient.invalidateQueries({ queryKey: ['categorias'] });
       
       // Sincronizar com Supabase se online
       if (navigator.onLine) {
@@ -431,6 +440,11 @@ export default function Cardapio() {
           sincronizado: 0,
         };
         await db.produtos.put(novoProduto);
+        
+        // UI OTIMISTA: Atualizar cache imediatamente
+        queryClient.setQueryData(['produtos', empresaId], (old: Produto[] = []) => {
+          return [...old, { id: localId, empresa_id: empresaId, ...produtoData }];
+        });
         toast.success('Produto criado!');
         
         // Sincronizar em background se online
@@ -474,8 +488,12 @@ export default function Cardapio() {
     try {
       // Excluir do local primeiro
       await db.produtos.delete(id);
+      
+      // UI OTIMISTA: Remover do cache imediatamente
+      queryClient.setQueryData(['produtos', empresaId], (old: Produto[] = []) => {
+        return old.filter(p => p.id !== id);
+      });
       toast.success('Produto excluído!');
-      queryClient.invalidateQueries({ queryKey: ['produtos'] });
       
       // Sincronizar com Supabase se online
       if (navigator.onLine) {
