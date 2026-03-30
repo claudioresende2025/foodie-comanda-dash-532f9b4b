@@ -75,21 +75,41 @@ export default function Auth() {
     }
   }, [searchParams]);
 
-  // Buscar empresa pelo nome na URL
+// Buscar empresa pelo nome na URL (Híbrido: Nuvem -> Local)
   const { data: empresaUrl } = useQuery({
     queryKey: ['empresa-auth', empresaNome],
     queryFn: async () => {
       if (!empresaNome) return null;
       const decoded = decodeURIComponent(empresaNome);
-      const { data, error } = await supabase
-        .from('empresas')
-        .select('id, nome_fantasia, logo_url')
-        .ilike('nome_fantasia', decoded)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+
+      // 1. TENTA BUSCAR NO SUPABASE (Online)
+      try {
+        const { data, error } = await supabase
+          .from('empresas')
+          .select('id, nome_fantasia, logo_url')
+          .ilike('nome_fantasia', decoded)
+          .maybeSingle();
+        
+        if (!error && data) return data;
+      } catch (onlineErr) {
+        console.warn("⚠️ Supabase inacessível, tentando dados da empresa no servidor local...");
+      }
+
+      // 2. SE FALHAR (OFFLINE), BUSCA NO SERVIDOR LOCAL (PC DO CAIXA)
+      try {
+        const localRes = await fetch(`http://192.168.2.111:3000/api/local/empresa-auth/${encodeURIComponent(decoded)}`);
+        if (localRes.ok) {
+          return await localRes.json();
+        }
+      } catch (localErr) {
+        console.error("🚨 Servidor local também falhou ao retornar dados da empresa.");
+      }
+
+      // 3. FALLBACK FINAL: Se nada funcionar, retorna um objeto básico para não quebrar a tela
+      return { id: null, nome_fantasia: "Food Comanda Pro (Offline)" };
     },
     enabled: !!empresaNome,
+    retry: false, // Importante: evita que o React fique tentando infinitamente sem rede
   });
 
   // Função para verificar o role do usuário e redirecionar apropriadamente
@@ -267,6 +287,32 @@ export default function Auth() {
       sessionStorage.removeItem('plan_toast_shown');
       toast.success('Login realizado com sucesso!');
       // O useEffect cuida do redirecionamento baseado no profile para outros usuários
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateSignup()) return;
+
+    setIsLoading(true);
+
+    const { error } = await signUp(email, password, nome);
+
+    if (error) {
+      setIsLoading(false);
+      if (error.message.includes('User already registered')) {
+        toast.error('Este e-mail já está cadastrado. Tente fazer login.');
+      } else {
+        toast.error('Erro ao criar conta: ' + error.message);
+      }
+    } else {
+      setIsLoading(false);
+      setRegisteredEmail(email);
+      setShowEmailConfirmation(true);
+      // Limpar campos
+      setEmail('');
+      setPassword('');
+      setNome('');
     }
   };
 
