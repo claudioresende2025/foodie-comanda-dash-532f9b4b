@@ -216,14 +216,13 @@ export default function Auth() {
 
     // Resetar flag de redirecionamento para permitir que useEffect redirecione após login
     hasRedirected.current = false;
-
     setIsLoading(true);
 
-    // Helper: tenta login no servidor local com AbortController
+    // --- 🔐 HELPER PARA LOGIN LOCAL (OFFLINE) ---
     const tryLocalLogin = async (): Promise<boolean> => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos
-      
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos de limite
+
       try {
         console.log("🔄 Tentando login no servidor local...");
         const localResponse = await fetch(`http://192.168.2.111:3000/api/local/login`, {
@@ -232,146 +231,66 @@ export default function Auth() {
           body: JSON.stringify({ email, password }),
           signal: controller.signal
         });
-        
+
         clearTimeout(timeoutId);
 
         if (localResponse.ok) {
           const localData = await localResponse.json();
-          console.log("✅ Resposta do servidor local:", localData);
           if (localData.success) {
-            // 🔥 Forçar sessão no localStorage para o sistema entender
-            localStorage.setItem('supabase.auth.token', JSON.stringify({ 
-              currentSession: { user: localData.user, access_token: 'offline-token' } 
+            console.log("✅ Sucesso local:", localData);
+
+            // Injeção manual de sessão para enganar o AuthContext
+            localStorage.setItem('supabase.auth.token', JSON.stringify({
+              currentSession: { user: localData.user, access_token: 'offline-token' }
             }));
             localStorage.setItem('offline_user', JSON.stringify(localData.user));
-            
+
             setIsLoading(false);
             toast.success('Login Offline realizado (Modo de Contingência)');
-            
-            // Dá um pequeno tempo para o sistema entender a sessão e redireciona
+
+            // Redirecionamento forçado com reload para garantir leitura do localStorage
             setTimeout(() => {
-              navigate('/admin');
-              window.location.reload(); // Recarrega para o Context ler o localStorage
-            }, 500);
+              window.location.href = '/admin';
+            }, 800);
             return true;
-          } else {
-            console.warn("❌ Servidor local retornou success=false");
           }
-        } else {
-          console.warn("❌ Servidor local retornou status:", localResponse.status);
         }
-      } catch (localErr: any) {
+        return false;
+      } catch (err: any) {
         clearTimeout(timeoutId);
-        if (localErr.name === 'AbortError') {
-          console.error("⏱️ Timeout ao acessar servidor local");
-        } else {
-          console.error("🚨 Erro ao acessar servidor local:", localErr);
-        }
+        console.error("🚨 Servidor local inacessível:", err.message);
+        return false;
       }
-      return false;
     };
 
-    // Verificar conexão antes de tentar Supabase
-    const isOnline = navigator.onLine;
-    
-    // Se está offline, tenta direto o servidor local
-    if (!isOnline) {
-      console.log("📴 Navegador offline, tentando servidor local...");
-      const localSuccess = await tryLocalLogin();
-      if (localSuccess) return;
-      
-      setIsLoading(false);
-      toast.error('Sem conexão. Verifique se o servidor local está rodando.');
-      return;
-    }
-
-    // 1. TENTATIVA DE LOGIN ONLINE (SUPABASE) com timeout de 5 segundos
+    // --- ☁️ TENTATIVA 1: LOGIN ONLINE (SUPABASE) ---
     try {
-      const loginPromise = signIn(email, password);
-      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 5000)
-      );
-
-      const result = await Promise.race([loginPromise, timeoutPromise]);
-      const error = result?.error;
+      const { error } = await signIn(email, password);
 
       if (error) {
-        throw error;
-      }
+        // Se falhar a nuvem, tenta o local
+        const localSucesso = await tryLocalLogin();
+        if (localSucesso) return;
 
-      // LOGIN ONLINE COM SUCESSO
-      const { data: { user: loggedUser } } = await supabase.auth.getUser();
-
-      if (loggedUser?.id) {
-        // Salvar credencial no servidor local para backup offline
-        try {
-          const { data: userProfile } = await supabase
-            .from('profiles')
-            .select('nome')
-            .eq('id', loggedUser.id)
-            .maybeSingle();
-          
-          const { data: userRole } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', loggedUser.id)
-            .maybeSingle();
-          
-          await fetch('http://192.168.2.111:3000/api/local/salvar-credencial', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: loggedUser.email,
-              user_id: loggedUser.id,
-              nome: userProfile?.nome || loggedUser.email,
-              role: userRole?.role || 'caixa'
-            })
-          }).catch(() => console.log('Servidor local não disponível para salvar credencial'));
-        } catch (e) {
-          console.log('Erro ao salvar credencial local:', e);
+        // Se ambos falharem
+        setIsLoading(false);
+        if (error.message.includes('Invalid login credentials')) {
+          toast.error('E-mail ou senha incorretos');
+        } else {
+          toast.error('Erro ao conectar. Verifique o servidor local.');
         }
-
-        const { data: superAdmin } = await supabase
-          .from('super_admins')
-          .select('id, ativo')
-          .eq('user_id', loggedUser.id)
-          .eq('ativo', true)
-          .maybeSingle();
-
-        if (superAdmin?.ativo) {
-          setIsLoading(false);
-          hasRedirected.current = true;
-          localStorage.removeItem('post_subscribe_plan');
-          sessionStorage.removeItem('plan_toast_shown');
-          toast.success('Login realizado com sucesso!');
-          navigate('/super-admin');
-          return;
-        }
-      }
-
-      setIsLoading(false);
-      localStorage.removeItem('post_subscribe_plan');
-      sessionStorage.removeItem('plan_toast_shown');
-      toast.success('Login realizado com sucesso!');
-
-    } catch (error: any) {
-      // 🔥 FALLBACK OFFLINE: Se falhar online ou timeout, tenta o servidor local
-      console.warn("⚠️ Falha no login online, tentando modo local...", error?.message);
-      toast.info('Supabase indisponível, tentando servidor local...');
-
-      const localSuccess = await tryLocalLogin();
-      if (localSuccess) return;
-
-      setIsLoading(false);
-      
-      if (error?.message?.includes('Invalid login credentials')) {
-        toast.error('E-mail ou senha incorretos');
-      } else if (error?.message?.includes('Email not confirmed')) {
-        toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
-      } else if (error?.message === 'Timeout') {
-        toast.error('Servidores indisponíveis. Verifique se o servidor local (192.168.2.111:3000) está rodando.');
       } else {
-        toast.error('Erro ao fazer login. Verifique sua conexão e o servidor local.');
+        // LOGIN ONLINE COM SUCESSO
+        setIsLoading(false);
+        toast.success('Login realizado com sucesso!');
+        // O useEffect original cuidará do redirecionamento via profile
+      }
+    } catch (err) {
+      // Caso o próprio método signIn trave (ex: erro de rede brutal)
+      const localSucesso = await tryLocalLogin();
+      if (!localSucesso) {
+        setIsLoading(false);
+        toast.error('Sistema indisponível. Verifique sua conexão.');
       }
     }
   };
