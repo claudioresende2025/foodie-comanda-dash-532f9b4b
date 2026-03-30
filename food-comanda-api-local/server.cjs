@@ -5,12 +5,22 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
-// ✅ CORREÇÃO CORS: Aberto para aceitar requisições do Frontend
+// ✅ CORREÇÃO CORS COMPLETA: Responde OPTIONS explicitamente
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'x-client-info']
+    allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'x-client-info'],
+    credentials: false,
+    optionsSuccessStatus: 204
 }));
+
+// Responde OPTIONS manualmente para garantir
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey, x-client-info');
+    res.sendStatus(204);
+});
 
 app.use(express.json());
 

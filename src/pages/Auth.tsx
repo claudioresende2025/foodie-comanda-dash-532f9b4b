@@ -219,16 +219,21 @@ export default function Auth() {
 
     setIsLoading(true);
 
-    // Helper: tenta login no servidor local
+    // Helper: tenta login no servidor local com AbortController
     const tryLocalLogin = async (): Promise<boolean> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos
+      
       try {
         console.log("🔄 Tentando login no servidor local...");
         const localResponse = await fetch(`http://192.168.2.111:3000/api/local/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
-          signal: AbortSignal.timeout(3000) // timeout de 3s para servidor local
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (localResponse.ok) {
           const localData = await localResponse.json();
@@ -244,8 +249,13 @@ export default function Auth() {
         } else {
           console.warn("❌ Servidor local retornou status:", localResponse.status);
         }
-      } catch (localErr) {
-        console.error("🚨 Erro ao acessar servidor local:", localErr);
+      } catch (localErr: any) {
+        clearTimeout(timeoutId);
+        if (localErr.name === 'AbortError') {
+          console.error("⏱️ Timeout ao acessar servidor local");
+        } else {
+          console.error("🚨 Erro ao acessar servidor local:", localErr);
+        }
       }
       return false;
     };
