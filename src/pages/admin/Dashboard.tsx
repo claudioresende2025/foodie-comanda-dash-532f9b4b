@@ -360,7 +360,7 @@ export default function Dashboard() {
       // 1. Buscar dados locais primeiro
       let dadosLocais: any[] = [];
       try {
-        const [pedidos, produtos, comandas, mesas] = await Promise.all([
+        const [pedidos, produtos, comandas, mesas]: any[] = await Promise.all([
           db.pedidos.toArray(),
           db.produtos.toArray(),
           db.comandas.where('empresa_id').equals(empresaId).toArray(),
@@ -377,9 +377,9 @@ export default function Dashboard() {
           .sort((a: any, b: any) => new Date(b.created_at || b.criado_em).getTime() - new Date(a.created_at || a.criado_em).getTime())
           .slice(0, 5)
           .map((p: any) => {
-            const produto = produtosMap.get(p.produto_id);
-            const comanda = comandasMap.get(p.comanda_id);
-            const mesa = comanda ? mesasMap.get(comanda.mesa_id) : null;
+            const produto: any = produtosMap.get(p.produto_id);
+            const comanda: any = comandasMap.get(p.comanda_id);
+            const mesa: any = comanda ? mesasMap.get(comanda.mesa_id) : null;
             return {
               id: p.id,
               quantidade: p.quantidade,
