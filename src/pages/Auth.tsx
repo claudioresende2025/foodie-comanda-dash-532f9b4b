@@ -219,13 +219,8 @@ export default function Auth() {
 
     setIsLoading(true);
 
-    // 1. TENTATIVA DE LOGIN ONLINE (SUPABASE)
-    const { error } = await signIn(email, password);
-
-    if (error) {
-      // 🔥 INÍCIO DA LÓGICA OFFLINE: Se falhar online, tenta o servidor local
-      console.warn("⚠️ Falha no login online, tentando modo local...");
-
+    // Helper: tenta login no servidor local
+    const tryLocalLogin = async (): Promise<boolean> => {
       try {
         const localResponse = await fetch(`http://192.168.2.111:3000/api/local/login`, {
           method: 'POST',
@@ -238,27 +233,31 @@ export default function Auth() {
           if (localData.success) {
             setIsLoading(false);
             toast.success('Login Offline realizado (Modo de Contingência)');
-            navigate('/admin'); // Redireciona para o painel principal offline
-            return;
+            navigate('/admin');
+            return true;
           }
         }
       } catch (localErr) {
         console.error("🚨 Servidor local também está inacessível");
       }
-      // 🔥 FIM DA LÓGICA OFFLINE
+      return false;
+    };
 
-      setIsLoading(false);
-      if (error.message.includes('Invalid login credentials')) {
-        toast.error('E-mail ou senha incorretos');
-      } else if (error.message.includes('Email not confirmed')) {
-        toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
-      } else {
-        toast.error('Erro ao fazer login ou sistema offline.');
+    // 1. TENTATIVA DE LOGIN ONLINE (SUPABASE) com timeout de 5 segundos
+    try {
+      const loginPromise = signIn(email, password);
+      const timeoutPromise = new Promise<{ error: { message: string } }>((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 5000)
+      );
+
+      const result = await Promise.race([loginPromise, timeoutPromise]);
+      const error = result?.error;
+
+      if (error) {
+        throw error;
       }
-    } else {
-      // 2. LOGIN ONLINE COM SUCESSO (Sua lógica original preservada abaixo)
 
-      // Verificar imediatamente se é super admin para redirecionar
+      // LOGIN ONLINE COM SUCESSO
       const { data: { user: loggedUser } } = await supabase.auth.getUser();
 
       if (loggedUser?.id) {
@@ -272,7 +271,6 @@ export default function Auth() {
         if (superAdmin?.ativo) {
           setIsLoading(false);
           hasRedirected.current = true;
-          // Limpar flags de plano pendente
           localStorage.removeItem('post_subscribe_plan');
           sessionStorage.removeItem('plan_toast_shown');
           toast.success('Login realizado com sucesso!');
@@ -282,11 +280,28 @@ export default function Auth() {
       }
 
       setIsLoading(false);
-      // Limpar flags de plano pendente após login bem-sucedido
       localStorage.removeItem('post_subscribe_plan');
       sessionStorage.removeItem('plan_toast_shown');
       toast.success('Login realizado com sucesso!');
-      // O useEffect cuida do redirecionamento baseado no profile para outros usuários
+
+    } catch (error: any) {
+      // 🔥 FALLBACK OFFLINE: Se falhar online ou timeout, tenta o servidor local
+      console.warn("⚠️ Falha no login online, tentando modo local...", error?.message);
+
+      const localSuccess = await tryLocalLogin();
+      if (localSuccess) return;
+
+      setIsLoading(false);
+      
+      if (error?.message?.includes('Invalid login credentials')) {
+        toast.error('E-mail ou senha incorretos');
+      } else if (error?.message?.includes('Email not confirmed')) {
+        toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
+      } else if (error?.message === 'Timeout') {
+        toast.error('Servidor lento. Tente novamente ou verifique sua conexão.');
+      } else {
+        toast.error('Erro ao fazer login. Verifique sua conexão.');
+      }
     }
   };
 
