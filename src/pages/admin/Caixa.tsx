@@ -1032,7 +1032,7 @@ export default function Caixa() {
 
             .map((p: any) => {
 
-              const produto = produtosMap.get(p.produto_id);
+              const produto = produtosMap.get(p.produto_id) as any;
 
               return {
 
@@ -1056,7 +1056,7 @@ export default function Caixa() {
 
             ...comanda,
 
-            mesa: mesa ? { numero_mesa: mesa.numero_mesa || mesa.numero } : null,
+            mesa: mesa ? { numero_mesa: (mesa as any).numero_mesa || (mesa as any).numero } : null,
 
             pedidos: pedidosComanda
 
@@ -1340,82 +1340,47 @@ export default function Caixa() {
 
   /** --------- MUTATION: fechar comanda --------- */
 
-
-
   const closeComandaMutation = useMutation({
-
     mutationFn: async ({
-  }
-
       comandaId,
-
       formaPagamento,
-
       formasPagamento,
-
       trocoPara,
-
       total,
-
       mesaId,
-
-      // Dados para impressão automática
-
       printData,
-
     }: {
-
       comandaId: string;
-
       formaPagamento: PaymentMethod | 'multiplo';
-
       formasPagamento?: PagamentoItem[];
-
       trocoPara?: number;
-
       total: number;
-
       mesaId?: string;
-
       printData?: {
-
         empresaNome: string;
-
         empresaEndereco?: string;
-
         empresaCnpj?: string;
-
         mesaNumero: number;
-
         nomeCliente?: string;
-
         itens: { nome: string; quantidade: number; precoUnitario: number; subtotal: number }[];
-
         subtotal: number;
-
         desconto?: { percentual: number; valor: number };
-
         taxaServico?: { percentual: number; valor: number };
-
         couver?: { quantidade: number; valorUnitario: number; total: number };
-
       };
-
     }) => {
-
-    // 🔥 AVISA O SERVIDOR LOCAL QUE A MESA FOI PAGA
-    try {
-      await fetch(`http://192.168.2.111:3000/api/local/comanda/fechar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: comandaId, total: total, mesa_id: mesaId })
-      });
-    } catch (e) {
-      console.warn('[CAIXA] Falha ao informar fechamento ao servidor local.');
-    }
+      // 🔥 AVISA O SERVIDOR LOCAL QUE A MESA FOI PAGA
+      try {
+        await fetch(`http://192.168.2.111:3000/api/local/comanda/fechar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: comandaId, total: total, mesa_id: mesaId })
+        });
+      } catch (e) {
+        console.warn('[CAIXA] Falha ao informar fechamento ao servidor local.');
+      }
 
       // Formata as formas de pagamento para salvar no banco
-
       const formasPagamentoStr = formasPagamento
 
         ? formasPagamento.map(p => `${p.metodo}:${p.valor.toFixed(2)}`).join(',')
@@ -2383,11 +2348,11 @@ export default function Caixa() {
 
             // Liberar mesa
 
-            await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaLiquidacao.id }).catch(() => {
-
-              supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaLiquidacao.id);
-
-            });
+            try {
+              await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaLiquidacao.id });
+            } catch {
+              await supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaLiquidacao.id);
+            }
 
 
 
