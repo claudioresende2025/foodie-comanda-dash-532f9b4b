@@ -5,7 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
-// ✅ CORREÇÃO CORS: Totalmente aberto para evitar bloqueios de HTTPS/HTTP do Chrome
+// ✅ CORREÇÃO CORS: Aberto para aceitar requisições do Frontend
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -16,8 +16,8 @@ app.use(express.json());
 
 // --- 🛠️ CONFIGURAÇÃO ---
 const SUPABASE_URL = "https://zlwpxflqtyhdwanmupgy.supabase.co";
-// 🚨 IMPORTANTE: Substitua pela SERVICE_ROLE (Secret) Key do seu painel Supabase
-const SUPABASE_KEY = "SUA_SERVICE_ROLE_KEY_AQUI";
+// 🚨 LEMBRE-SE: Use sua SERVICE_ROLE_KEY aqui
+const SUPABASE_KEY = "COLE_AQUI_SUA_SERVICE_ROLE_KEY";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const db = new sqlite3.Database('./banco-local.sqlite');
 const EMPRESA_ID = "0b49e4e3-72d8-461d-b70a-f3f53b8ba80b";
@@ -32,7 +32,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS pedidos (id TEXT PRIMARY KEY, comanda_id TEXT, produto_id TEXT, quantidade REAL, preco_unitario REAL, subtotal REAL, notas_cliente TEXT, status_cozinha TEXT, sincronizado INTEGER DEFAULT 0, created_at TEXT)`);
 });
 
-// --- 📥 DOWNLOAD: SINCRONIZAÇÃO NUVEM -> LOCAL ---
+// --- 📥 DOWNLOAD: NUVEM -> LOCAL (Sincroniza Equipe para o Login Offline) ---
 async function baixarTudoDaNuvem() {
     console.log("📥 [Mirror] Buscando snapshot da nuvem...");
     try {
@@ -49,42 +49,20 @@ async function baixarTudoDaNuvem() {
                 });
             }
         }
-        console.log("✅ [Mirror] Banco local atualizado.");
+        console.log("✅ [Mirror] Banco local atualizado com sucesso.");
     } catch (e) {
         console.log("⚠️ [Mirror] Modo Offline: Usando cache local.");
     }
 }
 
-// --- 📤 UPLOAD: SINCRONIZAÇÃO LOCAL -> NUVEM ---
+// --- 📤 UPLOAD: LOCAL -> NUVEM ---
 async function subirDadosParaNuvem() {
-    // 1. Sincroniza Comandas
     db.all(`SELECT * FROM comandas WHERE sincronizado = 0`, async (err, rows) => {
         if (rows && rows.length > 0) {
             for (const row of rows) {
                 const { sincronizado, ...dadosParaNuvem } = row;
                 const { error } = await supabase.from('comandas').upsert(dadosParaNuvem);
-                if (!error) {
-                    db.run(`UPDATE comandas SET sincronizado = 1 WHERE id = ?`, [row.id]);
-                    console.log(`☁️ Sincronizado: Comanda ${row.id}`);
-                } else {
-                    console.error(`❌ Erro ao subir comanda ${row.id}:`, error.message);
-                }
-            }
-        }
-    });
-
-    // 2. Sincroniza Pedidos
-    db.all(`SELECT * FROM pedidos WHERE sincronizado = 0`, async (err, rows) => {
-        if (rows && rows.length > 0) {
-            for (const row of rows) {
-                const { sincronizado, ...dadosParaNuvem } = row;
-                const { error } = await supabase.from('pedidos').upsert(dadosParaNuvem);
-                if (!error) {
-                    db.run(`UPDATE pedidos SET sincronizado = 1 WHERE id = ?`, [row.id]);
-                    console.log(`☁️ Sincronizado: Pedido ${row.id}`);
-                } else {
-                    console.error(`❌ Erro ao subir pedido ${row.id}:`, error.message);
-                }
+                if (!error) db.run(`UPDATE comandas SET sincronizado = 1 WHERE id = ?`, [row.id]);
             }
         }
     });
@@ -95,6 +73,27 @@ setInterval(subirDadosParaNuvem, 10000);
 
 // --- 📊 API LOCAL PARA O FRONTEND ---
 
+// 1. LOGIN DE CONTINGÊNCIA (Permite logar sem internet)
+app.post('/api/local/login', (req, res) => {
+    const { email, password } = req.body;
+    db.get(`SELECT * FROM equipe WHERE email = ? AND ativo = 1`, [email], (err, row) => {
+        if (row) {
+            res.json({
+                success: true,
+                user: { id: row.id, email: row.email, nome: row.nome, cargo: row.cargo }
+            });
+        } else {
+            res.status(401).json({ success: false, message: "Usuário não encontrado localmente" });
+        }
+    });
+});
+
+// 2. BUSCA DE EMPRESA (Evita tela branca offline)
+app.get('/api/local/empresa-auth/:nome', (req, res) => {
+    res.json({ id: EMPRESA_ID, nome_fantasia: "Modo Offline Ativo" });
+});
+
+// 3. STATUS GERAL
 app.get('/api/local/status-geral', (req, res) => {
     db.all(`SELECT * FROM mesas ORDER BY numero_mesa`, (err, mesas) => {
         db.all(`SELECT * FROM comandas WHERE status = 'aberta'`, (err2, comandas) => {
@@ -103,14 +102,7 @@ app.get('/api/local/status-geral', (req, res) => {
     });
 });
 
-app.get('/api/local/cardapio', (req, res) => {
-    db.all(`SELECT * FROM produtos WHERE ativo = 1`, (err, produtos) => {
-        db.all(`SELECT * FROM categorias WHERE ativo = 1 ORDER BY ordem`, (err2, categorias) => {
-            res.json({ produtos: produtos || [], categorias: categorias || [] });
-        });
-    });
-});
-
+// 4. ABRIR COMANDA
 app.post('/api/local/abrir-comanda', (req, res) => {
     const { id, mesa_id, nome_cliente } = req.body;
     const agora = new Date().toISOString();
@@ -118,36 +110,30 @@ app.post('/api/local/abrir-comanda', (req, res) => {
         db.run(`INSERT INTO comandas (id, mesa_id, empresa_id, status, nome_cliente, created_at, sincronizado) VALUES (?, ?, ?, 'aberta', ?, ?, 0)`,
             [id, mesa_id, EMPRESA_ID, nome_cliente, agora]);
         db.run(`UPDATE mesas SET status = 'ocupada' WHERE id = ?`, [mesa_id]);
-        console.log(`📝 Local: Comanda aberta na mesa ${mesa_id}`);
         res.json({ success: true });
     });
 });
 
+// 5. FECHAR COMANDA
+app.post('/api/local/comanda/fechar', (req, res) => {
+    const { id, total, mesa_id } = req.body;
+    db.serialize(() => {
+        db.run(`UPDATE comandas SET status = 'fechada', total = ?, sincronizado = 0 WHERE id = ?`, [total, id]);
+        db.run(`UPDATE mesas SET status = 'disponivel', sincronizado = 0 WHERE id = ?`, [mesa_id]);
+        res.json({ success: true });
+    });
+});
+
+// 6. REALIZAR PEDIDO
 app.post('/api/local/realizar-pedido', (req, res) => {
     const { pedidos } = req.body;
     const agora = new Date().toISOString();
+    const stmt = db.prepare(`INSERT INTO pedidos (id, comanda_id, produto_id, quantidade, preco_unitario, subtotal, notas_cliente, status_cozinha, created_at, sincronizado) VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente', ?, 0)`);
     db.serialize(() => {
-        const stmt = db.prepare(`INSERT INTO pedidos (id, comanda_id, produto_id, quantidade, preco_unitario, subtotal, notas_cliente, status_cozinha, created_at, sincronizado) VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente', ?, 0)`);
         pedidos.forEach(p => stmt.run([p.id, p.comanda_id, p.produto_id, p.quantidade, p.preco_unitario, p.subtotal, p.notas_cliente, agora]));
         stmt.finalize();
-        console.log(`📦 Local: ${pedidos.length} itens salvos no SQLite.`);
         res.json({ success: true });
     });
 });
 
-app.post('/api/local/mesas', (req, res) => {
-    const { id, numero_mesa, capacidade } = req.body;
-    db.run(`INSERT INTO mesas (id, numero_mesa, capacidade, status, empresa_id, sincronizado) VALUES (?, ?, ?, 'disponivel', ?, 0)`,
-        [id, numero_mesa, capacidade, EMPRESA_ID], (err) => {
-            if (err) return res.status(500).json({ success: false, error: err.message });
-            console.log(`🆕 Local: Mesa ${numero_mesa} criada.`);
-            res.json({ success: true });
-        });
-});
-
-app.post('/api/local/mesas/juntar', (req, res) => {
-    const { masterMesaId, otherMesaIds } = req.body;
-    db.serialize(() => {
-        db.run(`UPDATE mesas SET status = 'ocupada', sincronizado = 0 WHERE id = ?`, [masterMesaId]);
-        otherMesaIds.forEach(id => db.run(`UPDATE mesas SET status = 'juncao', mesa_juncao_id = ?, sincronizado = 0 WHERE id = ?`, [masterMesaId, id]));
-        res.json({ success
+app.listen(3000, '0.0.0.0', () => console.log('🚀 SERVIDOR HÍBRIDO RODANDO NA PORTA 3000'));
