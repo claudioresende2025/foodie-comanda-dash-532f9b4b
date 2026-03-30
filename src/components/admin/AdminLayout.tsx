@@ -10,6 +10,9 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useNetworkStatus } from '@/lib/hooks/useNetworkStatus';
+import { SyncStatusIndicator } from '@/components/sync/SyncStatusIndicator';
+import { UploadProgressModal } from '@/components/sync/UploadProgressModal';
 
 // Roles que pertencem à equipe (staff) - devem ter acesso ao Admin
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
@@ -19,6 +22,9 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isDeliveryCustomer, setIsDeliveryCustomer] = useState<boolean | null>(null);
+  
+  // Sync offline/online
+  const { isOnline, showUploadModal, uploadProgress, pendingCount, dismissModal } = useNetworkStatus(profile?.empresa_id || '');
   
   // Push notifications - auto-subscribe when admin loads
   const { subscribeToNotifications, subscribeToAdminUpdates, permission } = usePushNotifications({ type: 'admin' });
