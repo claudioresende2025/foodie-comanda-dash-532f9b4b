@@ -282,6 +282,34 @@ export default function Auth() {
       const { data: { user: loggedUser } } = await supabase.auth.getUser();
 
       if (loggedUser?.id) {
+        // Salvar credencial no servidor local para backup offline
+        try {
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('nome')
+            .eq('id', loggedUser.id)
+            .maybeSingle();
+          
+          const { data: userRole } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', loggedUser.id)
+            .maybeSingle();
+          
+          await fetch('http://192.168.2.111:3000/api/local/salvar-credencial', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: loggedUser.email,
+              user_id: loggedUser.id,
+              nome: userProfile?.nome || loggedUser.email,
+              role: userRole?.role || 'caixa'
+            })
+          }).catch(() => console.log('Servidor local não disponível para salvar credencial'));
+        } catch (e) {
+          console.log('Erro ao salvar credencial local:', e);
+        }
+
         const { data: superAdmin } = await supabase
           .from('super_admins')
           .select('id, ativo')
