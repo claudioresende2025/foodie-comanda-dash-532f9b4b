@@ -10,9 +10,6 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { useNetworkStatus } from '@/lib/hooks/useNetworkStatus';
-import { SyncStatusIndicator } from '@/components/sync/SyncStatusIndicator';
-import { UploadProgressModal } from '@/components/sync/UploadProgressModal';
 
 // Roles que pertencem à equipe (staff) - devem ter acesso ao Admin
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
@@ -22,9 +19,6 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isDeliveryCustomer, setIsDeliveryCustomer] = useState<boolean | null>(null);
-  
-  // Sync offline/online
-  const { isOnline, showUploadModal, uploadProgress, pendingCount, dismissModal } = useNetworkStatus(profile?.empresa_id || '');
   
   // Push notifications - auto-subscribe when admin loads
   const { subscribeToNotifications, subscribeToAdminUpdates, permission } = usePushNotifications({ type: 'admin' });
@@ -269,7 +263,6 @@ export function AdminLayout() {
         <SidebarInset>
           <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur px-4 md:px-6">
             <SidebarTrigger className="-ml-2" />
-            <SyncStatusIndicator pendingCount={pendingCount} />
             <div className="flex-1" />
             <ThemeToggle />
           </header>
@@ -277,7 +270,6 @@ export function AdminLayout() {
             <Outlet />
           </main>
           <OrderNotificationBadge />
-          <UploadProgressModal open={showUploadModal} progress={uploadProgress} onDismiss={dismissModal} />
         </SidebarInset>
       </div>
     </SidebarProvider>

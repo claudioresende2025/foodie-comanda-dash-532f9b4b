@@ -202,7 +202,7 @@ export default function Pedidos() {
       // ===============================
       const reconstruirRelacionamentos = async (pedidosLocais: any[]) => {
         // Buscar todas as tabelas relacionadas do IndexedDB
-        const [comandas, mesas, produtos, categorias]: any[] = await Promise.all([
+        const [comandas, mesas, produtos, categorias] = await Promise.all([
           db.comandas.toArray(),
           db.mesas.toArray(),
           db.produtos.toArray(),
@@ -217,10 +217,10 @@ export default function Pedidos() {
         
         // Reconstruir estrutura aninhada como retornada pelo Supabase
         return pedidosLocais.map((pedido: any) => {
-          const comanda: any = comandasMap.get(pedido.comanda_id);
-          const mesa: any = comanda ? mesasMap.get(comanda.mesa_id) : null;
-          const produto: any = produtosMap.get(pedido.produto_id);
-          const categoria: any = produto ? categoriasMap.get(produto.categoria_id) : null;
+          const comanda = comandasMap.get(pedido.comanda_id);
+          const mesa = comanda ? mesasMap.get(comanda.mesa_id) : null;
+          const produto = produtosMap.get(pedido.produto_id);
+          const categoria = produto ? categoriasMap.get(produto.categoria_id) : null;
           
           return {
             ...pedido,

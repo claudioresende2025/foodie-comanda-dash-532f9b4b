@@ -14,35 +14,12 @@ export default defineConfig(async ({ mode }) => {
       filename: "sw.ts",
       includeAssets: ["pwa-icon.png", "pwa-icon-192.png", "pwa-icon-512.png", "apple-touch-icon.png"],
       devOptions: {
-        enabled: false,
+        enabled: true,
+        type: "module"
       },
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,jpg,jpeg,webp}"],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024
-      },
-      workbox: {
-        navigateFallbackDenylist: [/^\/~oauth/],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 500, maxAgeSeconds: 86400 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'supabase-storage-cache',
-              expiration: { maxEntries: 200, maxAgeSeconds: 604800 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024 // 3MB
       },
       manifest: {
         name: "Food Comanda Pro",
