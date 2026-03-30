@@ -269,6 +269,7 @@ export function AdminLayout() {
         <SidebarInset>
           <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur px-4 md:px-6">
             <SidebarTrigger className="-ml-2" />
+            <SyncStatusIndicator pendingCount={pendingCount} />
             <div className="flex-1" />
             <ThemeToggle />
           </header>
@@ -276,6 +277,7 @@ export function AdminLayout() {
             <Outlet />
           </main>
           <OrderNotificationBadge />
+          <UploadProgressModal open={showUploadModal} progress={uploadProgress} onDismiss={dismissModal} />
         </SidebarInset>
       </div>
     </SidebarProvider>
