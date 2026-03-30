@@ -202,7 +202,7 @@ export default function Pedidos() {
       // ===============================
       const reconstruirRelacionamentos = async (pedidosLocais: any[]) => {
         // Buscar todas as tabelas relacionadas do IndexedDB
-        const [comandas, mesas, produtos, categorias] = await Promise.all([
+        const [comandas, mesas, produtos, categorias]: any[] = await Promise.all([
           db.comandas.toArray(),
           db.mesas.toArray(),
           db.produtos.toArray(),

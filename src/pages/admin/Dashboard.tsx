@@ -360,7 +360,7 @@ export default function Dashboard() {
       // 1. Buscar dados locais primeiro
       let dadosLocais: any[] = [];
       try {
-        const [pedidos, produtos, comandas, mesas] = await Promise.all([
+        const [pedidos, produtos, comandas, mesas]: any[] = await Promise.all([
           db.pedidos.toArray(),
           db.produtos.toArray(),
           db.comandas.where('empresa_id').equals(empresaId).toArray(),
