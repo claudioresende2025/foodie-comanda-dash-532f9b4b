@@ -222,26 +222,47 @@ export default function Auth() {
     // Helper: tenta login no servidor local
     const tryLocalLogin = async (): Promise<boolean> => {
       try {
+        console.log("🔄 Tentando login no servidor local...");
         const localResponse = await fetch(`http://192.168.2.111:3000/api/local/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, password }),
+          signal: AbortSignal.timeout(3000) // timeout de 3s para servidor local
         });
 
         if (localResponse.ok) {
           const localData = await localResponse.json();
+          console.log("✅ Resposta do servidor local:", localData);
           if (localData.success) {
             setIsLoading(false);
             toast.success('Login Offline realizado (Modo de Contingência)');
             navigate('/admin');
             return true;
+          } else {
+            console.warn("❌ Servidor local retornou success=false");
           }
+        } else {
+          console.warn("❌ Servidor local retornou status:", localResponse.status);
         }
       } catch (localErr) {
-        console.error("🚨 Servidor local também está inacessível");
+        console.error("🚨 Erro ao acessar servidor local:", localErr);
       }
       return false;
     };
+
+    // Verificar conexão antes de tentar Supabase
+    const isOnline = navigator.onLine;
+    
+    // Se está offline, tenta direto o servidor local
+    if (!isOnline) {
+      console.log("📴 Navegador offline, tentando servidor local...");
+      const localSuccess = await tryLocalLogin();
+      if (localSuccess) return;
+      
+      setIsLoading(false);
+      toast.error('Sem conexão. Verifique se o servidor local está rodando.');
+      return;
+    }
 
     // 1. TENTATIVA DE LOGIN ONLINE (SUPABASE) com timeout de 5 segundos
     try {
@@ -287,6 +308,7 @@ export default function Auth() {
     } catch (error: any) {
       // 🔥 FALLBACK OFFLINE: Se falhar online ou timeout, tenta o servidor local
       console.warn("⚠️ Falha no login online, tentando modo local...", error?.message);
+      toast.info('Supabase indisponível, tentando servidor local...');
 
       const localSuccess = await tryLocalLogin();
       if (localSuccess) return;
@@ -298,9 +320,9 @@ export default function Auth() {
       } else if (error?.message?.includes('Email not confirmed')) {
         toast.error('Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.');
       } else if (error?.message === 'Timeout') {
-        toast.error('Servidor lento. Tente novamente ou verifique sua conexão.');
+        toast.error('Servidores indisponíveis. Verifique se o servidor local (192.168.2.111:3000) está rodando.');
       } else {
-        toast.error('Erro ao fazer login. Verifique sua conexão.');
+        toast.error('Erro ao fazer login. Verifique sua conexão e o servidor local.');
       }
     }
   };
