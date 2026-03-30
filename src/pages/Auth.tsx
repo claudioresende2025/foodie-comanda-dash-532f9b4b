@@ -239,9 +239,20 @@ export default function Auth() {
           const localData = await localResponse.json();
           console.log("✅ Resposta do servidor local:", localData);
           if (localData.success) {
+            // 🔥 Forçar sessão no localStorage para o sistema entender
+            localStorage.setItem('supabase.auth.token', JSON.stringify({ 
+              currentSession: { user: localData.user, access_token: 'offline-token' } 
+            }));
+            localStorage.setItem('offline_user', JSON.stringify(localData.user));
+            
             setIsLoading(false);
             toast.success('Login Offline realizado (Modo de Contingência)');
-            navigate('/admin');
+            
+            // Dá um pequeno tempo para o sistema entender a sessão e redireciona
+            setTimeout(() => {
+              navigate('/admin');
+              window.location.reload(); // Recarrega para o Context ler o localStorage
+            }, 500);
             return true;
           } else {
             console.warn("❌ Servidor local retornou success=false");
