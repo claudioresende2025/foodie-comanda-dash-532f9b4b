@@ -7,21 +7,30 @@
  * - Última sincronização
  * - Botão para sincronizar manualmente
  * 
- * Também invalida as queries quando a conexão é restaurada
+ * Também:
+ * - Invalida as queries quando a conexão é restaurada
+ * - Alerta o usuário se tentar fechar com dados pendentes
+ * - Registra logs de sincronização
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { WifiOff, Wifi, RefreshCw, Cloud, CloudOff, Loader2, Database } from 'lucide-react';
+import { WifiOff, Wifi, RefreshCw, Cloud, CloudOff, Loader2, Database, AlertTriangle } from 'lucide-react';
 import { useConnection } from '@/hooks/useConnection';
+import { useBeforeUnload } from '@/hooks/useBeforeUnload';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { syncLogger } from '@/lib/syncLogger';
 
 export function OfflineIndicator() {
   const queryClient = useQueryClient();
   
+  // Ativar alerta de beforeunload quando houver pendências
+  useBeforeUnload();
+  
   // Callback para invalidar queries quando a conexão é restaurada
   const handleConnectionRestored = useCallback(() => {
     console.log('[OfflineIndicator] Conexão restaurada - invalidando queries...');
+    syncLogger.connectionChange('online');
     queryClient.invalidateQueries();
   }, [queryClient]);
 
@@ -35,26 +44,54 @@ export function OfflineIndicator() {
   } = useConnection({ onConnectionRestored: handleConnectionRestored });
   
   const previousStatus = useRef(status);
+  const syncToastId = useRef<string | number | undefined>();
 
-  // Notificar usuário quando mudar de status
+  // Notificar usuário quando mudar de status com toasts mais detalhados
   useEffect(() => {
     if (previousStatus.current !== status) {
+      // Fechar toast anterior
+      if (syncToastId.current) {
+        toast.dismiss(syncToastId.current);
+      }
+
       if (status === 'offline' && previousStatus.current !== 'checking') {
-        toast.info('Modo Local ativado. Sistema funcionando com dados salvos.', { 
-          duration: 4000,
-          id: 'connection-status'
-        });
+        syncLogger.connectionChange('offline');
+        syncToastId.current = toast.warning(
+          'Conexão perdida. Operando em modo offline.',
+          { 
+            duration: 5000,
+            id: 'connection-status',
+            description: pendingCount > 0 
+              ? `${pendingCount} item(s) serão sincronizados quando a conexão voltar.`
+              : 'Os dados estão sendo salvos localmente.',
+            icon: <WifiOff className="w-5 h-5" />,
+          }
+        );
       } else if (status === 'online' && previousStatus.current === 'offline') {
-        toast.success('Conexão restaurada! Sincronizando...', { 
-          duration: 3000,
-          id: 'connection-status'
-        });
+        syncLogger.connectionChange('online');
+        syncToastId.current = toast.success(
+          'Conexão restaurada!',
+          { 
+            duration: 4000,
+            id: 'connection-status',
+            description: 'Dados sincronizados com sucesso.',
+            icon: <Wifi className="w-5 h-5" />,
+          }
+        );
       } else if (status === 'syncing') {
-        // Não mostrar toast para syncing, apenas o indicador visual
+        syncLogger.connectionChange('syncing');
+        // Toast discreto para sincronização
+        syncToastId.current = toast.loading(
+          'Sincronizando dados...',
+          { 
+            id: 'connection-status',
+            description: `${pendingCount} item(s) pendente(s)`,
+          }
+        );
       }
       previousStatus.current = status;
     }
-  }, [status]);
+  }, [status, pendingCount]);
 
   const handleSyncClick = async () => {
     if (status === 'syncing') {

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { sincronizarTudo } from "./lib/db";
 import { connectionManager } from "./lib/connectionManager";
+import { initPWAMigration } from "./lib/pwaMigration";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -96,6 +97,9 @@ const App = () => {
   useEffect(() => {
     console.log("🚀 Inicializando sistema de conexão automática...");
     connectionManager.init();
+
+    // Inicializar módulo PWA (migração, quota, logs)
+    initPWAMigration().catch(console.error);
 
     return () => {
       connectionManager.destroy();

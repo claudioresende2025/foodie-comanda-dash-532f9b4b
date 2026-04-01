@@ -6,6 +6,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { db, sincronizarTudo } from '@/lib/db';
 
+import { fecharComandaOffline, cancelarComandaOffline } from '@/lib/offlineFirstHelpers';
+
 import { useAuth } from '@/contexts/AuthContext';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

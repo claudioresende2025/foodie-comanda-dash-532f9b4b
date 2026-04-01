@@ -12,11 +12,26 @@ interface Profile {
   avatar_url: string | null;
 }
 
+// Permissões do usuário (carregadas do cache offline ou da nuvem)
+interface UserPermissions {
+  canViewFaturamento: boolean;
+  canViewRelatorios: boolean;
+  canManageTeam: boolean;
+  canManageProdutos: boolean;
+  canManageMesas: boolean;
+  canOperateCaixa: boolean;
+  canTakeOrders: boolean;
+  canDelivery: boolean;
+  canAccessAdmin: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  permissions: UserPermissions | null;
+  isOfflineSession: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, nome: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -25,11 +40,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Permissões padrão (acesso total para compatibilidade)
+const defaultPermissions: UserPermissions = {
+  canViewFaturamento: true,
+  canViewRelatorios: true,
+  canManageTeam: true,
+  canManageProdutos: true,
+  canManageMesas: true,
+  canOperateCaixa: true,
+  canTakeOrders: true,
+  canDelivery: false,
+  canAccessAdmin: true,
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [permissions, setPermissions] = useState<UserPermissions | null>(null);
+  const [isOfflineSession, setIsOfflineSession] = useState(false);
+  
+  // Variável para armazenar a senha temporariamente durante o login
+  const [pendingPassword, setPendingPassword] = useState<string | null>(null);
 
   // Logout automático após 1 hora de inatividade
   useInactivityTimeout(!!user);
@@ -62,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
         
-        // SALVAR USUÁRIO NO CACHE PARA LOGIN OFFLINE FUTURO
+        // SALVAR USUÁRIO NO CACHE COM HASH SEGURO PARA LOGIN OFFLINE FUTURO
         try {
           // Buscar role do usuário
           let role = 'proprietario';
@@ -78,17 +111,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
           
-          // Import dinâmico para evitar dependência circular
-          const { salvarUsuarioCache } = await import('@/lib/db');
-          salvarUsuarioCache({
-            email: data.email,
-            id: data.id,
-            nome: data.nome,
-            empresa_id: data.empresa_id,
-            role: role
-          });
+          // Usar o novo sistema de cache seguro com hash
+          if (pendingPassword) {
+            const { saveUserToCache, getPermissionsByRole, updateLastOnlineAt } = await import('@/lib/offlineAuth');
+            
+            // Salvar com hash da senha
+            await saveUserToCache({
+              email: data.email,
+              id: data.id,
+              nome: data.nome,
+              empresa_id: data.empresa_id,
+              role: role,
+              password: pendingPassword // Será hasheado, não armazenado em texto
+            });
+            
+            // Definir permissões
+            const userPermissions = getPermissionsByRole(role);
+            setPermissions(userPermissions);
+            
+            // Limpar senha pendente
+            setPendingPassword(null);
+          } else {
+            // Apenas atualizar timestamp de última conexão
+            const { updateLastOnlineAt, getPermissionsByRole } = await import('@/lib/offlineAuth');
+            await updateLastOnlineAt(data.email);
+            
+            // Definir permissões
+            const userPermissions = getPermissionsByRole(role);
+            setPermissions(userPermissions);
+          }
         } catch (cacheErr) {
           console.warn('[AuthContext] Erro ao salvar cache do usuário:', cacheErr);
+          // Fallback para permissões padrão
+          setPermissions(defaultPermissions);
         }
         
         // Aplicar associação pendente (ex: usuário veio via e-mail pós-checkout)
@@ -118,7 +173,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.warn('[AuthContext] Erro ao buscar perfil (offline?):', error);
-      // Se offline, não impede o uso
+      // Se offline, não impede o uso - permissões padrão
+      setPermissions(defaultPermissions);
     }
   };
 
@@ -144,14 +200,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           fetchProfile(session.user.id);
         } else {
           setProfile(null);
+          setPermissions(null);
         }
       }
     );
 
+    // Função para tentar restaurar sessão offline
+    const tryRestoreOfflineSession = async () => {
+      try {
+        const { getOfflineSession } = await import('@/lib/offlineAuth');
+        const offlineSession = getOfflineSession();
+        
+        if (offlineSession) {
+          console.log('[AuthContext] Restaurando sessão offline...');
+          setIsOfflineSession(true);
+          setUser({ id: offlineSession.user.id, email: offlineSession.user.email } as User);
+          setProfile({
+            id: offlineSession.user.id,
+            nome: offlineSession.user.nome,
+            email: offlineSession.user.email,
+            empresa_id: offlineSession.user.empresa_id,
+            avatar_url: null,
+          });
+          setPermissions(offlineSession.user.permissions);
+          return true;
+        }
+      } catch (e) {
+        console.warn('[AuthContext] Erro ao restaurar sessão offline:', e);
+      }
+      return false;
+    };
+
     // THEN check for existing session - controls initial loading
     // Timeout para evitar loading infinito quando offline
-    const sessionTimeout = setTimeout(() => {
+    const sessionTimeout = setTimeout(async () => {
       console.warn('[AuthContext] Timeout ao verificar sessão - possivelmente offline');
+      
+      // Tentar restaurar sessão offline
+      await tryRestoreOfflineSession();
+      
       setLoading(false);
     }, 5000); // 5 segundos de timeout
     
@@ -162,12 +249,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (session?.user) {
         await fetchProfile(session.user.id);
+      } else {
+        // Sem sessão online, tentar offline
+        await tryRestoreOfflineSession();
       }
       
       setLoading(false);
-    }).catch((error) => {
+    }).catch(async (error) => {
       clearTimeout(sessionTimeout);
       console.error('[AuthContext] Erro ao obter sessão (offline?):', error);
+      
+      // Tentar restaurar sessão offline
+      await tryRestoreOfflineSession();
+      
       // Se estiver offline, liberar o loading para permitir uso local
       setLoading(false);
     });
@@ -176,10 +270,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    // Armazenar senha temporariamente para criar hash no cache
+    setPendingPassword(password);
+    setIsOfflineSession(false);
+    
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    
+    // Se houver erro, limpar a senha pendente
+    if (error) {
+      setPendingPassword(null);
+    }
+    
     return { error: error as Error | null };
   };
 
@@ -231,14 +335,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Limpar sessão do Supabase
     await supabase.auth.signOut();
+    
+    // Limpar sessão offline
+    try {
+      const { clearOfflineSession } = await import('@/lib/offlineAuth');
+      clearOfflineSession();
+    } catch (e) {
+      console.warn('[AuthContext] Erro ao limpar sessão offline:', e);
+    }
+    
+    // Limpar estados
     setUser(null);
     setSession(null);
     setProfile(null);
+    setPermissions(null);
+    setIsOfflineSession(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signIn, signUp, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      session, 
+      profile, 
+      loading, 
+      permissions, 
+      isOfflineSession,
+      signIn, 
+      signUp, 
+      signOut, 
+      refreshProfile 
+    }}>
       {children}
     </AuthContext.Provider>
   );

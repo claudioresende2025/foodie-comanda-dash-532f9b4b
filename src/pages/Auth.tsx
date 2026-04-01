@@ -221,40 +221,71 @@ export default function Auth() {
     // --- � HELPER PARA LOGIN COM CACHE LOCAL (PWA OFFLINE PURO) ---
     const tryCacheLogin = async (): Promise<boolean> => {
       try {
-        console.log("🔄 Tentando login com cache local (PWA offline)...");        
-        // Import dinâmico para evitar problemas de dependência circular
-        const { buscarUsuarioCache } = await import('@/lib/db');        const cachedUser = await buscarUsuarioCache(email);
+        console.log("🔄 Tentando login com cache local seguro (PWA offline)...");
         
-        if (cachedUser) {
-          console.log("✅ Usuário encontrado no cache local:", cachedUser.email);
+        // Import dinâmico do módulo de autenticação offline
+        const { validateOfflineLogin, createOfflineSession } = await import('@/lib/offlineAuth');
+        
+        // Validar credenciais com hash seguro
+        const result = await validateOfflineLogin(email, password);
+        
+        if (result.success && result.user) {
+          console.log("✅ Login offline válido:", result.user.email);
           
-          // Criar objeto de usuário simulado
+          // Criar sessão offline
+          createOfflineSession(result.user);
+          
+          // Criar objeto de usuário para compatibilidade
           const offlineUser = {
-            id: cachedUser.id,
-            email: cachedUser.email,
-            nome: cachedUser.nome,
-            empresa_id: cachedUser.empresa_id,
-            role: cachedUser.role
+            id: result.user.id,
+            email: result.user.email,
+            nome: result.user.nome,
+            empresa_id: result.user.empresa_id,
+            role: result.user.role,
+            permissions: result.user.permissions
           };
           
-          // Injeção manual de sessão para enganar o AuthContext
-          localStorage.setItem('supabase.auth.token', JSON.stringify({
-            currentSession: { user: offlineUser, access_token: 'offline-cache-token' }
-          }));
+          // Salvar no localStorage para compatibilidade
           localStorage.setItem('offline_user', JSON.stringify(offlineUser));
 
           setIsLoading(false);
-          toast.success('Login Offline realizado (Modo PWA)');
+          
+          // Mostrar dias restantes se estiver próximo de expirar
+          const lastOnline = new Date(result.user.last_online_at);
+          const daysSinceLastOnline = Math.floor(
+            (Date.now() - lastOnline.getTime()) / (24 * 60 * 60 * 1000)
+          );
+          const daysRemaining = 7 - daysSinceLastOnline;
+          
+          if (daysRemaining <= 2) {
+            toast.warning(`Login Offline - Sessão expira em ${daysRemaining} dia(s). Conecte-se online em breve.`);
+          } else {
+            toast.success('Login Offline realizado com sucesso!');
+          }
 
-          // Redirecionamento forçado
+          // Redirecionamento baseado no role
           setTimeout(() => {
-            window.location.href = '/admin';
+            if (result.user!.role === 'motoboy') {
+              window.location.href = '/admin/entregador';
+            } else if (result.user!.permissions.canAccessAdmin) {
+              window.location.href = '/admin';
+            } else {
+              window.location.href = '/delivery';
+            }
           }, 800);
           return true;
         }
+        
+        // Login falhou - verificar se precisa de login online
+        if (result.requiresOnlineLogin) {
+          console.log("⚠️ Cache expirado ou não encontrado:", result.error);
+        } else {
+          console.log("❌ Senha incorreta no cache");
+        }
+        
         return false;
       } catch (err: any) {
-        console.error("🚨 Erro ao buscar cache local:", err.message);
+        console.error("🚨 Erro ao validar cache local:", err.message);
         return false;
       }
     };
@@ -315,14 +346,25 @@ export default function Auth() {
         const localServerSuccess = await tryLocalServerLogin();
         if (localServerSuccess) return;
 
-        // TENTATIVA 3: Cache Local (PWA Offline Puro)
+        // TENTATIVA 3: Cache Local Seguro (PWA Offline Puro)
         const cacheSuccess = await tryCacheLogin();
         if (cacheSuccess) return;
 
         // Se todas as tentativas falharem
         setIsLoading(false);
         if (error.message.includes('Invalid login credentials')) {
-          toast.error('E-mail ou senha incorretos');
+          // Verificar se há cache expirado
+          try {
+            const { hasValidCache } = await import('@/lib/offlineAuth');
+            const hasCached = await hasValidCache(email);
+            if (!navigator.onLine && !hasCached) {
+              toast.error('E-mail ou senha incorretos. Sua sessão offline pode ter expirado (7+ dias offline).');
+            } else {
+              toast.error('E-mail ou senha incorretos');
+            }
+          } catch {
+            toast.error('E-mail ou senha incorretos');
+          }
         } else if (!navigator.onLine) {
           toast.error('Sem conexão. Faça login online primeiro para habilitar o modo offline.');
         } else {
@@ -341,7 +383,7 @@ export default function Auth() {
       const localServerSuccess = await tryLocalServerLogin();
       if (localServerSuccess) return;
       
-      // TENTATIVA 3: Cache Local (PWA Offline Puro)
+      // TENTATIVA 3: Cache Local Seguro (PWA Offline Puro)
       const cacheSuccess = await tryCacheLogin();
       if (cacheSuccess) return;
       

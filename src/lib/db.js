@@ -4,30 +4,46 @@ import { supabase } from '@/integrations/supabase/client';
 // 1. CONFIGURAÇÃO DO BANCO LOCAL (INDEXEDDB)
 export const db = new Dexie('FoodComandaPro_DB');
 
-db.version(7).stores({
-    // Tabelas do salão
-    pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em',
-    comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em',
-    produtos: 'id, nome, preco, categoria_id, empresa_id, ativo, sincronizado',
-    categorias: 'id, nome, empresa_id, ordem, ativo, sincronizado',
-    mesas: 'id, numero_mesa, numero, status, empresa_id, sincronizado',
-    caixa: 'id, data_abertura, valor_abertura, status, empresa_id, sincronizado',
-    movimentacoes_caixa: 'id, caixa_id, tipo, valor, descricao, sincronizado',
-    vendas_concluidas: 'id, comanda_id, mesa_id, valor_total, empresa_id, sincronizado',
-    empresa: 'id, nome, cnpj, sincronizado',
-    chamadas_garcom: 'id, mesa_id, empresa_id, status, sincronizado',
+// Versão 10: Adicionada tabela logs_sincronizacao para auditoria
+// sync_status: 'pending' | 'synced' | 'error' - Estado da sincronização
+// sync_error: string | null - Mensagem de erro se houver falha
+// sync_error_code: string | null - Código do erro (ex: 23503 para FK violation)
+// sync_error_at: string | null - Timestamp do erro
+// atualizado_em: string - Timestamp para Last Write Wins
+// logs_sincronizacao: Últimas 50 operações de sync para diagnóstico
+db.version(10).stores({
+    // Tabelas do salão (com campos de conflito)
+    pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em, impresso_local, sync_status, atualizado_em',
+    comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em, sync_status, atualizado_em',
+    produtos: 'id, nome, preco, categoria_id, empresa_id, ativo, sincronizado, sync_status',
+    categorias: 'id, nome, empresa_id, ordem, ativo, sincronizado, sync_status',
+    mesas: 'id, numero_mesa, numero, status, empresa_id, sincronizado, sync_status',
+    caixa: 'id, data_abertura, valor_abertura, status, empresa_id, sincronizado, sync_status',
+    movimentacoes_caixa: 'id, caixa_id, tipo, valor, descricao, sincronizado, sync_status, atualizado_em',
+    vendas_concluidas: 'id, comanda_id, mesa_id, valor_total, empresa_id, sincronizado, sync_status, atualizado_em',
+    empresa: 'id, nome, cnpj, sincronizado, sync_status',
+    chamadas_garcom: 'id, mesa_id, empresa_id, status, sincronizado, sync_status, atualizado_em',
     // Tabelas de delivery
-    pedidos_delivery: 'id, empresa_id, user_id, status, total, sincronizado',
-    itens_delivery: 'id, pedido_delivery_id, produto_id, sincronizado',
+    pedidos_delivery: 'id, empresa_id, user_id, status, total, sincronizado, sync_status, atualizado_em',
+    itens_delivery: 'id, pedido_delivery_id, produto_id, sincronizado, sync_status',
+    // Tabela de itens do pedido (para operações atômicas)
+    itens_pedido: 'id, pedido_id, produto_id, quantidade, sincronizado, sync_status',
     // Tabelas de marketing
-    cupons: 'id, empresa_id, codigo, ativo, sincronizado',
-    fidelidade_config: 'id, empresa_id, sincronizado',
-    combos: 'id, empresa_id, nome, ativo, sincronizado',
-    promocoes: 'id, empresa_id, nome, ativo, sincronizado',
+    cupons: 'id, empresa_id, codigo, ativo, sincronizado, sync_status',
+    fidelidade_config: 'id, empresa_id, sincronizado, sync_status',
+    combos: 'id, empresa_id, nome, ativo, sincronizado, sync_status',
+    promocoes: 'id, empresa_id, nome, ativo, sincronizado, sync_status',
     // Tabela de equipe
-    team_members: 'id, empresa_id, nome, email, sincronizado',
-    // Cache de usuários para login offline (NÃO armazena senha - apenas email e dados do perfil)
-    users_cache: 'email, id, nome, empresa_id, role, cached_at',
+    team_members: 'id, empresa_id, nome, email, sincronizado, sync_status',
+    // Cache de usuários para login offline SEGURO
+    // session_hash = hash SHA-256 da senha (NÃO a senha em texto)
+    // permissions = objeto JSON com permissões do role
+    // last_online_at = última vez que conectou online (para revalidação)
+    // session_expires_at = expiração da sessão (24h)
+    users_cache: 'email, id, nome, empresa_id, role, session_hash, cached_at, last_online_at, session_expires_at',
+    // Logs de sincronização para auditoria e suporte técnico
+    // Mantém as últimas 50 operações de sync para diagnóstico remoto
+    logs_sincronizacao: '++id, timestamp, type, operation, table, recordId',
 });
 
 // 2. DOWNLOAD INICIAL (POPULAR O PC DO RESTAURANTE)
@@ -205,18 +221,28 @@ export async function verificarPendencias() {
 }
 
 // 6. CACHE DE USUÁRIO PARA LOGIN OFFLINE
+// IMPORTANTE: Use as funções de offlineAuth.ts para autenticação segura!
+// Estas funções são mantidas para compatibilidade básica.
+
 // Salva dados do usuário no cache local após login bem-sucedido
+// NOTA: Para login seguro com hash, use saveUserToCache de offlineAuth.ts
 export async function salvarUsuarioCache(userData) {
     if (!userData?.email) return;
     
     try {
+        const now = new Date().toISOString();
+        const sessionExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h
+        
         await db.users_cache.put({
             email: userData.email.toLowerCase(),
             id: userData.id,
             nome: userData.nome || userData.email.split('@')[0],
             empresa_id: userData.empresa_id || null,
             role: userData.role || 'proprietario',
-            cached_at: new Date().toISOString()
+            session_hash: userData.session_hash || '', // Hash será preenchido por offlineAuth
+            cached_at: now,
+            last_online_at: now,
+            session_expires_at: sessionExpires
         });
         console.log('[Cache] Usuário salvo para login offline:', userData.email);
     } catch (e) {
@@ -225,6 +251,7 @@ export async function salvarUsuarioCache(userData) {
 }
 
 // Busca usuário no cache local para login offline
+// NOTA: Para validação segura, use validateOfflineLogin de offlineAuth.ts
 export async function buscarUsuarioCache(email) {
     if (!email) return null;
     
@@ -243,5 +270,31 @@ export async function buscarUsuarioCache(email) {
 // Verifica se o usuário tem acesso offline (já fez login antes)
 export async function verificarAcessoOffline(email) {
     const usuario = await buscarUsuarioCache(email);
-    return usuario !== null;
+    if (!usuario) return false;
+    
+    // Verificar se a sessão não expirou (máximo 7 dias offline)
+    const lastOnline = new Date(usuario.last_online_at || usuario.cached_at);
+    const daysSinceLastOnline = Math.floor(
+        (Date.now() - lastOnline.getTime()) / (24 * 60 * 60 * 1000)
+    );
+    
+    return daysSinceLastOnline <= 7;
+}
+
+// Atualiza o timestamp de última conexão online
+export async function atualizarUltimaConexao(email) {
+    if (!email) return;
+    
+    try {
+        const usuario = await db.users_cache.get(email.toLowerCase());
+        if (usuario) {
+            await db.users_cache.update(email.toLowerCase(), {
+                last_online_at: new Date().toISOString(),
+                session_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+            });
+            console.log('[Cache] Timestamp atualizado:', email);
+        }
+    } catch (e) {
+        console.error('[Cache] Erro ao atualizar timestamp:', e);
+    }
 }

@@ -275,19 +275,27 @@ class ConnectionManager {
   private async fullSync(): Promise<void> {
     try {
       // Import dinâmico para evitar dependência circular
-      const { baixarDadosIniciais, sincronizarTudo } = await import('./db');
+      const { syncService } = await import('./syncService');
       
       // 1. Primeiro baixar dados atualizados do Supabase
       if (this.empresaId) {
         console.log('[ConnectionManager] Baixando dados atualizados do servidor...');
-        await baixarDadosIniciais(this.empresaId);
+        await syncService.downloadFromCloud(this.empresaId);
       }
 
-      // 2. Depois enviar dados locais pendentes
+      // 2. Depois enviar dados locais pendentes usando o novo SyncService
       console.log('[ConnectionManager] Enviando dados locais pendentes...');
-      await this.syncData();
+      const result = await syncService.syncAll();
+      
+      if (result.synced > 0) {
+        console.log(`[ConnectionManager] ${result.synced} registros sincronizados`);
+      }
 
-      // 3. Notificar callbacks de que a conexão foi restaurada
+      // 3. Atualizar contagem de pendentes
+      const pendingCount = await syncService.countPending();
+      this.updateState({ pendingCount, lastSync: new Date() });
+
+      // 4. Notificar callbacks de que a conexão foi restaurada
       this.onRestoredCallbacks.forEach(callback => {
         try {
           callback();
@@ -310,12 +318,12 @@ class ConnectionManager {
       this.updateState({ status: 'syncing' });
       console.log('[ConnectionManager] Sincronizando dados...');
 
-      // Import dinâmico para evitar dependência circular
-      const { sincronizarTudo, verificarPendencias } = await import('./db');
-      await sincronizarTudo();
+      // Usar o novo SyncService
+      const { syncService } = await import('./syncService');
+      const result = await syncService.syncAll();
 
       // Atualizar contagem de pendentes
-      const pendingCount = await verificarPendencias();
+      const pendingCount = await syncService.countPending();
 
       this.updateState({
         status: 'online',
@@ -323,8 +331,8 @@ class ConnectionManager {
         pendingCount,
       });
 
-      console.log('[ConnectionManager] Sincronização concluída');
-      return true;
+      console.log(`[ConnectionManager] Sincronização concluída: ${result.synced} ok, ${result.failed} falhas`);
+      return result.success;
 
     } catch (err) {
       console.error('[ConnectionManager] Erro na sincronização:', err);
@@ -335,8 +343,8 @@ class ConnectionManager {
 
   private async updatePendingCount(): Promise<void> {
     try {
-      const { verificarPendencias } = await import('./db');
-      const count = await verificarPendencias();
+      const { syncService } = await import('./syncService');
+      const count = await syncService.countPending();
       this.updateState({ pendingCount: count });
     } catch (err) {
       console.error('[ConnectionManager] Erro ao contar pendentes:', err);
