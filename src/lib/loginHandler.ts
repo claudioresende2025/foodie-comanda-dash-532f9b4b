@@ -48,6 +48,18 @@ function isNetworkError(error: any): boolean {
 }
 
 /**
+ * Dispara pre-cache das rotas principais no Service Worker
+ */
+function triggerRoutePrecache(): void {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'PRECACHE_ROUTES'
+    });
+    console.log('[LoginHandler] Pre-cache de rotas solicitado');
+  }
+}
+
+/**
  * Calcula dias restantes de sessão offline
  */
 function calculateDaysRemaining(lastOnlineAt: string): number {
@@ -298,6 +310,9 @@ export async function handleLoginWithOffline(
     // LOGIN ONLINE SUCESSO - Salvar no cache
     // ==============================================
     console.log('[LoginHandler] Login Supabase bem-sucedido!');
+    
+    // Disparar pre-cache das rotas em background
+    triggerRoutePrecache();
     
     try {
       const { saveUserToCache } = await import('@/lib/offlineAuth');

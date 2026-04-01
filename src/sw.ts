@@ -3,11 +3,10 @@
 // Service Worker com suporte a Web Push Notifications
 // Este arquivo é usado pelo VitePWA injectManifest
 // 
-// VERSÃO: 2.0.0 - Suporte completo a Dexie.js e modo offline
+// VERSÃO: 2.1.0 - StaleWhileRevalidate + Pre-caching + SPA Fallback
 // Changelog:
-// - skipWaiting() forçado para atualizar imediatamente
-// - Limpeza agressiva de caches antigos
-// - Notificação ao cliente sobre nova versão
+// - v2.1.0: StaleWhileRevalidate para JS/CSS, pre-cache rotas, fallback SPA
+// - v2.0.0: skipWaiting() forçado, Dexie.js, limpeza caches
 
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
@@ -19,7 +18,7 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 declare const self: ServiceWorkerGlobalScope;
 
 // Versão do Service Worker (incrementar a cada deploy)
-const SW_VERSION = '2.0.0';
+const SW_VERSION = '2.1.0';
 const SW_BUILD_DATE = new Date().toISOString();
 
 // Extended notification options for service worker
@@ -201,6 +200,176 @@ registerRoute(
     ]
   })
 );
+
+// ============================================
+// STALE-WHILE-REVALIDATE PARA JS/CSS
+// ============================================
+// Serve do cache imediatamente enquanto busca atualizacao
+
+registerRoute(
+  /\.(?:js|css)$/,
+  new StaleWhileRevalidate({
+    cacheName: 'static-resources',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 60,
+        maxAgeSeconds: 60 * 60 * 24 * 7 // 7 dias
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+// HTML files - StaleWhileRevalidate para navegacao rapida offline
+registerRoute(
+  /\.html$/,
+  new StaleWhileRevalidate({
+    cacheName: 'html-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 10,
+        maxAgeSeconds: 60 * 60 * 24 // 1 dia
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+// ============================================
+// PRE-CACHING DAS ROTAS PRINCIPAIS
+// ============================================
+// Cache as rotas mais usadas no primeiro acesso
+
+const MAIN_ROUTES = [
+  '/',
+  '/admin',
+  '/admin/mesas',
+  '/admin/cardapio',
+  '/admin/pedidos',
+  '/admin/caixa',
+  '/admin/kds',
+  '/admin/entregas',
+  '/admin/relatorios',
+  '/delivery'
+];
+
+// Funcao para pre-cachear rotas apos primeiro login
+async function precacheMainRoutes(): Promise<void> {
+  const cache = await caches.open('routes-cache');
+  
+  try {
+    // Buscar index.html para cachear
+    const indexResponse = await fetch('/index.html');
+    if (indexResponse.ok) {
+      // Cachear o index.html para todas as rotas da SPA
+      for (const route of MAIN_ROUTES) {
+        const clonedResponse = indexResponse.clone();
+        await cache.put(route, clonedResponse);
+      }
+      console.log('[SW] Rotas principais pre-cacheadas:', MAIN_ROUTES.length);
+    }
+  } catch (error) {
+    console.warn('[SW] Erro ao pre-cachear rotas:', error);
+  }
+}
+
+// Escutar mensagem do cliente para iniciar pre-cache
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  if (event.data && event.data.type === 'PRECACHE_ROUTES') {
+    console.log('[SW] Iniciando pre-cache de rotas...');
+    event.waitUntil(precacheMainRoutes());
+  }
+  
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  
+  if (event.data && event.data.type === 'GET_VERSION') {
+    event.ports[0]?.postMessage({
+      version: SW_VERSION,
+      buildDate: SW_BUILD_DATE
+    });
+  }
+});
+
+// ============================================
+// FALLBACK MELHORADO PARA SPA OFFLINE
+// ============================================
+// Intercepta erros de navegacao e retorna index.html
+
+self.addEventListener('fetch', (event: FetchEvent) => {
+  const request = event.request;
+  
+  // Apenas navegacoes (nao APIs ou assets)
+  if (request.mode !== 'navigate') return;
+  
+  // Se ja estiver sendo tratado pelo NavigationRoute, ignorar
+  if (request.url.includes('.') && !request.url.endsWith('.html')) return;
+  
+  event.respondWith(
+    (async () => {
+      try {
+        // Tentar buscar da rede primeiro
+        const networkResponse = await fetch(request);
+        return networkResponse;
+      } catch (networkError) {
+        // Se falhar, buscar index.html do cache
+        console.log('[SW] Navegacao offline, servindo index.html do cache');
+        
+        // Tentar do cache de rotas primeiro
+        const routesCache = await caches.open('routes-cache');
+        const cachedRoute = await routesCache.match(new URL(request.url).pathname);
+        if (cachedRoute) {
+          return cachedRoute;
+        }
+        
+        // Fallback para index.html do precache do workbox
+        const precacheCache = await caches.open('workbox-precache-v2');
+        const keys = await precacheCache.keys();
+        const indexKey = keys.find(k => k.url.includes('index.html'));
+        if (indexKey) {
+          const cachedIndex = await precacheCache.match(indexKey);
+          if (cachedIndex) return cachedIndex;
+        }
+        
+        // Ultimo fallback - tentar qualquer cache
+        const cachedResponse = await caches.match('/index.html');
+        if (cachedResponse) return cachedResponse;
+        
+        // Se nada funcionar, retornar pagina de erro offline
+        return new Response(
+          `<!DOCTYPE html>
+          <html>
+          <head>
+            <title>Food Comanda Pro - Offline</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #1a1a2e; color: white; }
+              .container { text-align: center; padding: 20px; }
+              h1 { color: #f97316; }
+              button { background: #f97316; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Food Comanda Pro</h1>
+              <p>Voce esta offline e esta pagina ainda nao foi cacheada.</p>
+              <p>Conecte-se a internet e tente novamente.</p>
+              <button onclick="location.reload()">Tentar Novamente</button>
+            </div>
+          </body>
+          </html>`,
+          { headers: { 'Content-Type': 'text/html' }, status: 503 }
+        );
+      }
+    })()
+  );
+});
 
 // ============================================
 // WEB PUSH NOTIFICATION HANDLERS

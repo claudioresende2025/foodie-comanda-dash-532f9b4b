@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,12 +14,12 @@ import { toast } from 'sonner';
 import { Utensils, Loader2, Eye, EyeOff } from 'lucide-react';
 import { z } from 'zod';
 
-// Roles que pertencem à equipe (staff)
+// Roles que pertencem Ã  equipe (staff)
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
 
-const emailSchema = z.string().email('E-mail inválido');
-const passwordSchema = z.string().min(6, 'Senha deve ter no mínimo 6 caracteres');
-const nomeSchema = z.string().min(2, 'Nome deve ter no mínimo 2 caracteres');
+const emailSchema = z.string().email('E-mail invÃ¡lido');
+const passwordSchema = z.string().min(6, 'Senha deve ter no mÃ­nimo 6 caracteres');
+const nomeSchema = z.string().min(2, 'Nome deve ter no mÃ­nimo 2 caracteres');
 
 export default function Auth() {
   const { empresaNome } = useParams<{ empresaNome?: string }>();
@@ -51,7 +51,7 @@ export default function Auth() {
       const pending = localStorage.getItem('post_subscribe_plan');
       if (pending) {
         const parsed = JSON.parse(pending);
-        // Verificar se o plano foi selecionado há menos de 1 hora (timestamp válido)
+        // Verificar se o plano foi selecionado hÃ¡ menos de 1 hora (timestamp vÃ¡lido)
         const timestamp = parsed?.timestamp || 0;
         const oneHourAgo = Date.now() - (60 * 60 * 1000);
         
@@ -62,7 +62,7 @@ export default function Auth() {
         } else if (parsed?.planoSlug && !sessionStorage.getItem('plan_toast_shown')) {
           const planoNomes: Record<string, string> = {
             'bronze': 'Bronze (Iniciante)',
-            'prata': 'Prata (Intermediário)',
+            'prata': 'Prata (IntermediÃ¡rio)',
             'ouro': 'Ouro (Enterprise)',
           };
           const nomePlano = planoNomes[parsed.planoSlug] || parsed.planoSlug;
@@ -76,7 +76,7 @@ export default function Auth() {
     }
   }, [searchParams]);
 
-// Buscar empresa pelo nome na URL (Híbrido: Nuvem -> Local)
+// Buscar empresa pelo nome na URL (HÃ­brido: Nuvem -> Local)
   const { data: empresaUrl } = useQuery({
     queryKey: ['empresa-auth', empresaNome],
     queryFn: async () => {
@@ -93,7 +93,7 @@ export default function Auth() {
         
         if (!error && data) return data;
       } catch (onlineErr) {
-        console.warn("⚠️ Supabase inacessível, tentando dados da empresa no servidor local...");
+        console.warn("âš ï¸ Supabase inacessÃ­vel, tentando dados da empresa no servidor local...");
       }
 
       // 2. SE FALHAR (OFFLINE), BUSCA NO SERVIDOR LOCAL (PC DO CAIXA)
@@ -103,19 +103,19 @@ export default function Auth() {
           return await localRes.json();
         }
       } catch (localErr) {
-        console.error("🚨 Servidor local também falhou ao retornar dados da empresa.");
+        console.error("ðŸš¨ Servidor local tambÃ©m falhou ao retornar dados da empresa.");
       }
 
-      // 3. FALLBACK FINAL: Se nada funcionar, retorna um objeto básico para não quebrar a tela
+      // 3. FALLBACK FINAL: Se nada funcionar, retorna um objeto bÃ¡sico para nÃ£o quebrar a tela
       return { id: null, nome_fantasia: "Food Comanda Pro (Offline)" };
     },
     enabled: !!empresaNome,
     retry: false, // Importante: evita que o React fique tentando infinitamente sem rede
   });
 
-  // Função para verificar o role do usuário e redirecionar apropriadamente
+  // FunÃ§Ã£o para verificar o role do usuÃ¡rio e redirecionar apropriadamente
   const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
-    // Verificar primeiro se é super admin
+    // Verificar primeiro se Ã© super admin
     const { data: superAdmin } = await supabase
       .from('super_admins')
       .select('id, ativo')
@@ -123,31 +123,31 @@ export default function Auth() {
       .eq('ativo', true)
       .maybeSingle();
     
-    // Se for super admin ativo, redireciona para página de super admin
+    // Se for super admin ativo, redireciona para pÃ¡gina de super admin
     if (superAdmin?.ativo) {
       navigate('/super-admin');
       return;
     }
 
-    // Buscar todos os roles do usuário (pode ter em várias empresas)
+    // Buscar todos os roles do usuÃ¡rio (pode ter em vÃ¡rias empresas)
     const { data: userRoles } = await supabase
       .from('user_roles')
       .select('role, empresa_id')
       .eq('user_id', userId);
 
-    // Se não tem empresa_id E não tem nenhum role, é um cliente de delivery
+    // Se nÃ£o tem empresa_id E nÃ£o tem nenhum role, Ã© um cliente de delivery
     if (!empresaId && (!userRoles || userRoles.length === 0)) {
       navigate('/delivery');
       return;
     }
 
-    // Se não tem empresa_id mas tem role em alguma empresa, vai para onboarding
+    // Se nÃ£o tem empresa_id mas tem role em alguma empresa, vai para onboarding
     if (!empresaId) {
       // Se tem role em alguma empresa, redireciona para admin dessa empresa
       if (userRoles && userRoles.length > 0) {
         const firstRole = userRoles[0];
         if (firstRole.role && STAFF_ROLES.includes(firstRole.role)) {
-          // Se é motoboy, redireciona para o painel do entregador
+          // Se Ã© motoboy, redireciona para o painel do entregador
           if (firstRole.role === 'motoboy') {
             navigate('/admin/entregador');
             return;
@@ -164,7 +164,7 @@ export default function Auth() {
     const role = userRole?.role;
 
     if (role && STAFF_ROLES.includes(role)) {
-      // Se é motoboy, redireciona direto para o painel do entregador
+      // Se Ã© motoboy, redireciona direto para o painel do entregador
       if (role === 'motoboy') {
         navigate('/admin/entregador');
         return;
@@ -175,9 +175,9 @@ export default function Auth() {
     }
   }, [navigate]);
 
-  // Efeito para redirecionar quando já está logado (apenas uma vez)
+  // Efeito para redirecionar quando jÃ¡ estÃ¡ logado (apenas uma vez)
   useEffect(() => {
-    // Só redireciona se não estiver carregando, tiver usuário autenticado e não tiver redirecionado ainda
+    // SÃ³ redireciona se nÃ£o estiver carregando, tiver usuÃ¡rio autenticado e nÃ£o tiver redirecionado ainda
     if (!authLoading && user && profile && !hasRedirected.current) {
       hasRedirected.current = true;
       redirectBasedOnRole(user.id, profile.empresa_id);
@@ -215,189 +215,48 @@ export default function Auth() {
     e.preventDefault();
     if (!validateLogin()) return;
 
-    // Resetar flag de redirecionamento para permitir que useEffect redirecione após login
+    // Resetar flag de redirecionamento
     hasRedirected.current = false;
     setIsLoading(true);
 
-    // --- � HELPER PARA LOGIN COM CACHE LOCAL (PWA OFFLINE PURO) ---
-    const tryCacheLogin = async (): Promise<boolean> => {
-      try {
-        console.log("🔄 Tentando login com cache local seguro (PWA offline)...");
+    try {
+      const result = await handleLoginWithOffline(email, password, signIn);
+      
+      if (result.success) {
+        setIsLoading(false);
         
-        // Import dinâmico do módulo de autenticação offline
-        const { validateOfflineLogin, createOfflineSession } = await import('@/lib/offlineAuth');
-        
-        // Validar credenciais com hash seguro
-        const result = await validateOfflineLogin(email, password);
-        
-        if (result.success && result.user) {
-          console.log("✅ Login offline válido:", result.user.email);
-          
-          // Criar sessão offline
-          createOfflineSession(result.user);
-          
-          // Criar objeto de usuário para compatibilidade
-          const offlineUser = {
-            id: result.user.id,
-            email: result.user.email,
-            nome: result.user.nome,
-            empresa_id: result.user.empresa_id,
-            role: result.user.role,
-            permissions: result.user.permissions
-          };
-          
-          // Salvar no localStorage para compatibilidade
-          localStorage.setItem('offline_user', JSON.stringify(offlineUser));
-
-          setIsLoading(false);
-          
-          // Mostrar dias restantes se estiver próximo de expirar
-          const lastOnline = new Date(result.user.last_online_at);
-          const daysSinceLastOnline = Math.floor(
-            (Date.now() - lastOnline.getTime()) / (24 * 60 * 60 * 1000)
-          );
-          const daysRemaining = 7 - daysSinceLastOnline;
-          
-          if (daysRemaining <= 2) {
-            toast.warning(`Login Offline - Sessão expira em ${daysRemaining} dia(s). Conecte-se online em breve.`);
+        if (result.isOffline) {
+          // Login offline bem-sucedido
+          if (result.daysRemaining && result.daysRemaining <= 2) {
+            toast.warning(`Login Offline - Sessao expira em ${result.daysRemaining} dia(s). Conecte-se online em breve.`);
           } else {
             toast.success('Login Offline realizado com sucesso!');
           }
-
-          // Redirecionamento baseado no role
+          
+          // Redirecionamento para a rota apropriada
           setTimeout(() => {
-            if (result.user!.role === 'motoboy') {
-              window.location.href = '/admin/entregador';
-            } else if (result.user!.permissions.canAccessAdmin) {
-              window.location.href = '/admin';
+            if (result.redirectTo) {
+              window.location.href = result.redirectTo;
             } else {
-              window.location.href = '/delivery';
+              window.location.href = '/admin';
             }
           }, 800);
-          return true;
-        }
-        
-        // Login falhou - verificar se precisa de login online
-        if (result.requiresOnlineLogin) {
-          console.log("⚠️ Cache expirado ou não encontrado:", result.error);
         } else {
-          console.log("❌ Senha incorreta no cache");
-        }
-        
-        return false;
-      } catch (err: any) {
-        console.error("🚨 Erro ao validar cache local:", err.message);
-        return false;
-      }
-    };
-
-    // --- 🔐 HELPER PARA LOGIN NO SERVIDOR LOCAL (PC DO CAIXA) ---
-    const tryLocalServerLogin = async (): Promise<boolean> => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos de limite
-
-      try {
-        console.log("🔄 Tentando login no servidor local...");
-        const localResponse = await fetch(`http://192.168.2.111:3000/api/local/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (localResponse.ok) {
-          const localData = await localResponse.json();
-          if (localData.success) {
-            console.log("✅ Sucesso via servidor local:", localData);
-
-            // Injeção manual de sessão para enganar o AuthContext
-            localStorage.setItem('supabase.auth.token', JSON.stringify({
-              currentSession: { user: localData.user, access_token: 'offline-token' }
-            }));
-            localStorage.setItem('offline_user', JSON.stringify(localData.user));
-
-            setIsLoading(false);
-            toast.success('Login Offline realizado (Servidor Local)');
-
-            // Redirecionamento forçado com reload para garantir leitura do localStorage
-            setTimeout(() => {
-              window.location.href = '/admin';
-            }, 800);
-            return true;
-          }
-        }
-        return false;
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        console.error("🚨 Servidor local inacessível:", err.message);
-        return false;
-      }
-    };
-
-    // --- ☁️ TENTATIVA 1: LOGIN ONLINE (SUPABASE) ---
-    try {
-      const { error } = await signIn(email, password);
-
-      if (error) {
-        console.log("⚠️ Login Supabase falhou, tentando alternativas...");
-        
-        // TENTATIVA 2: Servidor Local (PC do Caixa)
-        const localServerSuccess = await tryLocalServerLogin();
-        if (localServerSuccess) return;
-
-        // TENTATIVA 3: Cache Local Seguro (PWA Offline Puro)
-        const cacheSuccess = await tryCacheLogin();
-        if (cacheSuccess) return;
-
-        // Se todas as tentativas falharem
-        setIsLoading(false);
-        if (error.message.includes('Invalid login credentials')) {
-          // Verificar se há cache expirado
-          try {
-            const { hasValidCache } = await import('@/lib/offlineAuth');
-            const hasCached = await hasValidCache(email);
-            if (!navigator.onLine && !hasCached) {
-              toast.error('E-mail ou senha incorretos. Sua sessão offline pode ter expirado (7+ dias offline).');
-            } else {
-              toast.error('E-mail ou senha incorretos');
-            }
-          } catch {
-            toast.error('E-mail ou senha incorretos');
-          }
-        } else if (!navigator.onLine) {
-          toast.error('Sem conexão. Faça login online primeiro para habilitar o modo offline.');
-        } else {
-          toast.error('Erro ao conectar. Tente novamente.');
+          // Login online bem-sucedido
+          toast.success('Login realizado com sucesso!');
+          // O useEffect original cuidara do redirecionamento via profile
         }
       } else {
-        // LOGIN ONLINE COM SUCESSO
+        // Login falhou
         setIsLoading(false);
-        toast.success('Login realizado com sucesso!');
-        // O useEffect original cuidará do redirecionamento via profile
+        toast.error(result.error || 'Erro ao conectar. Tente novamente.');
       }
-    } catch (err) {
-      console.log("⚠️ Exceção no login, tentando alternativas offline...");
-      
-      // TENTATIVA 2: Servidor Local (PC do Caixa)
-      const localServerSuccess = await tryLocalServerLogin();
-      if (localServerSuccess) return;
-      
-      // TENTATIVA 3: Cache Local Seguro (PWA Offline Puro)
-      const cacheSuccess = await tryCacheLogin();
-      if (cacheSuccess) return;
-      
-      // Se tudo falhar
+    } catch (err: any) {
       setIsLoading(false);
-      if (!navigator.onLine) {
-        toast.error('Sem conexão. Faça login online primeiro para habilitar o modo offline.');
-      } else {
-        toast.error('Erro ao conectar. Tente novamente.');
-      }
+      console.error('[Auth] Erro inesperado no login:', err);
+      toast.error('Erro inesperado. Tente novamente.');
     }
   };
-
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateSignup()) return;
@@ -409,7 +268,7 @@ export default function Auth() {
     if (error) {
       setIsLoading(false);
       if (error.message.includes('User already registered')) {
-        toast.error('Este e-mail já está cadastrado. Tente fazer login.');
+        toast.error('Este e-mail jÃ¡ estÃ¡ cadastrado. Tente fazer login.');
       } else {
         toast.error('Erro ao criar conta: ' + error.message);
       }
@@ -433,20 +292,20 @@ export default function Auth() {
     try {
       emailSchema.parse(forgotEmail);
     } catch {
-      toast.error('E-mail inválido');
+      toast.error('E-mail invÃ¡lido');
       return;
     }
     
     setIsLoading(true);
     
-    // URL de reset fixa para o domínio de produção
+    // URL de reset fixa para o domÃ­nio de produÃ§Ã£o
     const resetRedirectUrl = 'https://foodcomandapro.servicecoding.com.br/reset-password';
     
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
       redirectTo: resetRedirectUrl,
     });
     
-    // Também enviar email personalizado via Resend
+    // TambÃ©m enviar email personalizado via Resend
     if (!error) {
       try {
         await supabase.functions.invoke('send-email', {
@@ -459,25 +318,25 @@ export default function Auth() {
           },
         });
       } catch (emailError) {
-        console.warn('Erro ao enviar email personalizado de recuperação:', emailError);
+        console.warn('Erro ao enviar email personalizado de recuperaÃ§Ã£o:', emailError);
       }
     }
     
     setIsLoading(false);
     
     if (error) {
-      toast.error('Erro ao enviar e-mail de recuperação');
+      toast.error('Erro ao enviar e-mail de recuperaÃ§Ã£o');
     } else {
-      toast.success('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+      toast.success('E-mail de recuperaÃ§Ã£o enviado! Verifique sua caixa de entrada.');
       setShowForgotPassword(false);
       setForgotEmail('');
     }
   };
 
-  // Tela de confirmação de email após cadastro
+  // Tela de confirmaÃ§Ã£o de email apÃ³s cadastro
   if (showEmailConfirmation) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden">
         <div className="w-full max-w-md animate-fade-in">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4">
@@ -489,7 +348,7 @@ export default function Auth() {
               Verifique seu e-mail
             </h1>
             <p className="text-muted-foreground">
-              Enviamos um link de confirmação para:
+              Enviamos um link de confirmaÃ§Ã£o para:
             </p>
             <p className="text-primary font-semibold mt-2 text-lg">
               {registeredEmail}
@@ -501,12 +360,12 @@ export default function Auth() {
               <div className="space-y-4 text-center">
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                   <p className="text-amber-800 text-sm">
-                    <strong>📧 Importante:</strong> Clique no link enviado para seu e-mail para confirmar sua conta. Após a confirmação, você será redirecionado para configurar seu restaurante.
+                    <strong>ðŸ“§ Importante:</strong> Clique no link enviado para seu e-mail para confirmar sua conta. ApÃ³s a confirmaÃ§Ã£o, vocÃª serÃ¡ redirecionado para configurar seu restaurante.
                   </p>
                 </div>
                 
                 <p className="text-muted-foreground text-sm">
-                  Não recebeu o e-mail? Verifique sua pasta de spam ou lixo eletrônico.
+                  NÃ£o recebeu o e-mail? Verifique sua pasta de spam ou lixo eletrÃ´nico.
                 </p>
 
                 <div className="pt-4 space-y-3">
@@ -522,7 +381,7 @@ export default function Auth() {
                   </Button>
                   
                   <p className="text-xs text-muted-foreground">
-                    Após confirmar seu e-mail, faça login para continuar.
+                    ApÃ³s confirmar seu e-mail, faÃ§a login para continuar.
                   </p>
                 </div>
               </div>
@@ -534,7 +393,7 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden">
       <div className="w-full max-w-md animate-fade-in">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -561,7 +420,7 @@ export default function Auth() {
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-2xl">Bem-vindo!</CardTitle>
             <CardDescription>
-              Acesse sua conta ou crie uma nova para começar
+              Acesse sua conta ou crie uma nova para comeÃ§ar
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -590,7 +449,7 @@ export default function Auth() {
                       <Input
                         id="login-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
+                        placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
@@ -638,7 +497,7 @@ export default function Auth() {
                     <DialogHeader>
                       <DialogTitle>Recuperar Senha</DialogTitle>
                       <DialogDescription>
-                        Digite seu e-mail para receber o link de recuperação
+                        Digite seu e-mail para receber o link de recuperaÃ§Ã£o
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
@@ -707,7 +566,7 @@ export default function Auth() {
                       <Input
                         id="signup-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="Mínimo 6 caracteres"
+                        placeholder="MÃ­nimo 6 caracteres"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
@@ -749,7 +608,7 @@ export default function Auth() {
             className="text-sm text-muted-foreground hover:text-primary transition-colors"
             onClick={() => navigate('/auth/cliente')}
           >
-            É cliente? <span className="underline">Faça seus pedidos aqui</span>
+            Ã‰ cliente? <span className="underline">FaÃ§a seus pedidos aqui</span>
           </button>
         </div>
       </div>

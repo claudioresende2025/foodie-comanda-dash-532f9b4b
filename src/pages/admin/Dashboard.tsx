@@ -452,14 +452,24 @@ export default function Dashboard() {
           db.pedidos.toArray()
         ]);
         
+        // Helper para validar data
+        const isValidDate = (dateValue: any): boolean => {
+          if (!dateValue) return false;
+          const d = new Date(dateValue);
+          return !isNaN(d.getTime());
+        };
+        
         const comandasFechadas = comandas.filter((c: any) => {
+          if (!isValidDate(c.created_at)) return false;
           const createdAt = new Date(c.created_at).toISOString();
           return c.status === 'fechada' && createdAt >= weekStart && createdAt <= weekEnd;
         });
         
         const comandaIds = comandasFechadas.map((c: any) => c.id);
         const pedidosFiltrados = pedidos.filter((p: any) => {
-          const createdAt = new Date(p.created_at || p.criado_em).toISOString();
+          const dateValue = p.created_at || p.criado_em;
+          if (!isValidDate(dateValue)) return false;
+          const createdAt = new Date(dateValue).toISOString();
           return createdAt >= weekStart && createdAt <= weekEnd && comandaIds.includes(p.comanda_id);
         });
         
@@ -472,19 +482,26 @@ export default function Dashboard() {
         }
         
         comandasFechadas.forEach((c: any) => {
-          const dateStr = new Date(c.created_at).toISOString().split('T')[0];
-          const existing = salesByDay.get(dateStr);
-          if (existing) {
-            existing.faturamento += c.total || 0;
-          }
+          try {
+            if (!c.created_at || isNaN(new Date(c.created_at).getTime())) return;
+            const dateStr = new Date(c.created_at).toISOString().split('T')[0];
+            const existing = salesByDay.get(dateStr);
+            if (existing) {
+              existing.faturamento += c.total || 0;
+            }
+          } catch { /* ignora registro com data invalida */ }
         });
         
         pedidosFiltrados.forEach((p: any) => {
-          const dateStr = new Date(p.created_at || p.criado_em).toISOString().split('T')[0];
-          const existing = salesByDay.get(dateStr);
-          if (existing) {
-            existing.pedidos += 1;
-          }
+          try {
+            const dateValue = p.created_at || p.criado_em;
+            if (!dateValue || isNaN(new Date(dateValue).getTime())) return;
+            const dateStr = new Date(dateValue).toISOString().split('T')[0];
+            const existing = salesByDay.get(dateStr);
+            if (existing) {
+              existing.pedidos += 1;
+            }
+          } catch { /* ignora registro com data invalida */ }
         });
         
         dadosLocais = Array.from(salesByDay.entries()).map(([date, data]) => ({
@@ -533,14 +550,18 @@ export default function Dashboard() {
 
             const dayTotalComandas = weekComandas
               .filter(c => {
+                if (!c.created_at) return false;
                 const createdAt = new Date(c.created_at);
+                if (isNaN(createdAt.getTime())) return false;
                 return createdAt >= dayStart && createdAt <= dayEnd;
               })
               .reduce((sum, c) => sum + (c.total || 0), 0);
 
             const dayTotalVendas = weekVendas
               .filter((v: any) => {
+                if (!v.created_at) return false;
                 const createdAt = new Date(v.created_at);
+                if (isNaN(createdAt.getTime())) return false;
                 return createdAt >= dayStart && createdAt <= dayEnd;
               })
               .reduce((sum: number, v: any) => sum + (v.valor_total || 0), 0);
@@ -549,7 +570,9 @@ export default function Dashboard() {
 
             const dayPedidosCount = weekPedidos
               .filter(p => {
+                if (!p.created_at) return false;
                 const createdAt = new Date(p.created_at);
+                if (isNaN(createdAt.getTime())) return false;
                 return createdAt >= dayStart && createdAt <= dayEnd;
               }).length;
 
