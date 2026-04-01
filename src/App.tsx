@@ -50,7 +50,6 @@ import AdminDesempenho from "@/pages/admin/AdminDesempenho";
 import AdminAvaliacoes from "@/pages/admin/AdminAvaliacoes";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
-import { OfflineIndicator } from "@/components/OfflineIndicator";
 import ErrorBoundary from '@/components/ErrorBoundary';
 import CardapioDigitalDemo from '@/pages/CardapioDigitalDemo';
 
@@ -109,7 +108,6 @@ const App = () => {
         <Toaster />
         <Sonner />
         <UpdateNotification />
-        <OfflineIndicator />
         <BrowserRouter>
           <AuthProvider>
             <SubscriptionHandler />

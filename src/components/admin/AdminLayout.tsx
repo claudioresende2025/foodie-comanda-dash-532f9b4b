@@ -10,6 +10,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { OfflineIndicator } from '@/components/OfflineIndicator';
 
 // Roles que pertencem à equipe (staff) - devem ter acesso ao Admin
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
@@ -270,6 +271,7 @@ export function AdminLayout() {
             <Outlet />
           </main>
           <OrderNotificationBadge />
+          <OfflineIndicator />
         </SidebarInset>
       </div>
     </SidebarProvider>

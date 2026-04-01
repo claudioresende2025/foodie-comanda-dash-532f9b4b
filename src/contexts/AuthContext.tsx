@@ -36,52 +36,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useInactivityTimeout(!!user);
 
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    
-    if (!error && data) {
-      setProfile(data);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
       
-      // CONFIGURAR EMPRESA_ID NO CONNECTION MANAGER (Offline-First)
-      if (data.empresa_id) {
-        connectionManager.setEmpresaId(data.empresa_id);
-      }
-      
-      // BAIXAR DADOS PARA INDEXEDDB QUANDO TEMOS EMPRESA_ID (Offline-First)
-      if (data.empresa_id && navigator.onLine) {
-        console.log('📥 Baixando dados para modo offline...');
-        baixarDadosIniciais(data.empresa_id).catch(err => {
-          console.warn('Erro ao baixar dados iniciais:', err);
-        });
-      }
-      
-      // Aplicar associação pendente (ex: usuário veio via e-mail pós-checkout)
-      try {
-        if (!data.empresa_id && typeof window !== 'undefined') {
-          const pending = localStorage.getItem('post_subscribe_plan');
-          if (pending) {
-            const parsed = JSON.parse(pending);
-            if (parsed?.empresaId) {
-              await supabase.from('profiles').update({ empresa_id: parsed.empresaId }).eq('id', userId);
-              // tentar criar user_role como proprietario se não existir
-              try {
-                await supabase.from('user_roles').upsert({ user_id: userId, empresa_id: parsed.empresaId, role: 'proprietario' as const }, { onConflict: 'user_id,empresa_id' });
-              } catch (e) {
-                console.warn('Não foi possível criar user_role automaticamente', e);
+      if (!error && data) {
+        setProfile(data);
+        
+        // CONFIGURAR EMPRESA_ID NO CONNECTION MANAGER (Offline-First)
+        if (data.empresa_id) {
+          connectionManager.setEmpresaId(data.empresa_id);
+        }
+        
+        // BAIXAR DADOS PARA INDEXEDDB QUANDO TEMOS EMPRESA_ID (Offline-First)
+        if (data.empresa_id && navigator.onLine) {
+          console.log('📥 Baixando dados para modo offline...');
+          baixarDadosIniciais(data.empresa_id).catch(err => {
+            console.warn('Erro ao baixar dados iniciais:', err);
+          });
+        }
+        
+        // Aplicar associação pendente (ex: usuário veio via e-mail pós-checkout)
+        try {
+          if (!data.empresa_id && typeof window !== 'undefined') {
+            const pending = localStorage.getItem('post_subscribe_plan');
+            if (pending) {
+              const parsed = JSON.parse(pending);
+              if (parsed?.empresaId) {
+                await supabase.from('profiles').update({ empresa_id: parsed.empresaId }).eq('id', userId);
+                // tentar criar user_role como proprietario se não existir
+                try {
+                  await supabase.from('user_roles').upsert({ user_id: userId, empresa_id: parsed.empresaId, role: 'proprietario' as const }, { onConflict: 'user_id,empresa_id' });
+                } catch (e) {
+                  console.warn('Não foi possível criar user_role automaticamente', e);
+                }
+                localStorage.removeItem('post_subscribe_plan');
+                // atualizar profile localmente
+                const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', userId).single();
+                if (refreshed) setProfile(refreshed as Profile);
               }
-              localStorage.removeItem('post_subscribe_plan');
-              // atualizar profile localmente
-              const { data: refreshed } = await supabase.from('profiles').select('*').eq('id', userId).single();
-              if (refreshed) setProfile(refreshed as Profile);
             }
           }
+        } catch (e) {
+          console.warn('Erro ao aplicar associação pendente:', e);
         }
-      } catch (e) {
-        console.warn('Erro ao aplicar associação pendente:', e);
       }
+    } catch (error) {
+      console.warn('[AuthContext] Erro ao buscar perfil (offline?):', error);
+      // Se offline, não impede o uso
     }
   };
 
@@ -112,7 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     // THEN check for existing session - controls initial loading
+    // Timeout para evitar loading infinito quando offline
+    const sessionTimeout = setTimeout(() => {
+      console.warn('[AuthContext] Timeout ao verificar sessão - possivelmente offline');
+      setLoading(false);
+    }, 5000); // 5 segundos de timeout
+    
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      clearTimeout(sessionTimeout);
       setSession(session);
       setUser(session?.user ?? null);
       
@@ -120,6 +132,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await fetchProfile(session.user.id);
       }
       
+      setLoading(false);
+    }).catch((error) => {
+      clearTimeout(sessionTimeout);
+      console.error('[AuthContext] Erro ao obter sessão (offline?):', error);
+      // Se estiver offline, liberar o loading para permitir uso local
       setLoading(false);
     });
 
