@@ -57,13 +57,25 @@ export function OfflineIndicator() {
   }, [status]);
 
   const handleSyncClick = async () => {
-    if (status === 'syncing' || status === 'offline') return;
+    if (status === 'syncing') {
+      toast.info('Sincronização em andamento...');
+      return;
+    }
     
+    if (status === 'offline' || !navigator.onLine) {
+      toast.error('Sem conexão. Conecte-se à internet para sincronizar.');
+      return;
+    }
+    
+    toast.info('Iniciando sincronização...', { duration: 2000 });
     const success = await forceSync();
+    
     if (success) {
-      toast.success('Sincronização concluída!');
+      toast.success(`Sincronização concluída! ${pendingCount > 0 ? `${pendingCount} item(s) sincronizado(s).` : ''}`);
+      // Forçar atualização das queries
+      handleConnectionRestored();
     } else {
-      toast.error('Erro na sincronização. Tente novamente.');
+      toast.error('Erro na sincronização. Verifique a conexão e tente novamente.');
     }
   };
 

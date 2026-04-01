@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
-import { baixarDadosIniciais } from '@/lib/db';
+import { baixarDadosIniciais, salvarUsuarioCache } from '@/lib/db';
 import { connectionManager } from '@/lib/connectionManager';
 
 interface Profile {
@@ -57,6 +57,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           baixarDadosIniciais(data.empresa_id).catch(err => {
             console.warn('Erro ao baixar dados iniciais:', err);
           });
+        }
+        
+        // SALVAR USUÁRIO NO CACHE PARA LOGIN OFFLINE FUTURO
+        try {
+          // Buscar role do usuário
+          let role = 'proprietario';
+          if (data.empresa_id) {
+            const { data: roleData } = await supabase
+              .from('user_roles')
+              .select('role')
+              .eq('user_id', userId)
+              .eq('empresa_id', data.empresa_id)
+              .single();
+            if (roleData?.role) {
+              role = roleData.role;
+            }
+          }
+          
+          salvarUsuarioCache({
+            email: data.email,
+            id: data.id,
+            nome: data.nome,
+            empresa_id: data.empresa_id,
+            role: role
+          });
+        } catch (cacheErr) {
+          console.warn('[AuthContext] Erro ao salvar cache do usuário:', cacheErr);
         }
         
         // Aplicar associação pendente (ex: usuário veio via e-mail pós-checkout)

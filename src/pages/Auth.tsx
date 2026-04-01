@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { toast } from 'sonner';
 import { Utensils, Loader2, Eye, EyeOff } from 'lucide-react';
 import { z } from 'zod';
+import { buscarUsuarioCache } from '@/lib/db';
 
 // Roles que pertencem à equipe (staff)
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
@@ -218,8 +219,48 @@ export default function Auth() {
     hasRedirected.current = false;
     setIsLoading(true);
 
-    // --- 🔐 HELPER PARA LOGIN LOCAL (OFFLINE) ---
-    const tryLocalLogin = async (): Promise<boolean> => {
+    // --- � HELPER PARA LOGIN COM CACHE LOCAL (PWA OFFLINE PURO) ---
+    const tryCacheLogin = async (): Promise<boolean> => {
+      try {
+        console.log("🔄 Tentando login com cache local (PWA offline)...");
+        const cachedUser = await buscarUsuarioCache(email);
+        
+        if (cachedUser) {
+          console.log("✅ Usuário encontrado no cache local:", cachedUser.email);
+          
+          // Criar objeto de usuário simulado
+          const offlineUser = {
+            id: cachedUser.id,
+            email: cachedUser.email,
+            nome: cachedUser.nome,
+            empresa_id: cachedUser.empresa_id,
+            role: cachedUser.role
+          };
+          
+          // Injeção manual de sessão para enganar o AuthContext
+          localStorage.setItem('supabase.auth.token', JSON.stringify({
+            currentSession: { user: offlineUser, access_token: 'offline-cache-token' }
+          }));
+          localStorage.setItem('offline_user', JSON.stringify(offlineUser));
+
+          setIsLoading(false);
+          toast.success('Login Offline realizado (Modo PWA)');
+
+          // Redirecionamento forçado
+          setTimeout(() => {
+            window.location.href = '/admin';
+          }, 800);
+          return true;
+        }
+        return false;
+      } catch (err: any) {
+        console.error("🚨 Erro ao buscar cache local:", err.message);
+        return false;
+      }
+    };
+
+    // --- 🔐 HELPER PARA LOGIN NO SERVIDOR LOCAL (PC DO CAIXA) ---
+    const tryLocalServerLogin = async (): Promise<boolean> => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos de limite
 
@@ -237,7 +278,7 @@ export default function Auth() {
         if (localResponse.ok) {
           const localData = await localResponse.json();
           if (localData.success) {
-            console.log("✅ Sucesso local:", localData);
+            console.log("✅ Sucesso via servidor local:", localData);
 
             // Injeção manual de sessão para enganar o AuthContext
             localStorage.setItem('supabase.auth.token', JSON.stringify({
@@ -246,7 +287,7 @@ export default function Auth() {
             localStorage.setItem('offline_user', JSON.stringify(localData.user));
 
             setIsLoading(false);
-            toast.success('Login Offline realizado (Modo de Contingência)');
+            toast.success('Login Offline realizado (Servidor Local)');
 
             // Redirecionamento forçado com reload para garantir leitura do localStorage
             setTimeout(() => {
@@ -268,16 +309,24 @@ export default function Auth() {
       const { error } = await signIn(email, password);
 
       if (error) {
-        // Se falhar a nuvem, tenta o local
-        const localSucesso = await tryLocalLogin();
-        if (localSucesso) return;
+        console.log("⚠️ Login Supabase falhou, tentando alternativas...");
+        
+        // TENTATIVA 2: Servidor Local (PC do Caixa)
+        const localServerSuccess = await tryLocalServerLogin();
+        if (localServerSuccess) return;
 
-        // Se ambos falharem
+        // TENTATIVA 3: Cache Local (PWA Offline Puro)
+        const cacheSuccess = await tryCacheLogin();
+        if (cacheSuccess) return;
+
+        // Se todas as tentativas falharem
         setIsLoading(false);
         if (error.message.includes('Invalid login credentials')) {
           toast.error('E-mail ou senha incorretos');
+        } else if (!navigator.onLine) {
+          toast.error('Sem conexão. Faça login online primeiro para habilitar o modo offline.');
         } else {
-          toast.error('Erro ao conectar. Verifique o servidor local.');
+          toast.error('Erro ao conectar. Tente novamente.');
         }
       } else {
         // LOGIN ONLINE COM SUCESSO
@@ -286,11 +335,22 @@ export default function Auth() {
         // O useEffect original cuidará do redirecionamento via profile
       }
     } catch (err) {
-      // Caso o próprio método signIn trave (ex: erro de rede brutal)
-      const localSucesso = await tryLocalLogin();
-      if (!localSucesso) {
-        setIsLoading(false);
-        toast.error('Sistema indisponível. Verifique sua conexão.');
+      console.log("⚠️ Exceção no login, tentando alternativas offline...");
+      
+      // TENTATIVA 2: Servidor Local (PC do Caixa)
+      const localServerSuccess = await tryLocalServerLogin();
+      if (localServerSuccess) return;
+      
+      // TENTATIVA 3: Cache Local (PWA Offline Puro)
+      const cacheSuccess = await tryCacheLogin();
+      if (cacheSuccess) return;
+      
+      // Se tudo falhar
+      setIsLoading(false);
+      if (!navigator.onLine) {
+        toast.error('Sem conexão. Faça login online primeiro para habilitar o modo offline.');
+      } else {
+        toast.error('Erro ao conectar. Tente novamente.');
       }
     }
   };

@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 // 1. CONFIGURAÇÃO DO BANCO LOCAL (INDEXEDDB)
 export const db = new Dexie('FoodComandaPro_DB');
 
-db.version(6).stores({
+db.version(7).stores({
     // Tabelas do salão
     pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em',
     comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em',
@@ -26,6 +26,8 @@ db.version(6).stores({
     promocoes: 'id, empresa_id, nome, ativo, sincronizado',
     // Tabela de equipe
     team_members: 'id, empresa_id, nome, email, sincronizado',
+    // Cache de usuários para login offline (NÃO armazena senha - apenas email e dados do perfil)
+    users_cache: 'email, id, nome, empresa_id, role, cached_at',
 });
 
 // 2. DOWNLOAD INICIAL (POPULAR O PC DO RESTAURANTE)
@@ -89,7 +91,24 @@ export async function salvarLocal(tabela, dados) {
 export async function sincronizarTudo(supabaseClient = supabase) {
     if (!navigator.onLine) {
         console.log('[Sync] Offline - sincronização adiada');
-        return;
+        return { success: false, synced: 0, errors: 0 };
+    }
+    
+    // Verificar se o Supabase está acessível antes de tentar sincronizar
+    try {
+        const testResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL || 'https://tqmunlilydcowndqxiir.supabase.co'}/rest/v1/`, {
+            method: 'HEAD',
+            headers: {
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+            }
+        });
+        if (!testResponse.ok && testResponse.status !== 401) {
+            console.log('[Sync] Supabase não acessível - sincronização adiada');
+            return { success: false, synced: 0, errors: 0 };
+        }
+    } catch (e) {
+        console.log('[Sync] Erro ao verificar conexão com Supabase - sincronização adiada');
+        return { success: false, synced: 0, errors: 0 };
     }
     
     const tabelas = [
@@ -105,6 +124,9 @@ export async function sincronizarTudo(supabaseClient = supabase) {
         'itens_delivery'
     ];
 
+    let totalSincronizados = 0;
+    let totalErros = 0;
+
     for (const nomeTabela of tabelas) {
         if (!db[nomeTabela]) continue;
         
@@ -117,17 +139,28 @@ export async function sincronizarTudo(supabaseClient = supabase) {
                 for (const item of pendentes) {
                     try {
                         const { sincronizado, numero, atualizado_em, criado_em, ...dadosParaSubir } = item;
+                        
+                        // Garantir que o ID está presente
+                        if (!dadosParaSubir.id) {
+                            console.warn(`[Sync] Item sem ID em ${nomeTabela}, pulando...`);
+                            continue;
+                        }
+                        
                         const { error } = await supabaseClient
                             .from(nomeTabela)
                             .upsert([dadosParaSubir], { onConflict: 'id' });
 
                         if (!error) {
                             await db[nomeTabela].update(item.id, { sincronizado: 1 });
+                            totalSincronizados++;
+                            console.log(`[Sync] ✓ ${nomeTabela}/${item.id} sincronizado`);
                         } else {
-                            console.warn(`[Sync] Erro em ${nomeTabela}:`, error);
+                            totalErros++;
+                            console.warn(`[Sync] ✗ Erro em ${nomeTabela}/${item.id}:`, error.message || error);
                         }
                     } catch (e) {
-                        console.error(`[Sync] Erro ao sincronizar item de ${nomeTabela}:`, e);
+                        totalErros++;
+                        console.error(`[Sync] ✗ Exceção ao sincronizar item de ${nomeTabela}:`, e.message || e);
                     }
                 }
             }
@@ -136,7 +169,8 @@ export async function sincronizarTudo(supabaseClient = supabase) {
         }
     }
     
-    console.log('[Sync] ✅ Sincronização concluída');
+    console.log(`[Sync] ✅ Sincronização concluída: ${totalSincronizados} sincronizados, ${totalErros} erros`);
+    return { success: totalErros === 0, synced: totalSincronizados, errors: totalErros };
 }
 
 // 5. VERIFICAR PENDÊNCIAS DE SINCRONIZAÇÃO
@@ -168,4 +202,46 @@ export async function verificarPendencias() {
     }
     
     return total;
+}
+
+// 6. CACHE DE USUÁRIO PARA LOGIN OFFLINE
+// Salva dados do usuário no cache local após login bem-sucedido
+export async function salvarUsuarioCache(userData) {
+    if (!userData?.email) return;
+    
+    try {
+        await db.users_cache.put({
+            email: userData.email.toLowerCase(),
+            id: userData.id,
+            nome: userData.nome || userData.email.split('@')[0],
+            empresa_id: userData.empresa_id || null,
+            role: userData.role || 'proprietario',
+            cached_at: new Date().toISOString()
+        });
+        console.log('[Cache] Usuário salvo para login offline:', userData.email);
+    } catch (e) {
+        console.error('[Cache] Erro ao salvar usuário:', e);
+    }
+}
+
+// Busca usuário no cache local para login offline
+export async function buscarUsuarioCache(email) {
+    if (!email) return null;
+    
+    try {
+        const usuario = await db.users_cache.get(email.toLowerCase());
+        if (usuario) {
+            console.log('[Cache] Usuário encontrado no cache local:', email);
+            return usuario;
+        }
+    } catch (e) {
+        console.error('[Cache] Erro ao buscar usuário:', e);
+    }
+    return null;
+}
+
+// Verifica se o usuário tem acesso offline (já fez login antes)
+export async function verificarAcessoOffline(email) {
+    const usuario = await buscarUsuarioCache(email);
+    return usuario !== null;
 }
