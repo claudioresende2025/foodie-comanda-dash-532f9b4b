@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
-import { baixarDadosIniciais, salvarUsuarioCache } from '@/lib/db';
 import { connectionManager } from '@/lib/connectionManager';
 
 interface Profile {
@@ -54,8 +53,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // BAIXAR DADOS PARA INDEXEDDB QUANDO TEMOS EMPRESA_ID (Offline-First)
         if (data.empresa_id && navigator.onLine) {
           console.log('📥 Baixando dados para modo offline...');
-          baixarDadosIniciais(data.empresa_id).catch(err => {
-            console.warn('Erro ao baixar dados iniciais:', err);
+          import('@/lib/db').then(({ baixarDadosIniciais }) => {
+            baixarDadosIniciais(data.empresa_id).catch(err => {
+              console.warn('Erro ao baixar dados iniciais:', err);
+            });
+          }).catch(err => {
+            console.warn('Erro ao importar db:', err);
           });
         }
         
@@ -75,6 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
           
+          // Import dinâmico para evitar dependência circular
+          const { salvarUsuarioCache } = await import('@/lib/db');
           salvarUsuarioCache({
             email: data.email,
             id: data.id,

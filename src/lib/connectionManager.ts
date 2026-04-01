@@ -9,7 +9,6 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { db, sincronizarTudo, verificarPendencias, baixarDadosIniciais } from './db';
 
 type ConnectionStatus = 'online' | 'offline' | 'syncing' | 'checking';
 
@@ -275,6 +274,9 @@ class ConnectionManager {
    */
   private async fullSync(): Promise<void> {
     try {
+      // Import dinâmico para evitar dependência circular
+      const { baixarDadosIniciais, sincronizarTudo } = await import('./db');
+      
       // 1. Primeiro baixar dados atualizados do Supabase
       if (this.empresaId) {
         console.log('[ConnectionManager] Baixando dados atualizados do servidor...');
@@ -308,6 +310,8 @@ class ConnectionManager {
       this.updateState({ status: 'syncing' });
       console.log('[ConnectionManager] Sincronizando dados...');
 
+      // Import dinâmico para evitar dependência circular
+      const { sincronizarTudo, verificarPendencias } = await import('./db');
       await sincronizarTudo();
 
       // Atualizar contagem de pendentes
@@ -331,6 +335,7 @@ class ConnectionManager {
 
   private async updatePendingCount(): Promise<void> {
     try {
+      const { verificarPendencias } = await import('./db');
       const count = await verificarPendencias();
       this.updateState({ pendingCount: count });
     } catch (err) {

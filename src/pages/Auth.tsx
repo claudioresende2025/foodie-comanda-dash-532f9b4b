@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { toast } from 'sonner';
 import { Utensils, Loader2, Eye, EyeOff } from 'lucide-react';
 import { z } from 'zod';
-import { buscarUsuarioCache } from '@/lib/db';
 
 // Roles que pertencem à equipe (staff)
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
@@ -222,8 +221,9 @@ export default function Auth() {
     // --- � HELPER PARA LOGIN COM CACHE LOCAL (PWA OFFLINE PURO) ---
     const tryCacheLogin = async (): Promise<boolean> => {
       try {
-        console.log("🔄 Tentando login com cache local (PWA offline)...");
-        const cachedUser = await buscarUsuarioCache(email);
+        console.log("🔄 Tentando login com cache local (PWA offline)...");        
+        // Import dinâmico para evitar problemas de dependência circular
+        const { buscarUsuarioCache } = await import('@/lib/db');        const cachedUser = await buscarUsuarioCache(email);
         
         if (cachedUser) {
           console.log("✅ Usuário encontrado no cache local:", cachedUser.email);
