@@ -126,8 +126,12 @@ export default function Cardapio() {
             .order('ordem');
           
           if (!error && data) {
-            const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
-            await db.categorias.bulkPut(dadosComSync);
+            try {
+              const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
+              await db.categorias.bulkPut(dadosComSync);
+            } catch (dexieErr) {
+              console.warn('[Fallback] Dexie write failed for categorias:', dexieErr);
+            }
             return data as Categoria[];
           }
         } catch (err) {
@@ -220,8 +224,12 @@ export default function Cardapio() {
             .order('nome');
           
           if (!error && data) {
-            const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
-            await db.produtos.bulkPut(dadosComSync);
+            try {
+              const dadosComSync = data.map((item: any) => ({ ...item, sincronizado: 1 }));
+              await db.produtos.bulkPut(dadosComSync);
+            } catch (dexieErr) {
+              console.warn('[Fallback] Dexie write failed for produtos:', dexieErr);
+            }
             return data as Produto[];
           }
         } catch (err) {

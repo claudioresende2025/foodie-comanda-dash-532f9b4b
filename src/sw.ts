@@ -13,7 +13,7 @@
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -132,9 +132,18 @@ const navigationRoute = new NavigationRoute(navigationHandler, {
   denylist: [
     /^\/api\//,
     /^\/__/,
+    /\/version\.json$/,
   ],
 });
 registerRoute(navigationRoute);
+
+// ============================================
+// VERSION.JSON - SEMPRE DA REDE (nunca cachear)
+// ============================================
+registerRoute(
+  ({ url }) => url.pathname === '/version.json',
+  new NetworkOnly()
+);
 
 // ============================================
 // CATCH HANDLER - FALLBACK PARA QUALQUER FALHA
@@ -222,19 +231,23 @@ registerRoute(
   })
 );
 
-// Network first for Supabase API
+// ============================================
+// BYPASS: Supabase API calls go straight to network (no SW interception)
+// Also bypass localhost/dev servers
+// ============================================
 registerRoute(
-  /^https:\/\/.*\.supabase\.co\/.*/i,
-  new NetworkFirst({
-    cacheName: 'api-cache',
-    networkTimeoutSeconds: 10,
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 50,
-        maxAgeSeconds: 60 * 5 // 5 minutes
-      })
-    ]
-  })
+  ({ url }) => {
+    return (
+      url.hostname.includes('supabase.co') ||
+      url.pathname.includes('/rest/v1/') ||
+      url.pathname.includes('/auth/v1/') ||
+      url.pathname.includes('/storage/v1/') ||
+      url.pathname.includes('/functions/v1/') ||
+      url.hostname === 'localhost' ||
+      url.hostname === '127.0.0.1'
+    );
+  },
+  new NetworkOnly()
 );
 
 // ============================================

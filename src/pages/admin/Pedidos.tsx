@@ -217,10 +217,10 @@ export default function Pedidos() {
         
         // Reconstruir estrutura aninhada como retornada pelo Supabase
         return pedidosLocais.map((pedido: any) => {
-          const comanda = comandasMap.get(pedido.comanda_id);
-          const mesa = comanda ? mesasMap.get(comanda.mesa_id) : null;
-          const produto = produtosMap.get(pedido.produto_id);
-          const categoria = produto ? categoriasMap.get(produto.categoria_id) : null;
+          const comanda = comandasMap.get(pedido.comanda_id) as any;
+          const mesa = comanda ? mesasMap.get(comanda.mesa_id) as any : null;
+          const produto = produtosMap.get(pedido.produto_id) as any;
+          const categoria = produto ? categoriasMap.get(produto.categoria_id) as any : null;
           
           return {
             ...pedido,

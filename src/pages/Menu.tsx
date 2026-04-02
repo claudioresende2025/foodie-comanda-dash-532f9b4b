@@ -551,109 +551,122 @@ export default function Menu() {
 
     try {
       // 🔥 Tenta carregar do Servidor Local (PC do Caixa) primeiro
-      const localData = await apiLocal.getCardapio();
-      if (localData && localData.produtos) {
-        setProdutos(localData.produtos);
-        setCategorias(localData.categorias);
-        // Mantém os dados da empresa (nome/logo)
-        const { data: emp } = await supabase.from("empresas").select("*").eq("id", empresaId).maybeSingle();
-        if (emp) setEmpresa(emp);
-
-        setIsLoading(false);
-        return;
-      }
-    } catch (e) {
-      console.warn("Servidor Local Offline, seguindo para Nuvem/IndexedDB");
-    }
-
-    // ===============================
-    // OFFLINE-FIRST: Busca dados do IndexedDB primeiro
-    // ===============================
-    let empresaLocal: Empresa | null = null;
-    let categoriasLocal: Categoria[] = [];
-    let produtosLocal: Produto[] = [];
-    let mesaLocal: any = null;
-
-    try {
-      const empresaData = await db.empresa.where('id').equals(empresaId).first();
-      if (empresaData) {
-        empresaLocal = empresaData as Empresa;
-      }
-
-      const catData = await db.categorias.where('empresa_id').equals(empresaId).toArray();
-      categoriasLocal = catData.filter((c: any) => c.ativo !== false).sort((a: any, b: any) => (a.ordem || 0) - (b.ordem || 0));
-
-      const prodData = await db.produtos.where('empresa_id').equals(empresaId).toArray();
-      produtosLocal = prodData.filter((p: any) => p.ativo !== false).sort((a: any, b: any) => (a.nome || '').localeCompare(b.nome || ''));
-
-      if (mesaId) {
-        mesaLocal = await db.mesas.where('id').equals(mesaId).first();
-      }
-    } catch (e) {
-      console.warn('[Offline-First] Erro ao ler dados locais:', e);
-    }
-
-    if (navigator.onLine) {
       try {
-        const { data: empresaData, error: empresaError } = await supabase
-          .from("empresas")
-          .select("id, nome_fantasia, logo_url, chave_pix, endereco_completo")
-          .eq("id", empresaId)
-          .maybeSingle();
-
-        if (empresaError) throw empresaError;
-
-        if (empresaData) {
-          setEmpresa(empresaData as Empresa);
-          await db.empresa.put({ ...empresaData, sincronizado: 1 }).catch(() => { });
-        } else if (empresaLocal) {
-          setEmpresa(empresaLocal);
-        } else {
-          setError("Restaurante não encontrado. Verifique o link e tente novamente.");
+        const localData = await apiLocal.getCardapio();
+        if (localData && localData.produtos) {
+          setProdutos(localData.produtos);
+          setCategorias(localData.categorias);
+          const { data: emp } = await supabase.from("empresas").select("*").eq("id", empresaId).maybeSingle();
+          if (emp) setEmpresa(emp);
           setIsLoading(false);
           return;
         }
+      } catch (e) {
+        console.warn("Servidor Local Offline, seguindo para Nuvem/IndexedDB");
+      }
+
+      // ===============================
+      // OFFLINE-FIRST: Busca dados do IndexedDB primeiro
+      // ===============================
+      let empresaLocal: Empresa | null = null;
+      let categoriasLocal: Categoria[] = [];
+      let produtosLocal: Produto[] = [];
+      let mesaLocal: any = null;
+
+      try {
+        const empresaData = await db.empresa.where('id').equals(empresaId).first();
+        if (empresaData) {
+          empresaLocal = empresaData as Empresa;
+        }
+
+        const catData = await db.categorias.where('empresa_id').equals(empresaId).toArray();
+        categoriasLocal = catData.filter((c: any) => c.ativo !== false).sort((a: any, b: any) => (a.ordem || 0) - (b.ordem || 0));
+
+        const prodData = await db.produtos.where('empresa_id').equals(empresaId).toArray();
+        produtosLocal = prodData.filter((p: any) => p.ativo !== false).sort((a: any, b: any) => (a.nome || '').localeCompare(b.nome || ''));
 
         if (mesaId) {
-          const { data: mesaData } = await supabase.from("mesas").select("numero_mesa").eq("id", mesaId).maybeSingle();
-          if (mesaData) {
-            setMesaNumero(mesaData.numero_mesa);
-          } else if (mesaLocal) {
-            setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
+          mesaLocal = await db.mesas.where('id').equals(mesaId).first();
+        }
+      } catch (dexieErr) {
+        console.warn('[Emergency Fallback] Dexie falhou, indo direto ao Supabase:', dexieErr);
+      }
+
+      if (navigator.onLine) {
+        try {
+          const { data: empresaData, error: empresaError } = await supabase
+            .from("empresas")
+            .select("id, nome_fantasia, logo_url, chave_pix, endereco_completo")
+            .eq("id", empresaId)
+            .maybeSingle();
+
+          if (empresaError) throw empresaError;
+
+          if (empresaData) {
+            setEmpresa(empresaData as Empresa);
+            await db.empresa.put({ ...empresaData, sincronizado: 1 }).catch(() => { });
+          } else if (empresaLocal) {
+            setEmpresa(empresaLocal);
+          } else {
+            setError("Restaurante não encontrado. Verifique o link e tente novamente.");
+            setIsLoading(false);
+            return;
+          }
+
+          if (mesaId) {
+            const { data: mesaData } = await supabase.from("mesas").select("numero_mesa").eq("id", mesaId).maybeSingle();
+            if (mesaData) {
+              setMesaNumero(mesaData.numero_mesa);
+            } else if (mesaLocal) {
+              setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
+            }
+          }
+
+          const { data: catData, error: catError } = await supabase
+            .from("categorias")
+            .select("*")
+            .eq("empresa_id", empresaId)
+            .eq("ativo", true)
+            .order("ordem");
+
+          if (!catError && catData) {
+            setCategorias(catData || []);
+            const catsSync = catData.map((c: any) => ({ ...c, sincronizado: 1 }));
+            await db.categorias.bulkPut(catsSync).catch(() => { });
+          } else {
+            setCategorias(categoriasLocal);
+          }
+
+          const { data: prodData, error: prodError } = await supabase
+            .from("produtos")
+            .select("*")
+            .eq("empresa_id", empresaId)
+            .eq("ativo", true)
+            .order("nome");
+
+          if (!prodError && prodData) {
+            setProdutos(prodData || []);
+            const prodsSync = prodData.map((p: any) => ({ ...p, sincronizado: 1 }));
+            await db.produtos.bulkPut(prodsSync).catch(() => { });
+          } else {
+            setProdutos(produtosLocal);
+          }
+        } catch (err) {
+          console.warn("[Offline-First] Supabase inacessível, usando dados locais:", err);
+
+          if (empresaLocal) {
+            setEmpresa(empresaLocal);
+            if (mesaLocal) {
+              setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
+            }
+            setCategorias(categoriasLocal);
+            setProdutos(produtosLocal);
+          } else {
+            setError("Sem conexão e sem dados salvos localmente.");
           }
         }
-
-        const { data: catData, error: catError } = await supabase
-          .from("categorias")
-          .select("*")
-          .eq("empresa_id", empresaId)
-          .eq("ativo", true)
-          .order("ordem");
-
-        if (!catError && catData) {
-          setCategorias(catData || []);
-          const catsSync = catData.map((c: any) => ({ ...c, sincronizado: 1 }));
-          await db.categorias.bulkPut(catsSync).catch(() => { });
-        } else {
-          setCategorias(categoriasLocal);
-        }
-
-        const { data: prodData, error: prodError } = await supabase
-          .from("produtos")
-          .select("*")
-          .eq("empresa_id", empresaId)
-          .eq("ativo", true)
-          .order("nome");
-
-        if (!prodError && prodData) {
-          setProdutos(prodData || []);
-          const prodsSync = prodData.map((p: any) => ({ ...p, sincronizado: 1 }));
-          await db.produtos.bulkPut(prodsSync).catch(() => { });
-        } else {
-          setProdutos(produtosLocal);
-        }
-      } catch (err) {
-        console.warn("[Offline-First] Supabase inacessível, usando dados locais:", err);
+      } else {
+        console.log('[Offline-First] Modo offline - usando dados do IndexedDB');
 
         if (empresaLocal) {
           setEmpresa(empresaLocal);
@@ -663,21 +676,32 @@ export default function Menu() {
           setCategorias(categoriasLocal);
           setProdutos(produtosLocal);
         } else {
-          setError("Sem conexão e sem dados salvos localmente.");
+          setError("Sem conexão e sem dados salvos localmente. Conecte-se à internet pelo menos uma vez para carregar o cardápio.");
         }
       }
-    } else {
-      console.log('[Offline-First] Modo offline - usando dados do IndexedDB');
-
-      if (empresaLocal) {
-        setEmpresa(empresaLocal);
-        if (mesaLocal) {
-          setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
+    } catch (globalErr) {
+      // FALLBACK GLOBAL: Se qualquer coisa falhar, tentar Supabase direto
+      console.error('[Emergency] Erro global no fetchMenuData, tentando Supabase direto:', globalErr);
+      try {
+        if (navigator.onLine) {
+          const [empRes, catRes, prodRes] = await Promise.all([
+            supabase.from("empresas").select("id, nome_fantasia, logo_url, chave_pix, endereco_completo").eq("id", empresaId).maybeSingle(),
+            supabase.from("categorias").select("*").eq("empresa_id", empresaId).eq("ativo", true).order("ordem"),
+            supabase.from("produtos").select("*").eq("empresa_id", empresaId).eq("ativo", true).order("nome"),
+          ]);
+          if (empRes.data) setEmpresa(empRes.data as Empresa);
+          if (catRes.data) setCategorias(catRes.data || []);
+          if (prodRes.data) setProdutos(prodRes.data || []);
+          if (mesaId) {
+            const { data: mesaData } = await supabase.from("mesas").select("numero_mesa").eq("id", mesaId).maybeSingle();
+            if (mesaData) setMesaNumero(mesaData.numero_mesa);
+          }
+        } else {
+          setError("Sistema indisponível. Tente novamente com conexão à internet.");
         }
-        setCategorias(categoriasLocal);
-        setProdutos(produtosLocal);
-      } else {
-        setError("Sem conexão e sem dados salvos localmente. Conecte-se à internet pelo menos uma vez para carregar o cardápio.");
+      } catch (finalErr) {
+        console.error('[Emergency] Fallback final também falhou:', finalErr);
+        setError("Erro ao carregar cardápio. Tente recarregar a página.");
       }
     }
 
