@@ -14,12 +14,12 @@ import { toast } from 'sonner';
 import { Utensils, Loader2, Eye, EyeOff } from 'lucide-react';
 import { z } from 'zod';
 
-// Roles que pertencem Ã  equipe (staff)
+// Roles que pertencem a equipe (staff)
 const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
 
-const emailSchema = z.string().email('E-mail invÃ¡lido');
-const passwordSchema = z.string().min(6, 'Senha deve ter no mÃ­nimo 6 caracteres');
-const nomeSchema = z.string().min(2, 'Nome deve ter no mÃ­nimo 2 caracteres');
+const emailSchema = z.string().email('E-mail invalido');
+const passwordSchema = z.string().min(6, 'Senha deve ter no minimo 6 caracteres');
+const nomeSchema = z.string().min(2, 'Nome deve ter no minimo 2 caracteres');
 
 export default function Auth() {
   const { empresaNome } = useParams<{ empresaNome?: string }>();
@@ -62,7 +62,7 @@ export default function Auth() {
         } else if (parsed?.planoSlug && !sessionStorage.getItem('plan_toast_shown')) {
           const planoNomes: Record<string, string> = {
             'bronze': 'Bronze (Iniciante)',
-            'prata': 'Prata (IntermediÃ¡rio)',
+            'prata': 'Prata (Intermediario)',
             'ouro': 'Ouro (Enterprise)',
           };
           const nomePlano = planoNomes[parsed.planoSlug] || parsed.planoSlug;
@@ -268,7 +268,7 @@ export default function Auth() {
     if (error) {
       setIsLoading(false);
       if (error.message.includes('User already registered')) {
-        toast.error('Este e-mail jÃ¡ estÃ¡ cadastrado. Tente fazer login.');
+        toast.error('Este e-mail ja esta cadastrado. Tente fazer login.');
       } else {
         toast.error('Erro ao criar conta: ' + error.message);
       }
@@ -292,7 +292,7 @@ export default function Auth() {
     try {
       emailSchema.parse(forgotEmail);
     } catch {
-      toast.error('E-mail invÃ¡lido');
+      toast.error('E-mail invalido');
       return;
     }
     
@@ -325,9 +325,9 @@ export default function Auth() {
     setIsLoading(false);
     
     if (error) {
-      toast.error('Erro ao enviar e-mail de recuperaÃ§Ã£o');
+      toast.error('Erro ao enviar e-mail de recuperacao');
     } else {
-      toast.success('E-mail de recuperaÃ§Ã£o enviado! Verifique sua caixa de entrada.');
+      toast.success('E-mail de recuperacao enviado! Verifique sua caixa de entrada.');
       setShowForgotPassword(false);
       setForgotEmail('');
     }
@@ -381,7 +381,7 @@ export default function Auth() {
                   </Button>
                   
                   <p className="text-xs text-muted-foreground">
-                    ApÃ³s confirmar seu e-mail, faÃ§a login para continuar.
+                    Apos confirmar seu e-mail, faca login para continuar.
                   </p>
                 </div>
               </div>
@@ -420,7 +420,7 @@ export default function Auth() {
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-2xl">Bem-vindo!</CardTitle>
             <CardDescription>
-              Acesse sua conta ou crie uma nova para comeÃ§ar
+              Acesse sua conta ou crie uma nova para comecar
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -449,7 +449,7 @@ export default function Auth() {
                       <Input
                         id="login-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                        placeholder="******"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
@@ -497,7 +497,7 @@ export default function Auth() {
                     <DialogHeader>
                       <DialogTitle>Recuperar Senha</DialogTitle>
                       <DialogDescription>
-                        Digite seu e-mail para receber o link de recuperaÃ§Ã£o
+                        Digite seu e-mail para receber o link de recuperacao
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
@@ -566,7 +566,7 @@ export default function Auth() {
                       <Input
                         id="signup-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="MÃ­nimo 6 caracteres"
+                        placeholder="Minimo 6 caracteres"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required

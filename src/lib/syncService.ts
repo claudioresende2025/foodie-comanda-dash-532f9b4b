@@ -75,6 +75,9 @@ type PrintListener = (job: PrintJob) => void;
 
 class SyncService {
   private isSyncing = false;
+  private isDownloading = false;
+  private lastDownloadTime = 0;
+  private readonly DOWNLOAD_COOLDOWN = 30000; // 30 segundos entre downloads
   private syncListeners: Set<SyncListener> = new Set();
   private completeListeners: Set<SyncCompleteListener> = new Set();
   private broadcastListeners: Set<BroadcastListener> = new Set();
@@ -762,9 +765,26 @@ class SyncService {
 
   /**
    * Baixa dados atualizados do Supabase para o Dexie
+   * Com proteção contra downloads múltiplos/loops
    */
   async downloadFromCloud(empresaId: string): Promise<void> {
+    // Proteção contra múltiplos downloads simultâneos
+    if (this.isDownloading) {
+      console.log('[SyncService] Download já em andamento, ignorando');
+      return;
+    }
+    
+    // Cooldown: evitar downloads muito frequentes
+    const now = Date.now();
+    if (now - this.lastDownloadTime < this.DOWNLOAD_COOLDOWN) {
+      console.log('[SyncService] Download em cooldown, aguarde...');
+      return;
+    }
+    
     if (!navigator.onLine || !empresaId) return;
+    
+    this.isDownloading = true;
+    this.lastDownloadTime = now;
 
     const { db } = await import('./db');
     console.log('[SyncService] Baixando dados da nuvem...');
@@ -805,6 +825,8 @@ class SyncService {
         console.error(`[SyncService] Erro ao baixar ${tabela.nome}:`, e);
       }
     }
+    
+    this.isDownloading = false;
   }
 
   /**
