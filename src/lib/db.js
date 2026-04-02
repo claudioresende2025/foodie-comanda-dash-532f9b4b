@@ -217,18 +217,46 @@ export async function initializeDb() {
       console.error('[Dexie] ❌ Erro ao abrir banco:', err);
       
       // VERSIONERROR: Versão do código diferente da versão no navegador
-      // Apenas logar - NÃO deletar automaticamente para evitar loop
+      // AUTO-DELETE E RECRIAÇÃO AUTOMÁTICA
       if (errName === 'VersionError' || errMsg.includes('version')) {
-        console.warn('[Dexie] 🔧 VersionError detectado - Banco precisa ser recriado');
-        console.warn('[Dexie] Para resolver: limpe os dados do site no navegador ou use Ctrl+Shift+Delete');
+        console.warn('[Dexie] 🚨 VersionError detectado - DELETANDO banco e recriando...');
         
-        // Marcar flag para UI mostrar mensagem
-        if (typeof window !== 'undefined') {
-          window.__DEXIE_VERSION_ERROR__ = true;
+        // Evitar loop infinito com flag de tentativa
+        const alreadyTried = sessionStorage.getItem('dexie_version_reset');
+        if (alreadyTried) {
+          console.error('[Dexie] ❌ Já tentou reset - evitando loop');
+          sessionStorage.removeItem('dexie_version_reset');
+          if (typeof window !== 'undefined') {
+            window.__DEXIE_VERSION_ERROR__ = true;
+          }
+          return false;
         }
         
-        // NÃO fazer reload automático - causa loop infinito
-        return false;
+        try {
+          // Marcar que tentamos reset
+          sessionStorage.setItem('dexie_version_reset', 'true');
+          
+          // Fechar conexão atual
+          if (db.isOpen()) {
+            db.close();
+          }
+          
+          // Deletar banco completamente
+          await Dexie.delete('FoodComandaPro_DB');
+          console.log('[Dexie] 🗑️ Banco deletado com sucesso');
+          
+          // Recarregar a página para recriar o banco
+          console.log('[Dexie] 🔄 Recarregando página...');
+          window.location.reload();
+          return false;
+          
+        } catch (deleteErr) {
+          console.error('[Dexie] ❌ Erro ao deletar banco:', deleteErr);
+          if (typeof window !== 'undefined') {
+            window.__DEXIE_VERSION_ERROR__ = true;
+          }
+          return false;
+        }
       }
       
       // Outros erros: apenas logar
@@ -243,10 +271,30 @@ export async function initializeDb() {
 }
 
 // ============================================
-// NÃO AUTO-INICIALIZAR NA IMPORTAÇÃO
+// AUTO-INICIALIZAÇÃO NA IMPORTAÇÃO (SEGURA)
 // ============================================
-// A inicialização será feita sob demanda quando necessário
-// Isso evita loops de reload e tela branca
+// Limpar flag de reset após sucesso
+if (typeof window !== 'undefined') {
+  // Agendar inicialização após DOM ready
+  const initOnLoad = () => {
+    initializeDb()
+      .then(success => {
+        if (success) {
+          sessionStorage.removeItem('dexie_version_reset');
+          console.log('[Dexie] ✅ Banco inicializado automaticamente');
+        }
+      })
+      .catch(err => {
+        console.error('[Dexie] ❌ Falha na auto-inicialização:', err);
+      });
+  };
+  
+  if (document.readyState === 'complete') {
+    initOnLoad();
+  } else {
+    window.addEventListener('load', initOnLoad);
+  }
+}
 
 // ============================================
 // VERSÃO 16: CORREÇÃO DE VERSIONERROR

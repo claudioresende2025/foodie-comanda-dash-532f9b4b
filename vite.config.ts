@@ -23,7 +23,7 @@ export default defineConfig(async ({ mode }) => {
   const plugins: PluginOption[] = [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.ts",

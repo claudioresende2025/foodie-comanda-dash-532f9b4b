@@ -1,14 +1,17 @@
 /// <reference lib="webworker" />
 
-// Service Worker com suporte a Web Push Notifications
-// Este arquivo é usado pelo VitePWA injectManifest
+// ============================================
+// SERVICE WORKER - FOOD COMANDA PRO
+// ============================================
+// VERSÃO: 2.5.0 - Correção estrutural definitiva
 // 
-// VERSÃO: 2.2.0 - Fix ERR_FAILED offline navigation
 // Changelog:
-// - v2.3.0: setCatchHandler para fallback offline, notificacao mobile melhorada
-// - v2.2.0: Remove listener fetch duplicado que conflitava com NavigationRoute
-// - v2.1.0: StaleWhileRevalidate para JS/CSS, pre-cache rotas, fallback SPA
-// - v2.0.0: skipWaiting() forçado, Dexie.js, limpeza caches
+// - v2.5.0: Registro forçado, ativação imediata agressiva
+// - v2.4.0: Fix install event
+// - v2.3.0: setCatchHandler para fallback offline
+// - v2.2.0: Remove listener fetch duplicado
+// - v2.1.0: StaleWhileRevalidate para JS/CSS
+// - v2.0.0: skipWaiting() forçado, Dexie.js
 
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
@@ -19,8 +22,8 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
 declare const self: ServiceWorkerGlobalScope;
 
-// Versão do Service Worker (incrementar a cada deploy)
-const SW_VERSION = '2.3.0';
+// Versão do Service Worker
+const SW_VERSION = '2.5.0';
 const SW_BUILD_DATE = new Date().toISOString();
 
 // Extended notification options for service worker
@@ -31,27 +34,39 @@ interface ExtendedNotificationOptions extends NotificationOptions {
 }
 
 // ============================================
-// FORÇA ATUALIZAÇÃO IMEDIATA
+// ATIVAÇÃO IMEDIATA - CRÍTICO
 // ============================================
-// skipWaiting() garante que o novo SW assuma controle imediatamente
-// sem esperar que todas as abas sejam fechadas
+// Executar skipWaiting e clientsClaim ANTES de qualquer outra coisa
 self.skipWaiting();
 clientsClaim();
 
-console.log(`[SW] Food Comanda Pro v${SW_VERSION} inicializando...`);
+console.log(`[SW] 🚀 Food Comanda Pro v${SW_VERSION}`);
+console.log(`[SW] 📅 Build: ${SW_BUILD_DATE}`);
 
 // ============================================
-// BYPASS SUPER ADMIN: Requisições de Super Admin vão direto à rede
+// EVENTO INSTALL - FORÇAR ATIVAÇÃO
 // ============================================
-// O Super Admin opera 100% online — não cachear NENHUMA requisição de API
+self.addEventListener('install', (event) => {
+  console.log(`[SW] ⚙️ INSTALANDO v${SW_VERSION}...`);
+  
+  event.waitUntil(
+    (async () => {
+      // Forçar skipWaiting imediatamente
+      await self.skipWaiting();
+      console.log('[SW] ✅ skipWaiting executado no install');
+    })()
+  );
+});
+
+// ============================================
+// BYPASS SUPER ADMIN: 100% ONLINE
+// ============================================
 registerRoute(
   ({ request, url }) => {
-    // Verifica se é Super Admin via header customizado ou URL param
     const isSuperAdminRequest = 
       request.headers.get('X-Super-Admin') === 'true' ||
       url.searchParams.get('_superadmin') === 'true';
     
-    // Sempre ir direto à rede para Super Admin
     if (isSuperAdminRequest && (
       url.hostname.includes('supabase.co') ||
       url.pathname.includes('/rest/v1/') ||
@@ -112,16 +127,18 @@ async function cleanupLegacyCaches(): Promise<void> {
 
 // Executar limpeza na ativação
 self.addEventListener('activate', (event) => {
-  console.log(`[SW] Ativando v${SW_VERSION}...`);
+  console.log(`[SW] ⚡ Ativando v${SW_VERSION}...`);
   
   event.waitUntil(
     Promise.all([
+      // Assumir controle de TODAS as abas imediatamente
+      self.clients.claim(),
       cleanupLegacyCaches(),
       cleanupOutdatedCaches(),
       // Notificar todas as abas sobre a atualização
       notifyClientsOfUpdate()
     ]).then(() => {
-      console.log(`[SW] v${SW_VERSION} ativado com sucesso`);
+      console.log(`[SW] ✅ v${SW_VERSION} ATIVO e controlando todas as abas`);
     })
   );
 });
