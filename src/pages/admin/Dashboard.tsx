@@ -198,7 +198,7 @@ export default function Dashboard() {
     refetchOnReconnect: false,
   });
 
-  // Fetch today's comandas and calculate stats - Offline-First
+  // Fetch today's comandas and calculate stats - HIBRIDO (Nuvem + Local)
   const { data: comandasHoje = [], isLoading: isLoadingComandas } = useQuery({
     queryKey: ['comandas-hoje', empresaId],
     queryFn: async () => {
@@ -207,24 +207,27 @@ export default function Dashboard() {
       const startOfToday = startOfDay(today).toISOString();
       const endOfToday = endOfDay(today).toISOString();
       
-      // 1. Buscar dados locais primeiro
+      // 1. Buscar TODOS os dados locais (sincronizados + pendentes)
       let dadosLocais: any[] = [];
+      let pendentesLocais: any[] = [];
       try {
         const locais = await db.comandas.where('empresa_id').equals(empresaId).toArray();
-        dadosLocais = locais.filter((c: any) => {
+        const filtrados = locais.filter((c: any) => {
+          if (!c.created_at) return false;
           const createdAt = new Date(c.created_at).toISOString();
           return createdAt >= startOfToday && createdAt <= endOfToday;
-        }).map((c: any) => ({
-          id: c.id,
-          total: c.total || 0,
-          status: c.status,
-          created_at: c.created_at,
+        });
+        dadosLocais = filtrados.map((c: any) => ({
+          id: c.id, total: c.total || 0, status: c.status, created_at: c.created_at,
         }));
+        // Separar pendentes (nao sincronizados) para merge
+        pendentesLocais = filtrados.filter((c: any) => c.sincronizado === 0 || c.sincronizado === false)
+          .map((c: any) => ({ id: c.id, total: c.total || 0, status: c.status, created_at: c.created_at }));
       } catch (err) {
-        console.warn('[Offline-First] Erro ao ler comandas do IndexedDB:', err);
+        console.warn('[Hibrido] Erro ao ler comandas do IndexedDB:', err);
       }
       
-      // 2. Se online, buscar do Supabase
+      // 2. Se online, buscar do Supabase e MERGEAR com pendentes locais
       if (navigator.onLine) {
         try {
           const { data } = await supabase
@@ -233,9 +236,17 @@ export default function Dashboard() {
             .eq('empresa_id', empresaId)
             .gte('created_at', startOfToday)
             .lte('created_at', endOfToday);
-          if (data) return data;
+          if (data) {
+            // Salvar dados da nuvem no Dexie
+            const syncData = data.map((c: any) => ({ ...c, empresa_id: empresaId, sincronizado: 1 }));
+            await db.comandas.bulkPut(syncData).catch(() => {});
+            // Merge: dados Supabase + pendentes locais (que nao estao no Supabase)
+            const idsSupabase = new Set(data.map((c: any) => c.id));
+            const apenasLocais = pendentesLocais.filter(c => !idsSupabase.has(c.id));
+            return [...data, ...apenasLocais];
+          }
         } catch (err) {
-          console.warn('[Offline-First] Supabase inacessível para comandas:', err);
+          console.warn('[Hibrido] Supabase inacessivel para comandas:', err);
         }
       }
       
@@ -246,7 +257,7 @@ export default function Dashboard() {
     refetchInterval: navigator.onLine ? 30000 : false,
   });
 
-  // Fetch today's vendas_concluidas (standalone sales) - Offline-First
+  // Fetch today's vendas_concluidas (standalone sales) - HIBRIDO
   const { data: vendasHoje = [] } = useQuery({
     queryKey: ['vendas-concluidas-hoje', empresaId],
     queryFn: async () => {
@@ -255,34 +266,38 @@ export default function Dashboard() {
       const startOfToday = startOfDay(today).toISOString();
       const endOfToday = endOfDay(today).toISOString();
       
-      // 1. Buscar dados locais primeiro
       let dadosLocais: any[] = [];
+      let pendentesLocais: any[] = [];
       try {
         const locais = await db.vendas_concluidas.where('empresa_id').equals(empresaId).toArray();
-        dadosLocais = locais.filter((v: any) => {
+        const filtrados = locais.filter((v: any) => {
+          if (!v.created_at) return false;
           const createdAt = new Date(v.created_at).toISOString();
           return !v.comanda_id && createdAt >= startOfToday && createdAt <= endOfToday;
-        }).map((v: any) => ({
-          valor_total: v.valor_total || 0,
-          created_at: v.created_at,
-        }));
+        });
+        dadosLocais = filtrados.map((v: any) => ({ id: v.id, valor_total: v.valor_total || 0, created_at: v.created_at }));
+        pendentesLocais = filtrados.filter((v: any) => v.sincronizado === 0 || v.sincronizado === false)
+          .map((v: any) => ({ id: v.id, valor_total: v.valor_total || 0, created_at: v.created_at }));
       } catch (err) {
-        console.warn('[Offline-First] Erro ao ler vendas_concluidas do IndexedDB:', err);
+        console.warn('[Hibrido] Erro ao ler vendas_concluidas do IndexedDB:', err);
       }
       
-      // 2. Se online, buscar do Supabase
       if (navigator.onLine) {
         try {
           const { data } = await (supabase as any)
             .from('vendas_concluidas')
-            .select('valor_total, created_at')
+            .select('id, valor_total, created_at')
             .eq('empresa_id', empresaId)
             .is('comanda_id', null)
             .gte('created_at', startOfToday)
             .lte('created_at', endOfToday);
-          if (data) return data;
+          if (data) {
+            const idsSupabase = new Set(data.map((v: any) => v.id));
+            const apenasLocais = pendentesLocais.filter(v => !idsSupabase.has(v.id));
+            return [...data, ...apenasLocais];
+          }
         } catch (err) {
-          console.warn('[Offline-First] Supabase inacessível para vendas_concluidas:', err);
+          console.warn('[Hibrido] Supabase inacessivel para vendas_concluidas:', err);
         }
       }
       
@@ -293,7 +308,7 @@ export default function Dashboard() {
     refetchInterval: navigator.onLine ? 30000 : false,
   });
 
-  // Fetch today's pedidos count - Offline-First
+  // Fetch today's pedidos count - HIBRIDO
   const { data: pedidosHoje = 0 } = useQuery({
     queryKey: ['pedidos-count-hoje', empresaId],
     queryFn: async () => {
@@ -302,45 +317,46 @@ export default function Dashboard() {
       const startOfToday = startOfDay(today).toISOString();
       const endOfToday = endOfDay(today).toISOString();
       
-      // 1. Buscar dados locais primeiro
+      // 1. Contar TODOS os pedidos locais (inclui pendentes offline)
       let countLocal = 0;
+      let idsPendentesLocais = new Set<string>();
       try {
         const comandasLocais = await db.comandas.where('empresa_id').equals(empresaId).toArray();
         const comandaIds = comandasLocais.map((c: any) => c.id);
         if (comandaIds.length > 0) {
           const pedidosLocais = await db.pedidos.toArray();
-          countLocal = pedidosLocais.filter((p: any) => {
+          const filtrados = pedidosLocais.filter((p: any) => {
             if (!comandaIds.includes(p.comanda_id)) return false;
             const createdAt = new Date(p.created_at || p.criado_em).toISOString();
             return createdAt >= startOfToday && createdAt <= endOfToday;
-          }).length;
+          });
+          countLocal = filtrados.length;
+          // Guardar IDs dos pedidos nao sincronizados
+          filtrados.filter((p: any) => p.sincronizado === 0 || p.sincronizado === false)
+            .forEach((p: any) => idsPendentesLocais.add(p.id));
         }
       } catch (err) {
-        console.warn('[Offline-First] Erro ao contar pedidos do IndexedDB:', err);
+        console.warn('[Hibrido] Erro ao contar pedidos do IndexedDB:', err);
       }
       
-      // 2. Se online, buscar do Supabase
+      // 2. Se online, merge count do Supabase + pendentes locais
       if (navigator.onLine) {
         try {
           const { data: comandas } = await supabase
-            .from('comandas')
-            .select('id')
-            .eq('empresa_id', empresaId);
-          
-          if (!comandas || comandas.length === 0) return 0;
-          
-          const comandaIds = comandas.map(c => c.id);
-          
-          const { count } = await supabase
-            .from('pedidos')
-            .select('id', { count: 'exact', head: true })
-            .in('comanda_id', comandaIds)
-            .gte('created_at', startOfToday)
-            .lte('created_at', endOfToday);
-          
-          if (count !== null) return count;
+            .from('comandas').select('id').eq('empresa_id', empresaId);
+          if (comandas && comandas.length > 0) {
+            const comandaIds = comandas.map(c => c.id);
+            const { count } = await supabase
+              .from('pedidos').select('id', { count: 'exact', head: true })
+              .in('comanda_id', comandaIds)
+              .gte('created_at', startOfToday).lte('created_at', endOfToday);
+            if (count !== null) {
+              // count Supabase + pedidos locais nao sincronizados
+              return count + idsPendentesLocais.size;
+            }
+          }
         } catch (err) {
-          console.warn('[Offline-First] Supabase inacessível para pedidos count:', err);
+          console.warn('[Hibrido] Supabase inacessivel para pedidos count:', err);
         }
       }
       
@@ -351,13 +367,13 @@ export default function Dashboard() {
     refetchInterval: navigator.onLine ? 30000 : false,
   });
 
-  // Fetch recent orders - Offline-First
+  // Fetch recent orders - HIBRIDO (inclui pedidos offline)
   const { data: recentOrders = [] } = useQuery({
     queryKey: ['recent-orders', empresaId],
     queryFn: async () => {
       if (!empresaId) return [];
       
-      // 1. Buscar dados locais primeiro
+      // 1. SEMPRE construir dados locais (inclui pedidos offline pendentes)
       let dadosLocais: any[] = [];
       try {
         const [pedidos, produtos, comandas, mesas] = await Promise.all([
@@ -375,7 +391,7 @@ export default function Dashboard() {
         dadosLocais = pedidos
           .filter((p: any) => comandaIds.includes(p.comanda_id))
           .sort((a: any, b: any) => new Date(b.created_at || b.criado_em).getTime() - new Date(a.created_at || a.criado_em).getTime())
-          .slice(0, 5)
+          .slice(0, 10)
           .map((p: any) => {
             const produto = produtosMap.get(p.produto_id);
             const comanda = comandasMap.get(p.comanda_id);
@@ -387,48 +403,42 @@ export default function Dashboard() {
               status_cozinha: p.status_cozinha,
               created_at: p.created_at || p.criado_em,
               produto: produto ? { nome: produto.nome } : null,
-              comanda: comanda ? { mesa: mesa ? { numero_mesa: mesa.numero_mesa || mesa.numero } : null } : null
+              comanda: comanda ? { mesa: mesa ? { numero_mesa: mesa.numero_mesa || mesa.numero } : null } : null,
+              _offline: p.sincronizado === 0 || p.sincronizado === false,
             };
           });
       } catch (err) {
-        console.warn('[Offline-First] Erro ao ler pedidos recentes do IndexedDB:', err);
+        console.warn('[Hibrido] Erro ao ler pedidos recentes do IndexedDB:', err);
       }
       
-      // 2. Se online, buscar do Supabase
+      // 2. Se online, merge Supabase + pedidos locais pendentes
       if (navigator.onLine) {
         try {
-          // Get comandas for this empresa
           const { data: comandas } = await supabase
-            .from('comandas')
-            .select('id')
-            .eq('empresa_id', empresaId);
+            .from('comandas').select('id').eq('empresa_id', empresaId);
           
-          if (!comandas || comandas.length === 0) return dadosLocais;
-          
-          const comandaIds = comandas.map(c => c.id);
-          
-          const { data } = await supabase
-            .from('pedidos')
-            .select(`
-              id,
-              quantidade,
-              subtotal,
-              status_cozinha,
-              created_at,
-              produto:produtos(nome),
-              comanda:comandas(mesa:mesas(numero_mesa))
-            `)
-            .in('comanda_id', comandaIds)
-            .order('created_at', { ascending: false })
-            .limit(5);
-          
-          if (data) return data;
+          if (comandas && comandas.length > 0) {
+            const comandaIds = comandas.map(c => c.id);
+            const { data } = await supabase
+              .from('pedidos')
+              .select(`id, quantidade, subtotal, status_cozinha, created_at,
+                produto:produtos(nome), comanda:comandas(mesa:mesas(numero_mesa))`)
+              .in('comanda_id', comandaIds)
+              .order('created_at', { ascending: false })
+              .limit(5);
+            
+            if (data) {
+              const idsSupabase = new Set(data.map((p: any) => p.id));
+              const offlineRecentes = dadosLocais.filter(p => p._offline && !idsSupabase.has(p.id));
+              return [...offlineRecentes, ...data].slice(0, 5);
+            }
+          }
         } catch (err) {
-          console.warn('[Offline-First] Supabase inacessível para pedidos recentes:', err);
+          console.warn('[Hibrido] Supabase inacessivel para pedidos recentes:', err);
         }
       }
       
-      return dadosLocais;
+      return dadosLocais.slice(0, 5);
     },
     enabled: !!empresaId,
     staleTime: 30 * 1000,

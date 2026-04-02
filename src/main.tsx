@@ -36,5 +36,15 @@ if ('serviceWorker' in navigator) {
 	// registra após carga completa para evitar conflitos com SSR/hidratation
 	if (document.readyState === 'complete') tryRegister();
 	else window.addEventListener('load', tryRegister);
+
+	// BLINDAGEM MOBILE: Forçar reload quando novo SW assume o controle
+	// Essencial para PWA mobile onde o cache antigo pode ficar "preso"
+	let refreshing = false;
+	navigator.serviceWorker.addEventListener('controllerchange', () => {
+		if (refreshing) return;
+		refreshing = true;
+		console.log('[SW] Novo controller detectado, recarregando...');
+		window.location.reload();
+	});
 	}
 }

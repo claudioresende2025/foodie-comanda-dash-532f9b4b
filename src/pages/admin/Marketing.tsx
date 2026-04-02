@@ -252,22 +252,36 @@ export default function Marketing() {
     }
   }, [fidelidadeConfig]);
 
-  // Criar cupom
+  // Criar cupom - OFFLINE-FIRST
   const criarCupom = useMutation({
     mutationFn: async () => {
       if (!empresaId || !cupomCodigo || !cupomValor) {
         throw new Error('Preencha todos os campos');
       }
 
-      const { error } = await supabase.from('cupons').insert({
+      const cupomId = crypto.randomUUID();
+      const novoCupom = {
+        id: cupomId,
         empresa_id: empresaId,
         codigo: cupomCodigo.toUpperCase(),
         tipo: cupomTipo,
         valor: parseFloat(cupomValor),
         ativo: true,
-      });
+        sincronizado: 0,
+        created_at: new Date().toISOString(),
+      };
 
-      if (error) throw error;
+      // 1. DEXIE PRIMEIRO
+      await db.cupons.put(novoCupom);
+
+      // 2. Supabase em background
+      if (navigator.onLine) {
+        try {
+          const { sincronizado, ...dados } = novoCupom;
+          const { error } = await supabase.from('cupons').insert(dados);
+          if (!error) await db.cupons.update(cupomId, { sincronizado: 1 });
+        } catch (e) { console.warn('[Offline-First] Cupom sera sincronizado:', e); }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cupons', empresaId] });
@@ -280,11 +294,17 @@ export default function Marketing() {
     },
   });
 
-  // Deletar cupom
+  // Deletar cupom - OFFLINE-FIRST
   const deletarCupom = useMutation({
     mutationFn: async (cupomId: string) => {
-      const { error } = await supabase.from('cupons').delete().eq('id', cupomId);
-      if (error) throw error;
+      // 1. Dexie primeiro
+      await db.cupons.delete(cupomId);
+      // 2. Supabase em background
+      if (navigator.onLine) {
+        try {
+          await supabase.from('cupons').delete().eq('id', cupomId);
+        } catch (e) { console.warn('[Offline-First] Delete cupom sera sincronizado:', e); }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cupons', empresaId] });
@@ -295,7 +315,7 @@ export default function Marketing() {
     },
   });
 
-  // Atualizar programa de fidelidade
+  // Atualizar programa de fidelidade - OFFLINE-FIRST
   const atualizarFidelidade = useMutation({
     mutationFn: async () => {
       if (!empresaId) throw new Error('Empresa não identificada');
@@ -308,17 +328,21 @@ export default function Marketing() {
         ativo: true,
       };
 
-      if (fidelidadeConfig) {
-        // Atualizar
-        const { error } = await supabase
-          .from('fidelidade_config')
-          .update(dadosFidelidade)
-          .eq('id', fidelidadeConfig.id);
-        if (error) throw error;
-      } else {
-        // Criar
-        const { error } = await supabase.from('fidelidade_config').insert(dadosFidelidade);
-        if (error) throw error;
+      // 1. DEXIE PRIMEIRO
+      const configId = fidelidadeConfig?.id || crypto.randomUUID();
+      await db.fidelidade_config.put({ id: configId, ...dadosFidelidade, sincronizado: 0 });
+
+      // 2. Supabase em background
+      if (navigator.onLine) {
+        try {
+          if (fidelidadeConfig) {
+            const { error } = await supabase.from('fidelidade_config').update(dadosFidelidade).eq('id', fidelidadeConfig.id);
+            if (!error) await db.fidelidade_config.update(configId, { sincronizado: 1 });
+          } else {
+            const { error } = await supabase.from('fidelidade_config').insert({ id: configId, ...dadosFidelidade });
+            if (!error) await db.fidelidade_config.update(configId, { sincronizado: 1 });
+          }
+        } catch (e) { console.warn('[Offline-First] Fidelidade sera sincronizada:', e); }
       }
     },
     onSuccess: () => {
@@ -343,30 +367,49 @@ export default function Marketing() {
         throw new Error('Preço do combo deve ser maior que zero');
       }
 
-      // 1. Criar o combo
-      const { data: combo, error } = await supabase.from('combos').insert({
+      // 1. DEXIE PRIMEIRO - Criar combo localmente
+      const comboId = crypto.randomUUID();
+      const novoCombo = {
+        id: comboId,
         empresa_id: empresaId,
         nome: comboNome,
         descricao: comboDescricao,
         preco_combo: precoCombo,
         ativo: true,
-      }).select('id').single();
+        _itens_produto_ids: produtosSelecionados, // guardado para sync posterior
+        sincronizado: 0,
+      };
+      await db.combos.put(novoCombo);
 
-      if (error) throw error;
+      // 2. SE ONLINE, sincronizar combo + itens
+      if (navigator.onLine) {
+        try {
+          const { data: combo, error } = await supabase.from('combos').insert({
+            id: comboId,
+            empresa_id: empresaId,
+            nome: comboNome,
+            descricao: comboDescricao,
+            preco_combo: precoCombo,
+            ativo: true,
+          }).select('id').single();
 
-      // 2. Inserir os itens do combo na tabela combo_itens
-      const itensCombo = produtosSelecionados.map(produtoId => ({
-        combo_id: combo.id,
-        produto_id: produtoId,
-        quantidade: 1,
-      }));
+          if (!error && combo) {
+            const itensCombo = produtosSelecionados.map(produtoId => ({
+              combo_id: combo.id,
+              produto_id: produtoId,
+              quantidade: 1,
+            }));
 
-      const { error: itensError } = await supabase.from('combo_itens').insert(itensCombo);
-      
-      if (itensError) {
-        // Se falhar ao inserir itens, deletar o combo criado para manter consistência
-        await supabase.from('combos').delete().eq('id', combo.id);
-        throw new Error('Erro ao salvar produtos do combo: ' + itensError.message);
+            const { error: itensError } = await supabase.from('combo_itens').insert(itensCombo);
+            if (itensError) {
+              await supabase.from('combos').delete().eq('id', combo.id);
+              throw new Error('Erro ao salvar produtos do combo: ' + itensError.message);
+            }
+            await db.combos.update(comboId, { sincronizado: 1 });
+          }
+        } catch (syncErr) {
+          console.warn('[Offline-First] Combo será sincronizado depois:', syncErr);
+        }
       }
     },
     onSuccess: () => {
@@ -390,36 +433,56 @@ export default function Marketing() {
         throw new Error('Preencha todos os campos obrigatórios');
       }
 
-      // Tenta inserir usando o campo esperado 'preco_promocional'.
-      // Se o banco estiver com schema diferente (coluna ausente), tenta fallback sem esse campo.
-      const payload: any = {
+      // 1. DEXIE PRIMEIRO
+      const promoId = crypto.randomUUID();
+      const novaPromocao = {
+        id: promoId,
         empresa_id: empresaId,
         nome: promocaoNome,
         descricao: promocaoDescricao || null,
         preco_promocional: parseFloat(promocaoPreco),
         data_inicio: promocaoDataInicio || null,
         data_fim: promocaoDataFim || null,
+        ativo: true,
+        sincronizado: 0,
       };
+      await db.promocoes.put(novaPromocao);
 
-      let res = await supabase.from('promocoes').insert(payload);
-      if (res.error) {
-        const msg = String(res.error.message || '').toLowerCase();
-        // Se erro indicar que a coluna não existe ou schema cache está desatualizado, tenta fallback.
-        if (msg.includes('preco_promocional') || msg.includes('schema cache')) {
-          // Retenta inserção sem o campo promocional, usando 'preco' como fallback quando possível
-          const fallback: any = {
+      // 2. SE ONLINE, sincronizar
+      if (navigator.onLine) {
+        try {
+          const payload: any = {
+            id: promoId,
             empresa_id: empresaId,
             nome: promocaoNome,
             descricao: promocaoDescricao || null,
+            preco_promocional: parseFloat(promocaoPreco),
             data_inicio: promocaoDataInicio || null,
             data_fim: promocaoDataFim || null,
           };
-          // tenta inserir como 'preco' também
-          fallback.preco = parseFloat(promocaoPreco);
-          const retry = await supabase.from('promocoes').insert(fallback);
-          if (retry.error) throw retry.error;
-        } else {
-          throw res.error;
+
+          let res = await supabase.from('promocoes').insert(payload);
+          if (res.error) {
+            const msg = String(res.error.message || '').toLowerCase();
+            if (msg.includes('preco_promocional') || msg.includes('schema cache')) {
+              const fallback: any = {
+                id: promoId,
+                empresa_id: empresaId,
+                nome: promocaoNome,
+                descricao: promocaoDescricao || null,
+                data_inicio: promocaoDataInicio || null,
+                data_fim: promocaoDataFim || null,
+                preco: parseFloat(promocaoPreco),
+              };
+              const retry = await supabase.from('promocoes').insert(fallback);
+              if (retry.error) throw retry.error;
+            } else {
+              throw res.error;
+            }
+          }
+          await db.promocoes.update(promoId, { sincronizado: 1 });
+        } catch (syncErr) {
+          console.warn('[Offline-First] Promoção será sincronizada depois:', syncErr);
         }
       }
     },

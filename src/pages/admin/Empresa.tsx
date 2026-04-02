@@ -258,26 +258,6 @@ export default function Empresa() {
     mutationFn: async () => {
       if (!profile?.empresa_id) throw new Error('Empresa não encontrada');
 
-      let logo_url = empresa?.logo_url;
-
-      // Upload logo if changed
-      if (logoFile) {
-        const fileExt = logoFile.name.split('.').pop();
-        const fileName = `${profile.empresa_id}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('logos')
-          .upload(fileName, logoFile, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('logos')
-          .getPublicUrl(fileName);
-        
-        logo_url = publicUrl;
-      }
-
       // Remove CNPJ mask before saving
       const cnpjClean = formData.cnpj.replace(/\D/g, '');
 
@@ -291,21 +271,59 @@ export default function Empresa() {
         chavePix = pixValidation.formatted;
       }
 
-      const { error } = await supabase
-        .from('empresas')
-        .update({
-          nome_fantasia: formData.nome_fantasia,
-          cnpj: cnpjClean || null,
-          endereco_completo: formData.endereco_completo || null,
-          inscricao_estadual: formData.inscricao_estadual || null,
-          chave_pix: chavePix,
-          logo_url,
-        })
-        .eq('id', profile.empresa_id);
+      const dadosParaSalvar = {
+        nome_fantasia: formData.nome_fantasia,
+        cnpj: cnpjClean || null,
+        endereco_completo: formData.endereco_completo || null,
+        inscricao_estadual: formData.inscricao_estadual || null,
+        chave_pix: chavePix,
+      };
 
-      if (error) {
-        console.error('Erro ao atualizar empresa:', error);
-        throw error;
+      // 1. DEXIE PRIMEIRO - Salvar localmente (nunca falha)
+      await db.empresa.put({
+        id: profile.empresa_id,
+        ...dadosParaSalvar,
+        logo_url: empresa?.logo_url,
+        sincronizado: 0,
+        atualizado_em: new Date().toISOString(),
+      }).catch((e) => console.warn('[Offline-First] Erro ao salvar empresa local:', e));
+
+      // 2. Se online, salvar no Supabase
+      if (navigator.onLine) {
+        let logo_url = empresa?.logo_url;
+
+        // Upload logo if changed
+        if (logoFile) {
+          const fileExt = logoFile.name.split('.').pop();
+          const fileName = `${profile.empresa_id}.${fileExt}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('logos')
+            .upload(fileName, logoFile, { upsert: true });
+
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('logos')
+            .getPublicUrl(fileName);
+          
+          logo_url = publicUrl;
+        }
+
+        const { error } = await supabase
+          .from('empresas')
+          .update({ ...dadosParaSalvar, logo_url })
+          .eq('id', profile.empresa_id);
+
+        if (error) {
+          console.error('Erro ao atualizar empresa no Supabase:', error);
+          throw error;
+        }
+
+        // Marcar como sincronizado
+        await db.empresa.update(profile.empresa_id, { logo_url, sincronizado: 1 }).catch(() => {});
+      } else if (logoFile) {
+        toast.info('Logo será enviado quando a internet voltar');
       }
     },
     onSuccess: () => {

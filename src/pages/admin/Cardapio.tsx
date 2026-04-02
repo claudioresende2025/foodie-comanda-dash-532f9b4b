@@ -601,20 +601,39 @@ export default function Cardapio() {
             }
           }
           
-          const { error } = await supabase.from('produtos').insert({
+          // DEXIE PRIMEIRO - salvar produto localmente
+          const localId = crypto.randomUUID();
+          const novoProduto = {
+            id: localId,
             empresa_id: empresaId,
             nome: produto.nome,
             descricao: produto.descricao || null,
             preco: produto.preco,
             imagem_url,
             ativo: true,
-          });
-          
-          if (error) {
-            console.error('Erro ao cadastrar produto:', produto.nome, error);
-            falhas++;
-          } else {
-            sucessos++;
+            sincronizado: 0,
+          };
+          await db.produtos.put(novoProduto);
+          sucessos++;
+
+          // SE ONLINE, sincronizar
+          if (navigator.onLine) {
+            try {
+              const { error } = await supabase.from('produtos').insert({
+                id: localId,
+                empresa_id: empresaId,
+                nome: produto.nome,
+                descricao: produto.descricao || null,
+                preco: produto.preco,
+                imagem_url,
+                ativo: true,
+              });
+              if (!error) {
+                await db.produtos.update(localId, { sincronizado: 1 });
+              }
+            } catch (syncErr) {
+              console.warn('[Offline-First] Produto será sincronizado depois:', syncErr);
+            }
           }
         } catch (err) {
           console.error('Erro ao cadastrar produto:', produto.nome, err);

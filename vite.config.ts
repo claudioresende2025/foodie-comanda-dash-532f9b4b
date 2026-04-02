@@ -2,6 +2,21 @@ import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
+import fs from "fs";
+
+// Plugin para gerar version.json em cada build (blindagem PWA mobile)
+function versionJsonPlugin(): PluginOption {
+  return {
+    name: 'version-json',
+    writeBundle() {
+      const versionData = JSON.stringify({
+        version: Date.now().toString(),
+        buildTime: new Date().toISOString(),
+      });
+      fs.writeFileSync(path.resolve(__dirname, 'dist/version.json'), versionData);
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
@@ -77,7 +92,7 @@ export default defineConfig(async ({ mode }) => {
       host: "::",
       port: 8080,
     },
-    plugins,
+    plugins: [...plugins, versionJsonPlugin()],
     define: {
       '__BUILD_TIMESTAMP__': JSON.stringify(Date.now().toString()),
     },

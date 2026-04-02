@@ -40,6 +40,25 @@ export const UpdateNotification = () => {
     if (!mountedRef.current) return;
     
     try {
+      // Check 1: version.json (gerado pelo Vite a cada build)
+      try {
+        const vRes = await fetch(`/version.json?_t=${Date.now()}`, { cache: 'no-store' });
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          const serverBuildVersion = vData.version;
+          const localBuildVersion = localStorage.getItem('app_version_json');
+          if (serverBuildVersion && localBuildVersion && serverBuildVersion !== localBuildVersion) {
+            console.log('[UpdateNotification] version.json divergiu:', localBuildVersion, '->', serverBuildVersion);
+            localStorage.setItem('app_version_json', serverBuildVersion);
+            scheduleNotification();
+            return;
+          } else if (serverBuildVersion && !localBuildVersion) {
+            localStorage.setItem('app_version_json', serverBuildVersion);
+          }
+        }
+      } catch (e) { /* version.json pode nao existir em dev */ }
+
+      // Check 2: hash de assets no index.html
       const response = await fetch(`/index.html?_nocache=${Date.now()}`, {
         cache: 'no-store',
         headers: { 

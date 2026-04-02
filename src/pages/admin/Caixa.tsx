@@ -1391,88 +1391,57 @@ export default function Caixa() {
 
 
 
-      // 1. Fecha a comanda
+      // 1. DEXIE PRIMEIRO - Fecha a comanda localmente
+      const agora = new Date().toISOString();
+      await db.comandas.update(comandaId, {
+        status: 'fechada',
+        forma_pagamento: formaPagamento === 'multiplo' ? 'dinheiro' : formaPagamento,
+        troco_para: trocoPara || null,
+        total,
+        data_fechamento: agora,
+        sincronizado: 0,
+        atualizado_em: agora,
+      }).catch(() => {});
 
-      const { error } = await supabase
-
-        .from('comandas')
-
-        .update({
-
-          status: 'fechada',
-
-          forma_pagamento: formaPagamento === 'multiplo' ? 'dinheiro' : formaPagamento,
-
-          troco_para: trocoPara || null,
-
-          total,
-
-          data_fechamento: new Date().toISOString(),
-
-        })
-
-        .eq('id', comandaId);
-
-      if (error) throw error;
-
-
-
-      // 2. Atualiza o status da mesa para disponível usando RPC (contorna RLS)
-
-      // NOTA: O trigger também tenta liberar, mas usamos RPC para garantir
-
+      // 2. DEXIE PRIMEIRO - Libera mesa localmente
       if (mesaId) {
+        await db.mesas.update(mesaId, { status: 'disponivel', mesa_juncao_id: null, sincronizado: 0, atualizado_em: agora }).catch(() => {});
+      }
 
-        console.log('[CAIXA] Tentando liberar mesa:', mesaId);
+      // 3. SE ONLINE, sincroniza com Supabase
+      if (navigator.onLine) {
+        const { error } = await supabase
+          .from('comandas')
+          .update({
+            status: 'fechada',
+            forma_pagamento: formaPagamento === 'multiplo' ? 'dinheiro' : formaPagamento,
+            troco_para: trocoPara || null,
+            total,
+            data_fechamento: agora,
+          })
+          .eq('id', comandaId);
+        if (!error) await db.comandas.update(comandaId, { sincronizado: 1 }).catch(() => {});
 
-        const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: mesaId });
-
-        if (mesaError) {
-
-          console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
-
-          // Fallback: tenta update direto (pode falhar por RLS)
-
-          const { error: fallbackError } = await supabase
-
-            .from('mesas')
-
-            .update({ status: 'disponivel', mesa_juncao_id: null })
-
-            .eq('id', mesaId);
-
-
-
-          if (fallbackError) {
-
-            console.error('[LIBERAR MESA] Fallback também falhou:', fallbackError.message);
-
-          } else {
-
-            console.log('[LIBERAR MESA] Fallback funcionou');
-
+        if (mesaId) {
+          console.log('[CAIXA] Tentando liberar mesa:', mesaId);
+          try {
+            await supabase.rpc('liberar_mesa', { p_mesa_id: mesaId });
+            console.log('[LIBERAR MESA] Mesa liberada com sucesso via RPC');
+          } catch {
+            try {
+              await supabase.from('mesas').update({ status: 'disponivel', mesa_juncao_id: null }).eq('id', mesaId);
+              console.log('[LIBERAR MESA] Fallback funcionou');
+            } catch (e) { console.warn('[LIBERAR MESA] Fallback também falhou:', e); }
           }
+          await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
 
-        } else {
-
-          console.log('[LIBERAR MESA] Mesa liberada com sucesso via RPC');
-
+          // Atender chamadas de fechamento pendentes para esta mesa
+          await supabase
+            .from('chamadas_garcom')
+            .update({ status: 'atendida', atendida_at: agora })
+            .eq('mesa_id', mesaId)
+            .eq('status', 'pendente');
         }
-
-
-
-        // Atender chamadas de fechamento pendentes para esta mesa
-
-        await supabase
-
-          .from('chamadas_garcom')
-
-          .update({ status: 'atendida', atendida_at: new Date().toISOString() })
-
-          .eq('mesa_id', mesaId)
-
-          .eq('status', 'pendente');
-
       }
 
 
@@ -1620,35 +1589,38 @@ export default function Caixa() {
   const cancelComandaMutation = useMutation({
 
     mutationFn: async ({ comandaId, mesaId }: { comandaId: string; mesaId?: string }) => {
+      const agora = new Date().toISOString();
 
-      // 1. Atualizar comanda para status 'cancelada'
+      // 1. DEXIE PRIMEIRO - Cancelar comanda localmente
+      await db.comandas.update(comandaId, {
+        status: 'cancelada',
+        data_fechamento: agora,
+        sincronizado: 0,
+        atualizado_em: agora,
+      }).catch(() => {});
 
-      const { error } = await supabase
-
-        .from('comandas')
-
-        .update({ status: 'cancelada', data_fechamento: new Date().toISOString() })
-
-        .eq('id', comandaId);
-
-      if (error) throw error;
-
-
-
-      // 2. Liberar mesa usando RPC (contorna RLS)
-
+      // 2. DEXIE PRIMEIRO - Liberar mesa localmente
       if (mesaId) {
-
-        const { error: mesaError } = await supabase.rpc('liberar_mesa', { p_mesa_id: mesaId });
-
-        if (mesaError) {
-
-          console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', mesaError.message);
-
-        }
-
+        await db.mesas.update(mesaId, { status: 'disponivel', sincronizado: 0, atualizado_em: agora }).catch(() => {});
       }
 
+      // 3. SE ONLINE, sincroniza
+      if (navigator.onLine) {
+        const { error } = await supabase
+          .from('comandas')
+          .update({ status: 'cancelada', data_fechamento: agora })
+          .eq('id', comandaId);
+        if (!error) await db.comandas.update(comandaId, { sincronizado: 1 }).catch(() => {});
+
+        if (mesaId) {
+          try {
+            await supabase.rpc('liberar_mesa', { p_mesa_id: mesaId });
+          } catch (e) {
+            console.warn('[LIBERAR MESA] Erro ao liberar mesa via RPC:', e);
+          }
+          await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
+        }
+      }
     },
 
     onSuccess: () => {
@@ -2348,12 +2320,14 @@ export default function Caixa() {
 
 
 
-            // Liberar mesa
-
+            // Liberar mesa - DEXIE PRIMEIRO
+            await db.mesas.update(selectedMesaLiquidacao.id, { status: 'disponivel', sincronizado: 0, atualizado_em: new Date().toISOString() }).catch(() => {});
             try {
               await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaLiquidacao.id });
             } catch {
-              await supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaLiquidacao.id);
+              try {
+                await supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaLiquidacao.id);
+              } catch (e) { console.warn('[Offline-First] Mesa sera liberada na sincronizacao:', e); }
             }
 
 
@@ -2528,31 +2502,30 @@ export default function Caixa() {
 
     try {
 
-      // Registrar na tabela vendas_concluidas
-
-      const { error } = await supabase.from('vendas_concluidas').insert({
-
+      // 1. DEXIE PRIMEIRO - Registrar venda avulsa localmente
+      const vendaId = crypto.randomUUID();
+      const novaVendaAvulsa = {
+        id: vendaId,
         empresa_id: profile?.empresa_id,
-
         valor_total: vendaAvulsaModalTotal,
-
         valor_subtotal: vendaAvulsaModalTotal,
-
         forma_pagamento: vendaAvulsaFormaPagamento,
-
         processado_por: profile?.id,
-
         tipo_processamento: 'venda_avulsa',
-
         observacoes: `Venda avulsa: ${vendaAvulsaItems.map(i => `${i.quantidade}x ${i.nome}`).join(', ')}`,
+        created_at: new Date().toISOString(),
+        sincronizado: 0,
+      };
+      await db.vendas_concluidas.put(novaVendaAvulsa).catch((e: any) => console.warn('[Offline-First] Erro ao salvar venda avulsa local:', e));
 
-      });
-
-
-
-      if (error) throw error;
-
-
+      // 2. Supabase em background
+      if (navigator.onLine) {
+        try {
+          const { sincronizado, ...dados } = novaVendaAvulsa;
+          const { error } = await supabase.from('vendas_concluidas').insert(dados);
+          if (!error) await db.vendas_concluidas.update(vendaId, { sincronizado: 1 }).catch(() => {});
+        } catch (e) { console.warn('[Offline-First] Venda avulsa sera sincronizada:', e); }
+      }
 
       toast.success('Venda avulsa registrada com sucesso!');
 

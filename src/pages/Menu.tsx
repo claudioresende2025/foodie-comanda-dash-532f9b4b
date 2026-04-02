@@ -241,114 +241,112 @@ export default function Menu() {
     return () => { supabase.removeChannel(channel); };
   }, [comandaId, empresaId, mesaId]);
 
-  // Marca a mesa como 'ocupada' ao carregar o cardápio via QR
+  // Marca a mesa como 'ocupada' ao carregar o cardápio via QR - OFFLINE-FIRST
   useEffect(() => {
     if (!mesaId) return;
     const markMesaOcupada = async () => {
       try {
-        const { data: mesa } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
-        if (mesa && mesa.status !== 'ocupada') {
-          await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+        // 1. Dexie primeiro
+        const mesaLocal = await db.mesas.where('id').equals(mesaId).first();
+        if (mesaLocal && mesaLocal.status !== 'ocupada') {
+          await db.mesas.update(mesaId, { status: 'ocupada', sincronizado: 0, atualizado_em: new Date().toISOString() });
+        }
+        // 2. Supabase em background (se online)
+        if (navigator.onLine) {
+          const { data: mesa } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
+          if (mesa && mesa.status !== 'ocupada') {
+            await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+            await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
+          }
         }
       } catch (e) {
-        // Ignora erros silenciosamente
+        // Ignora erros silenciosamente - dados já estão em Dexie
       }
     };
     markMesaOcupada();
   }, [mesaId]);
 
-  // Check for existing comanda - BUSCAR DO BANCO para sincronizar entre dispositivos
+  // Check for existing comanda - OFFLINE-FIRST: Dexie primeiro, Supabase em background
   useEffect(() => {
     const validateAndLoadComanda = async () => {
-      const { data: comandaMesa } = await supabase
-        .from("comandas")
-        .select("id, status, nome_cliente, telefone_cliente")
-        .eq("empresa_id", empresaId)
-        .eq("mesa_id", mesaId)
-        .eq("status", "aberta")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // 1. DEXIE PRIMEIRO - Buscar comanda local
+      try {
+        const comandasLocais = await db.comandas
+          .where('empresa_id').equals(empresaId!)
+          .filter((c: any) => c.mesa_id === mesaId && c.status === 'aberta')
+          .toArray();
+        const comandaLocal = comandasLocais
+          .sort((a: any, b: any) => new Date(b.created_at || b.criado_em || 0).getTime() - new Date(a.created_at || a.criado_em || 0).getTime())[0];
 
-      if (comandaMesa) {
-        setComandaId(comandaMesa.id);
-        localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaMesa.id);
-
-        if (comandaMesa.nome_cliente || comandaMesa.telefone_cliente) {
-          const clientKey = `client_info_${empresaId}_${mesaId}`;
-          const nameParts = (comandaMesa.nome_cliente || '').split(' ');
-          const clientInfo = {
-            firstName: nameParts[0] || '',
-            lastName: nameParts.slice(1).join(' ') || '',
-            phone: comandaMesa.telefone_cliente || ''
-          };
-          localStorage.setItem(clientKey, JSON.stringify(clientInfo));
+        if (comandaLocal) {
+          setComandaId(comandaLocal.id);
+          localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaLocal.id);
+          if (comandaLocal.nome_cliente) {
+            const clientKey = `client_info_${empresaId}_${mesaId}`;
+            const nameParts = (comandaLocal.nome_cliente || '').split(' ');
+            localStorage.setItem(clientKey, JSON.stringify({
+              firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') || '', phone: comandaLocal.telefone_cliente || ''
+            }));
+          }
+          fetchMeusPedidos(comandaLocal.id);
+          // Se online, atualiza do Supabase em background
+          if (navigator.onLine) {
+            Promise.resolve(supabase.from('comandas').select('id, status, nome_cliente, telefone_cliente')
+              .eq('id', comandaLocal.id).maybeSingle()).then(({ data }) => {
+                if (data && data.status !== 'aberta') {
+                  setComandaId(null); setMeusPedidos([]);
+                  localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+                }
+              }).catch(() => {});
+          }
+          return;
         }
-
-        fetchMeusPedidos(comandaMesa.id);
-        return;
+      } catch (e) {
+        console.warn('[Offline-First] Erro ao buscar comanda local:', e);
       }
 
+      // 2. localStorage fallback
       const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
       if (savedComandaId) {
-        const { data: comanda } = await supabase
-          .from("comandas")
-          .select("id, status, nome_cliente, telefone_cliente")
-          .eq("id", savedComandaId)
-          .maybeSingle();
-
-        if (comanda && comanda.status === "aberta") {
+        // Verificar no Dexie
+        const comandaDexie = await db.comandas.get(savedComandaId).catch(() => null);
+        if (comandaDexie && (comandaDexie as any).status === 'aberta') {
           setComandaId(savedComandaId);
-
-          if (comanda.nome_cliente || comanda.telefone_cliente) {
-            const clientKey = `client_info_${empresaId}_${mesaId}`;
-            const nameParts = (comanda.nome_cliente || '').split(' ');
-            const clientInfo = {
-              firstName: nameParts[0] || '',
-              lastName: nameParts.slice(1).join(' ') || '',
-              phone: comanda.telefone_cliente || ''
-            };
-            localStorage.setItem(clientKey, JSON.stringify(clientInfo));
-          }
-
           fetchMeusPedidos(savedComandaId);
           return;
-        } else {
-          localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
         }
       }
 
-      if (mesaId && empresaId) {
-        const { data: existingComanda } = await supabase
-          .from("comandas")
-          .select("id, nome_cliente, telefone_cliente")
-          .eq("mesa_id", mesaId)
-          .eq("empresa_id", empresaId)
-          .eq("status", "aberta")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // 3. SUPABASE em background (se online) - para sincronizar entre dispositivos
+      if (navigator.onLine) {
+        try {
+          const { data: comandaMesa } = await supabase
+            .from('comandas').select('id, status, nome_cliente, telefone_cliente')
+            .eq('empresa_id', empresaId).eq('mesa_id', mesaId).eq('status', 'aberta')
+            .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
-        if (existingComanda) {
-          localStorage.setItem(`comanda_${empresaId}_${mesaId}`, existingComanda.id);
-          setComandaId(existingComanda.id);
-
-          if (existingComanda.nome_cliente || existingComanda.telefone_cliente) {
-            const clientKey = `client_info_${empresaId}_${mesaId}`;
-            const nameParts = (existingComanda.nome_cliente || '').split(' ');
-            const clientInfo = {
-              firstName: nameParts[0] || '',
-              lastName: nameParts.slice(1).join(' ') || '',
-              phone: existingComanda.telefone_cliente || ''
-            };
-            localStorage.setItem(clientKey, JSON.stringify(clientInfo));
+          if (comandaMesa) {
+            setComandaId(comandaMesa.id);
+            localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaMesa.id);
+            // Salvar no Dexie
+            await db.comandas.put({ ...comandaMesa, empresa_id: empresaId, mesa_id: mesaId, sincronizado: 1 }).catch(() => {});
+            if (comandaMesa.nome_cliente) {
+              const clientKey = `client_info_${empresaId}_${mesaId}`;
+              const nameParts = (comandaMesa.nome_cliente || '').split(' ');
+              localStorage.setItem(clientKey, JSON.stringify({
+                firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') || '', phone: comandaMesa.telefone_cliente || ''
+              }));
+            }
+            fetchMeusPedidos(comandaMesa.id);
+            return;
           }
-
-          fetchMeusPedidos(existingComanda.id);
-          return;
+        } catch (e) {
+          console.warn('[Offline-First] Supabase inacessivel para comanda:', e);
         }
       }
 
+      // Nenhuma comanda encontrada
+      if (savedComandaId) localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
       setComandaId(null);
       setMeusPedidos([]);
     };
@@ -358,33 +356,50 @@ export default function Menu() {
     }
   }, [empresaId, mesaId]);
 
-  // Check for pending waiter call
+  // Check for pending waiter call - OFFLINE-FIRST
   useEffect(() => {
     if (!empresaId || !mesaId) return;
 
     const checkPendingCall = async () => {
-      const { data } = await supabase
-        .from("chamadas_garcom")
-        .select("id")
-        .eq("empresa_id", empresaId)
-        .eq("mesa_id", mesaId)
-        .eq("status", "pendente")
-        .maybeSingle();
+      // 1. Dexie primeiro
+      try {
+        const chamadaLocal = await db.chamadas_garcom
+          .where('empresa_id').equals(empresaId!)
+          .filter((c: any) => c.mesa_id === mesaId && c.status === 'pendente')
+          .first();
+        if (chamadaLocal) { setWaiterCallPending(true); return; }
+      } catch (e) { /* fallback para Supabase */ }
 
-      setWaiterCallPending(!!data);
+      // 2. Supabase se online
+      if (navigator.onLine) {
+        try {
+          const { data } = await supabase
+            .from('chamadas_garcom').select('id')
+            .eq('empresa_id', empresaId).eq('mesa_id', mesaId).eq('status', 'pendente')
+            .maybeSingle();
+          setWaiterCallPending(!!data);
+        } catch (e) { /* ignora */ }
+      }
     };
 
     const checkMesaStatus = async () => {
-      const { data: mesa } = await supabase
-        .from("mesas")
-        .select("status")
-        .eq("id", mesaId)
-        .maybeSingle();
+      // 1. Dexie primeiro
+      try {
+        const mesaLocal = await db.mesas.where('id').equals(mesaId!).first();
+        if (mesaLocal) {
+          if ((mesaLocal as any).status === 'solicitou_fechamento') setFechamentoSolicitado(true);
+          else if ((mesaLocal as any).status === 'disponivel') setFechamentoSolicitado(false);
+          return;
+        }
+      } catch (e) { /* fallback */ }
 
-      if (mesa?.status === "solicitou_fechamento") {
-        setFechamentoSolicitado(true);
-      } else if (mesa?.status === "disponivel") {
-        setFechamentoSolicitado(false);
+      // 2. Supabase se online
+      if (navigator.onLine) {
+        try {
+          const { data: mesa } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
+          if (mesa?.status === 'solicitou_fechamento') setFechamentoSolicitado(true);
+          else if (mesa?.status === 'disponivel') setFechamentoSolicitado(false);
+        } catch (e) { /* ignora */ }
       }
     };
 
@@ -728,37 +743,40 @@ export default function Menu() {
     setIsCallingWaiter(true);
 
     try {
-      console.log("[WAITER CALL] Attempting to call waiter:", { empresaId, mesaId, comandaId });
+      const chamadaId = crypto.randomUUID();
+      const novaChamada = {
+        id: chamadaId,
+        empresa_id: empresaId,
+        mesa_id: mesaId,
+        comanda_id: comandaId,
+        status: 'pendente',
+        created_at: new Date().toISOString(),
+        sincronizado: 0,
+      };
 
-      const { data, error } = await supabase
-        .from("chamadas_garcom")
-        .insert({
-          empresa_id: empresaId,
-          mesa_id: mesaId,
-          comanda_id: comandaId,
-          status: "pendente",
-        })
-        .select()
-        .single();
+      // 1. DEXIE PRIMEIRO - Salva localmente (nunca falha)
+      await db.chamadas_garcom.put(novaChamada);
+      setWaiterCallPending(true);
 
-      if (error) {
-        console.error("[WAITER CALL ERROR]", error);
-        if (error.code === "42501" || error.message?.includes("policy")) {
-          toast.error("Permissão negada. Contate o restaurante.");
-        } else if (error.code === "23503") {
-          toast.error("Mesa não encontrada.");
-        } else {
-          toast.error(`Erro ao chamar garçom: ${error.message || "Erro desconhecido"}`);
+      // 2. SUPABASE em background
+      if (navigator.onLine) {
+        try {
+          const { error } = await supabase
+            .from('chamadas_garcom')
+            .insert({ id: chamadaId, empresa_id: empresaId, mesa_id: mesaId, comanda_id: comandaId, status: 'pendente' })
+            .select().single();
+          if (!error) {
+            await db.chamadas_garcom.update(chamadaId, { sincronizado: 1 }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[Offline-First] Chamada salva localmente, sera sincronizada:', e);
         }
-        return;
       }
 
-      console.log("[WAITER CALL SUCCESS]", data);
-      setWaiterCallPending(true);
-      toast.success("Garçom chamado! Aguarde um momento.");
+      toast.success("Garcom chamado! Aguarde um momento.");
     } catch (err) {
-      console.error("[WAITER CALL EXCEPTION]", err);
-      toast.error("Erro ao chamar garçom. Tente novamente.");
+      console.error('[handleCallWaiter]', err);
+      toast.error("Erro ao chamar garcom. Tente novamente.");
     } finally {
       setIsCallingWaiter(false);
     }
@@ -773,21 +791,31 @@ export default function Menu() {
     setIsRequestingFechamento(true);
 
     try {
-      const { error } = await supabase.rpc("solicitar_fechamento_mesa", {
-        p_mesa_id: mesaId,
-      });
-
-      if (error) {
-        console.error("[FECHAR CONTA ERROR]", error);
-        toast.error(`Erro ao solicitar fechamento: ${error.message || "Erro desconhecido"}`);
-        return;
-      }
+      // 1. DEXIE PRIMEIRO - Marca mesa como solicitou_fechamento localmente
+      await db.mesas.update(mesaId, {
+        status: 'solicitou_fechamento',
+        sincronizado: 0,
+        atualizado_em: new Date().toISOString()
+      }).catch(() => {});
 
       setFechamentoSolicitado(true);
       setIsFecharContaDialogOpen(false);
-      toast.success("Fechamento de conta solicitado! O garçom virá até sua mesa.");
+
+      // 2. SUPABASE em background (RPC)
+      if (navigator.onLine) {
+        try {
+          const { error } = await supabase.rpc('solicitar_fechamento_mesa', { p_mesa_id: mesaId });
+          if (!error) {
+            await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[Offline-First] Fechamento salvo localmente, sera sincronizado:', e);
+        }
+      }
+
+      toast.success("Fechamento de conta solicitado! O garcom vira ate sua mesa.");
     } catch (err) {
-      console.error("[FECHAR CONTA EXCEPTION]", err);
+      console.error('[handleSolicitarFechamento]', err);
       toast.error("Erro ao solicitar fechamento. Tente novamente.");
     } finally {
       setIsRequestingFechamento(false);
