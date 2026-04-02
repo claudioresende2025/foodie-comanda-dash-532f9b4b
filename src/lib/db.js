@@ -11,7 +11,7 @@ export const db = new Dexie('FoodComandaPro_DB');
 // sync_error_at: string | null - Timestamp do erro
 // atualizado_em: string - Timestamp para Last Write Wins
 // logs_sincronizacao: Últimas 50 operações de sync para diagnóstico
-db.version(10).stores({
+db.version(11).stores({
     // Tabelas do salão (com campos de conflito)
     pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em, impresso_local, sync_status, atualizado_em',
     comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em, sync_status, atualizado_em',
