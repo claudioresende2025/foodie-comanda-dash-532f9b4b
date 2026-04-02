@@ -1,10 +1,97 @@
 import Dexie from 'dexie';
 import { supabase } from '@/integrations/supabase/client';
 
-// 1. CONFIGURAÇÃO DO BANCO LOCAL (INDEXEDDB)
+// ============================================
+// CONFIGURAÇÃO DO BANCO LOCAL (INDEXEDDB)
+// ============================================
 export const db = new Dexie('FoodComandaPro_DB');
 
-// Versão 10: Adicionada tabela logs_sincronizacao para auditoria
+// ============================================
+// TRATADORES DE ERROS E ESTABILIZAÇÃO
+// ============================================
+
+// Flag para evitar múltiplas tentativas de reopen simultâneas
+let isReopening = false;
+let reopenPromise = null;
+
+/**
+ * Auto-reopen: Se o banco fechar inesperadamente, reabre automaticamente
+ */
+async function ensureDbOpen() {
+  if (db.isOpen()) return true;
+  
+  if (isReopening) {
+    // Aguardar reopen em andamento
+    if (reopenPromise) await reopenPromise;
+    return db.isOpen();
+  }
+  
+  isReopening = true;
+  console.log('[Dexie] 🔄 Reabrindo banco de dados...');
+  
+  try {
+    reopenPromise = db.open();
+    await reopenPromise;
+    console.log('[Dexie] ✅ Banco reaberto com sucesso');
+    return true;
+  } catch (err) {
+    console.error('[Dexie] ❌ Erro ao reabrir banco:', err);
+    return false;
+  } finally {
+    isReopening = false;
+    reopenPromise = null;
+  }
+}
+
+/**
+ * Wrapper para operações Dexie com auto-reopen em caso de Database Closed
+ */
+export async function safeDbOperation(operation) {
+  try {
+    return await operation();
+  } catch (err) {
+    const errMsg = (err?.message || '').toLowerCase();
+    
+    // InvalidStateError ou Database Closed → tentar reabrir
+    if (errMsg.includes('invalidstateerror') || 
+        errMsg.includes('database') && errMsg.includes('closed') ||
+        errMsg.includes('database is closing')) {
+      console.warn('[Dexie] ⚠️ Banco fechado, tentando reabrir...');
+      
+      const reopened = await ensureDbOpen();
+      if (reopened) {
+        // Retry da operação
+        return await operation();
+      }
+    }
+    
+    throw err;
+  }
+}
+
+// Handler para versionchange - evita fechamento quando múltiplas abas abertas
+db.on('versionchange', (event) => {
+  console.log('[Dexie] ⚡ Detectada mudança de versão em outra aba');
+  // NÃO fechar o banco - permite que outras abas continuem funcionando
+  // Apenas notificar o usuário se necessário
+  if (typeof window !== 'undefined' && window.dispatchEvent) {
+    window.dispatchEvent(new CustomEvent('dexie-versionchange', { detail: event }));
+  }
+  // Retornar false para NÃO fechar o banco
+  return false;
+});
+
+// Handler para blocked - banco está bloqueado por outra aba
+db.on('blocked', () => {
+  console.warn('[Dexie] ⏳ Banco bloqueado por outra aba');
+});
+
+// Handler para ready - banco pronto
+db.on('ready', () => {
+  console.log('[Dexie] ✅ Banco de dados pronto');
+});
+
+// Versão 12: Adicionada tabela logs_sincronizacao para auditoria
 // sync_status: 'pending' | 'synced' | 'error' - Estado da sincronização
 // sync_error: string | null - Mensagem de erro se houver falha
 // sync_error_code: string | null - Código do erro (ex: 23503 para FK violation)

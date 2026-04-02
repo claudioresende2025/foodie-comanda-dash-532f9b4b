@@ -14,6 +14,7 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { SubscriptionGuard } from "@/components/subscription/SubscriptionGuard";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
@@ -141,6 +142,7 @@ const App = () => {
         <Toaster />
         <Sonner />
         <UpdateNotification />
+        <PWAInstallPrompt variant="floating" autoShowDelay={45000} />
         <BrowserRouter>
           <AuthProvider>
             <SubscriptionHandler />
