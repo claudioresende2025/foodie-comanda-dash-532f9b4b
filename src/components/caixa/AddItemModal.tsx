@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/db';
 import { toast } from 'sonner';
 
 interface Produto {
@@ -61,33 +62,44 @@ export function AddItemModal({
     async function fetchData() {
       setIsLoading(true);
       try {
-        // Buscar categorias
-        const { data: cats } = await supabase
-          .from('categorias')
-          .select('id, nome')
-          .eq('empresa_id', empresaId)
-          .eq('ativo', true)
-          .order('ordem');
+        let cats: Categoria[] = [];
+        let prods: Produto[] = [];
 
-        setCategorias(cats || []);
-
-        // Buscar produtos
-        const { data: prods, error } = await supabase
-          .from('produtos')
-          .select('id, nome, preco, imagem_url, categoria_id')
-          .eq('empresa_id', empresaId)
-          .eq('ativo', true)
-          .order('nome');
-
-        if (error) throw error;
-
-        if (prods && cats) {
-          const prodsWithCategory = prods.map(p => ({
-            ...p,
+        // 1. Buscar do Dexie primeiro (offline-first)
+        try {
+          const localCats = await db.categorias.where('empresa_id').equals(empresaId).toArray();
+          cats = localCats.filter((c: any) => c.ativo !== false).sort((a: any, b: any) => (a.ordem || 0) - (b.ordem || 0)).map((c: any) => ({ id: c.id, nome: c.nome }));
+          
+          const localProds = await db.produtos.where('empresa_id').equals(empresaId).toArray();
+          prods = localProds.filter((p: any) => p.ativo !== false).sort((a: any, b: any) => (a.nome || '').localeCompare(b.nome || '')).map((p: any) => ({
+            id: p.id, nome: p.nome, preco: p.preco, imagem_url: p.imagem_url, categoria_id: p.categoria_id,
             categoria_nome: cats.find(c => c.id === p.categoria_id)?.nome || 'Outros',
           }));
-          setProdutos(prodsWithCategory);
+        } catch (dexieErr) {
+          console.warn('[AddItemModal] Dexie falhou:', dexieErr);
         }
+
+        // 2. Se online, atualizar do Supabase
+        if (navigator.onLine) {
+          try {
+            const [catRes, prodRes] = await Promise.all([
+              supabase.from('categorias').select('id, nome').eq('empresa_id', empresaId).eq('ativo', true).order('ordem'),
+              supabase.from('produtos').select('id, nome, preco, imagem_url, categoria_id').eq('empresa_id', empresaId).eq('ativo', true).order('nome'),
+            ]);
+            if (catRes.data) cats = catRes.data;
+            if (prodRes.data) {
+              prods = prodRes.data.map(p => ({
+                ...p,
+                categoria_nome: cats.find(c => c.id === p.categoria_id)?.nome || 'Outros',
+              }));
+            }
+          } catch (err) {
+            console.warn('[AddItemModal] Supabase inacessível, usando Dexie:', err);
+          }
+        }
+
+        setCategorias(cats);
+        setProdutos(prods);
       } catch (err) {
         console.error('[AddItemModal] Erro:', err);
         toast.error('Erro ao carregar produtos');

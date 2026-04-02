@@ -25,6 +25,9 @@ interface UserPermissions {
   canAccessAdmin: boolean;
 }
 
+// Email do Super Admin — opera 100% online, sem Dexie/offline
+const SUPER_ADMIN_EMAIL = 'claudinhoresendemoura@gmail.com';
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -32,6 +35,7 @@ interface AuthContextType {
   loading: boolean;
   permissions: UserPermissions | null;
   isOfflineSession: boolean;
+  isSuperAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, nome: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -60,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [permissions, setPermissions] = useState<UserPermissions | null>(null);
   const [isOfflineSession, setIsOfflineSession] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   
   // Variável para armazenar a senha temporariamente durante o login
   const [pendingPassword, setPendingPassword] = useState<string | null>(null);
@@ -77,6 +82,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (!error && data) {
         setProfile(data);
+        
+        // Detectar Super Admin pelo email
+        const isSA = data.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+        setIsSuperAdmin(isSA);
+        
+        // Super Admin opera 100% online — NUNCA baixar Dexie/offline
+        if (isSA) {
+          console.log('[AuthContext] 🛡️ Super Admin detectado — modo 100% online');
+          setPermissions(defaultPermissions);
+          return;
+        }
         
         // CONFIGURAR EMPRESA_ID NO CONNECTION MANAGER (Offline-First)
         if (data.empresa_id) {
@@ -365,6 +381,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading, 
       permissions, 
       isOfflineSession,
+      isSuperAdmin,
       signIn, 
       signUp, 
       signOut, 

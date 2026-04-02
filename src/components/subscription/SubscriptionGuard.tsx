@@ -153,13 +153,38 @@ function BlockedAccessContent({
 // Hook para verificar status da assinatura
 export function useSubscription() {
   const { user, profile } = useAuth();
-  const [status, setStatus] = useState<SubscriptionStatus>({ blocked: false, status: 'loading' });
+  const [status, setStatusRaw] = useState<SubscriptionStatus>({ blocked: false, status: 'loading' });
   const [isLoading, setIsLoading] = useState(true);
+
+  // Wrapper que persiste status no localStorage para uso offline
+  const setStatus = useCallback((s: SubscriptionStatus) => {
+    setStatusRaw(s);
+    if (s.status !== 'loading' && s.status !== 'no_user') {
+      try { localStorage.setItem('fcd-subscription-status', JSON.stringify(s)); } catch {}
+    }
+  }, []);
 
   const fetchSubscriptionStatus = useCallback(async () => {
     // Se não tem usuário, não bloqueia (deixa AuthContext lidar)
     if (!user) {
       setStatus({ blocked: false, status: 'no_user' });
+      setIsLoading(false);
+      return;
+    }
+
+    // Se OFFLINE, usar cache local e liberar imediatamente (fail-open)
+    if (!navigator.onLine) {
+      try {
+        const cached = localStorage.getItem('fcd-subscription-status');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setStatus(parsed);
+        } else {
+          setStatus({ blocked: false, status: 'offline' });
+        }
+      } catch {
+        setStatus({ blocked: false, status: 'offline' });
+      }
       setIsLoading(false);
       return;
     }

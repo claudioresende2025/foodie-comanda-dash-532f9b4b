@@ -123,18 +123,29 @@ export function AdminLayout() {
         return;
       }
       
-      // Verificar se tem algum role (staff de alguma empresa)
-      const { data: userRoles } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id);
+      // Se offline, não bloquear — assume que não é cliente delivery
+      if (!navigator.onLine) {
+        setIsDeliveryCustomer(false);
+        return;
+      }
       
-      // Se não tem empresa_id E não tem nenhum role, é cliente de delivery
-      if (!userRoles || userRoles.length === 0) {
-        setIsDeliveryCustomer(true);
-        toast.info('Redirecionando para área de clientes...');
-        navigate('/delivery');
-      } else {
+      // Verificar se tem algum role (staff de alguma empresa)
+      try {
+        const { data: userRoles } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id);
+        
+        // Se não tem empresa_id E não tem nenhum role, é cliente de delivery
+        if (!userRoles || userRoles.length === 0) {
+          setIsDeliveryCustomer(true);
+          toast.info('Redirecionando para área de clientes...');
+          navigate('/delivery');
+        } else {
+          setIsDeliveryCustomer(false);
+        }
+      } catch {
+        // Falhou (pode estar offline transitório) — libera acesso
         setIsDeliveryCustomer(false);
       }
     };

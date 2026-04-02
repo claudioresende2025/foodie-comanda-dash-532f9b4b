@@ -63,6 +63,7 @@ import {
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Empresa {
   id: string;
@@ -112,6 +113,7 @@ interface DashboardStats {
 
 export default function SuperAdmin() {
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -210,21 +212,21 @@ export default function SuperAdmin() {
   }, [selectedEmpresa]);
 
   useEffect(() => {
-    checkSuperAdmin();
-  }, []);
+    // Aguardar AuthContext resolver antes de verificar super admin
+    if (authLoading) return;
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+    checkSuperAdmin(user.id);
+  }, [authLoading, user]);
 
-  const checkSuperAdmin = async () => {
+  const checkSuperAdmin = async (userId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        navigate('/auth');
-        return;
-      }
-
       const { data: superAdmin } = await (supabase as any)
         .from('super_admins')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('ativo', true)
         .single();
 

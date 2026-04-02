@@ -213,16 +213,17 @@ export default function Dashboard() {
       try {
         const locais = await db.comandas.where('empresa_id').equals(empresaId).toArray();
         const filtrados = locais.filter((c: any) => {
-          if (!c.created_at) return false;
-          const createdAt = new Date(c.created_at).toISOString();
+          const ts = c.created_at || c.criado_em;
+          if (!ts) return false;
+          const createdAt = new Date(ts).toISOString();
           return createdAt >= startOfToday && createdAt <= endOfToday;
         });
         dadosLocais = filtrados.map((c: any) => ({
-          id: c.id, total: c.total || 0, status: c.status, created_at: c.created_at,
+          id: c.id, total: c.total || 0, status: c.status, created_at: c.created_at || c.criado_em,
         }));
         // Separar pendentes (nao sincronizados) para merge
         pendentesLocais = filtrados.filter((c: any) => c.sincronizado === 0 || c.sincronizado === false)
-          .map((c: any) => ({ id: c.id, total: c.total || 0, status: c.status, created_at: c.created_at }));
+          .map((c: any) => ({ id: c.id, total: c.total || 0, status: c.status, created_at: c.created_at || c.criado_em }));
       } catch (err) {
         console.warn('[Hibrido] Erro ao ler comandas do IndexedDB:', err);
       }
@@ -271,13 +272,14 @@ export default function Dashboard() {
       try {
         const locais = await db.vendas_concluidas.where('empresa_id').equals(empresaId).toArray();
         const filtrados = locais.filter((v: any) => {
-          if (!v.created_at) return false;
-          const createdAt = new Date(v.created_at).toISOString();
+          const ts = v.created_at || v.criado_em;
+          if (!ts) return false;
+          const createdAt = new Date(ts).toISOString();
           return !v.comanda_id && createdAt >= startOfToday && createdAt <= endOfToday;
         });
-        dadosLocais = filtrados.map((v: any) => ({ id: v.id, valor_total: v.valor_total || 0, created_at: v.created_at }));
+        dadosLocais = filtrados.map((v: any) => ({ id: v.id, valor_total: v.valor_total || 0, created_at: v.created_at || v.criado_em }));
         pendentesLocais = filtrados.filter((v: any) => v.sincronizado === 0 || v.sincronizado === false)
-          .map((v: any) => ({ id: v.id, valor_total: v.valor_total || 0, created_at: v.created_at }));
+          .map((v: any) => ({ id: v.id, valor_total: v.valor_total || 0, created_at: v.created_at || v.criado_em }));
       } catch (err) {
         console.warn('[Hibrido] Erro ao ler vendas_concluidas do IndexedDB:', err);
       }

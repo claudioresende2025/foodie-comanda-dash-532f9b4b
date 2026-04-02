@@ -136,17 +136,18 @@ export function AdminSidebar() {
 
   const handleLogout = async () => {
     try {
-      await signOut();
-      
-      // Limpar storage local do Supabase
+      // Limpar storage local ANTES de qualquer chamada de rede
       localStorage.removeItem('sb-zlwpxflqtyhdwanmupgy-auth-token');
       sessionStorage.clear();
       
+      await signOut();
+      
       toast.success('Logout realizado com sucesso!');
-      window.location.href = '/auth';
     } catch (err) {
       console.error('Exceção no logout:', err);
-      toast.error('Erro ao sair. Tente novamente.');
+      // Mesmo com erro, forçar navegação para auth
+    } finally {
+      navigate('/auth');
     }
   };
 
