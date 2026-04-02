@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -118,17 +118,20 @@ export default function SuperAdmin() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // 🛡️ REF para evitar chamadas múltiplas (previne loop de render)
+  const hasInitializedRef = useRef(false);
+  const isLoadingDataRef = useRef(false);
 
-  // 🛡️ DIAGNÓSTICO: Log inicial
+  // 🛡️ DIAGNÓSTICO: Log inicial (executar apenas uma vez)
   useEffect(() => {
     console.log('[SuperAdmin] 📍 Página carregada');
     console.log('[SuperAdmin] 🔐 User email:', user?.email);
-    console.log('[SuperAdmin] 🔐 AuthContext isSuperAdmin:', contextIsSuperAdmin);
     console.log('[SuperAdmin] 🔐 SessionStorage isSuperAdmin:', sessionStorage.getItem('isSuperAdmin'));
     
     // Marcar no sessionStorage que estamos na área Super Admin
     sessionStorage.setItem('isSuperAdmin', 'true');
-  }, [user, contextIsSuperAdmin]);
+  }, []); // Array vazio - executa apenas no mount
   
   // Dashboard stats
   const [stats, setStats] = useState<DashboardStats>({
@@ -223,6 +226,9 @@ export default function SuperAdmin() {
   }, [selectedEmpresa]);
 
   useEffect(() => {
+    // Evitar execução múltipla
+    if (hasInitializedRef.current) return;
+    
     // Aguardar AuthContext resolver antes de verificar super admin
     if (authLoading) return;
     
@@ -232,6 +238,9 @@ export default function SuperAdmin() {
       return;
     }
 
+    // Marcar como inicializado para evitar loop
+    hasInitializedRef.current = true;
+    
     console.log('[SuperAdmin] 🔍 Verificando acesso para:', user.email);
 
     // ============================================
@@ -241,14 +250,32 @@ export default function SuperAdmin() {
     if (userEmail === 'claudinhoresendemoura@gmail.com') {
       console.log('[SuperAdmin] ✅ Email Super Admin confirmado — bypass tabela');
       setIsSuperAdmin(true);
-      loadData();
       setIsLoading(false);
+      // Carregar dados em seguida (sem bloquear UI)
+      loadDataOnce();
       return;
     }
 
     // Fallback: Verificar tabela super_admins
     checkSuperAdmin(user.id);
-  }, [authLoading, user]);
+  }, [authLoading, user?.id]); // Usar user?.id em vez de user para evitar re-renders
+
+  // Função para carregar dados apenas uma vez
+  const loadDataOnce = async () => {
+    if (isLoadingDataRef.current) return;
+    isLoadingDataRef.current = true;
+    
+    try {
+      await Promise.all([
+        loadStats(),
+        loadEmpresas(),
+        loadConfigs(),
+        loadReembolsos(),
+      ]);
+    } catch (err) {
+      console.error('[SuperAdmin] Erro ao carregar dados:', err);
+    }
+  };
 
   const checkSuperAdmin = async (userId: string) => {
     try {
@@ -261,24 +288,25 @@ export default function SuperAdmin() {
 
       if (!superAdmin) {
         toast.error('Acesso negado. Você não é um super administrador.');
-        // Não navegamos automaticamente — exibiremos mensagem para o usuário
         setIsSuperAdmin(false);
         setIsLoading(false);
         return;
       }
 
       setIsSuperAdmin(true);
-      await loadData();
+      setIsLoading(false);
+      // Carregar dados após confirmação
+      loadDataOnce();
     } catch (err) {
       console.error('Erro ao verificar super admin:', err);
       toast.error('Erro ao verificar permissões');
       setIsSuperAdmin(false);
-    } finally {
       setIsLoading(false);
     }
   };
 
   const loadData = async () => {
+    if (isLoadingDataRef.current) return; // Evitar chamadas duplicadas
     setIsRefreshing(true);
     try {
       await Promise.all([

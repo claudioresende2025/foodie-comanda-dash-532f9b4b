@@ -216,20 +216,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         // ============================================
-        // CURTO-CIRCUITO: Se Super Admin, redirecionar IMEDIATAMENTE
+        // CURTO-CIRCUITO: Se Super Admin, configurar estado sem redirect loop
         // ============================================
         const userEmail = session?.user?.email?.toLowerCase();
         console.log('[AuthContext] 🔍 Perfil Detectado:', userEmail);
         
-        if (userEmail === SUPER_ADMIN_EMAIL && event === 'SIGNED_IN') {
-          console.log('[AuthContext] 🛡️ SUPER ADMIN via onAuthStateChange — Redirecionando...');
+        if (userEmail === SUPER_ADMIN_EMAIL) {
+          console.log('[AuthContext] 🛡️ SUPER ADMIN detectado via onAuthStateChange');
           sessionStorage.setItem('isSuperAdmin', 'true');
           setIsSuperAdmin(true);
           setUser(session?.user ?? null);
           setSession(session);
+          setProfile({ id: session!.user.id, nome: 'Super Admin', email: userEmail, empresa_id: null, avatar_url: null });
+          setPermissions(defaultPermissions);
           setLoading(false);
-          // Redirecionar sem carregar Dexie
-          window.location.href = '/super-admin';
+          
+          // Redirecionar APENAS se for SIGNED_IN e NÃO estiver já em /super-admin
+          if (event === 'SIGNED_IN' && !window.location.pathname.startsWith('/super-admin')) {
+            console.log('[AuthContext] 🚀 Redirecionando Super Admin para /super-admin');
+            window.location.href = '/super-admin';
+          }
           return;
         }
         
@@ -281,6 +287,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(sessionTimeout);
+      
+      // ============================================
+      // CURTO-CIRCUITO SUPER ADMIN no getSession
+      // ============================================
+      const userEmail = session?.user?.email?.toLowerCase();
+      if (userEmail === SUPER_ADMIN_EMAIL) {
+        console.log('[AuthContext] 🛡️ Super Admin detectado via getSession — configurando estado');
+        sessionStorage.setItem('isSuperAdmin', 'true');
+        setIsSuperAdmin(true);
+        setSession(session);
+        setUser(session?.user ?? null);
+        setProfile({ id: session!.user.id, nome: 'Super Admin', email: userEmail, empresa_id: null, avatar_url: null });
+        setPermissions(defaultPermissions);
+        setLoading(false);
+        return;
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
       
