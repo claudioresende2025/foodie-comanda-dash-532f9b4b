@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -336,7 +336,7 @@ export default function Auth() {
   // Tela de confirmaÃ§Ã£o de email apÃ³s cadastro
   if (showEmailConfirmation) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden" style={{ height: '100vh', maxHeight: '100vh' }}>
         <div className="w-full max-w-md animate-fade-in">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4">
@@ -393,7 +393,7 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden" style={{ height: '100vh', maxHeight: '100vh' }}>
       <div className="w-full max-w-md animate-fade-in">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -449,7 +449,7 @@ export default function Auth() {
                       <Input
                         id="login-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="******"
+                        placeholder="........"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
@@ -608,7 +608,7 @@ export default function Auth() {
             className="text-sm text-muted-foreground hover:text-primary transition-colors"
             onClick={() => navigate('/auth/cliente')}
           >
-            Ã‰ cliente? <span className="underline">FaÃ§a seus pedidos aqui</span>
+            E cliente? <span className="underline">Faca seus pedidos aqui</span>
           </button>
         </div>
       </div>
