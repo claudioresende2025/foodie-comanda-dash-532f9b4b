@@ -41,6 +41,31 @@ clientsClaim();
 console.log(`[SW] Food Comanda Pro v${SW_VERSION} inicializando...`);
 
 // ============================================
+// BYPASS SUPER ADMIN: Requisições de Super Admin vão direto à rede
+// ============================================
+// O Super Admin opera 100% online — não cachear NENHUMA requisição de API
+registerRoute(
+  ({ request, url }) => {
+    // Verifica se é Super Admin via header customizado ou URL param
+    const isSuperAdminRequest = 
+      request.headers.get('X-Super-Admin') === 'true' ||
+      url.searchParams.get('_superadmin') === 'true';
+    
+    // Sempre ir direto à rede para Super Admin
+    if (isSuperAdminRequest && (
+      url.hostname.includes('supabase.co') ||
+      url.pathname.includes('/rest/v1/') ||
+      url.pathname.includes('/auth/v1/')
+    )) {
+      console.log('[SW] 🛡️ Super Admin bypass: NetworkOnly para', url.pathname);
+      return true;
+    }
+    return false;
+  },
+  new NetworkOnly()
+);
+
+// ============================================
 // LIMPEZA AGRESSIVA DE CACHES ANTIGOS
 // ============================================
 // Remove caches de versões anteriores que não conhecem o Dexie

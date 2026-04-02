@@ -113,11 +113,22 @@ interface DashboardStats {
 
 export default function SuperAdmin() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isSuperAdmin: contextIsSuperAdmin } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // 🛡️ DIAGNÓSTICO: Log inicial
+  useEffect(() => {
+    console.log('[SuperAdmin] 📍 Página carregada');
+    console.log('[SuperAdmin] 🔐 User email:', user?.email);
+    console.log('[SuperAdmin] 🔐 AuthContext isSuperAdmin:', contextIsSuperAdmin);
+    console.log('[SuperAdmin] 🔐 SessionStorage isSuperAdmin:', sessionStorage.getItem('isSuperAdmin'));
+    
+    // Marcar no sessionStorage que estamos na área Super Admin
+    sessionStorage.setItem('isSuperAdmin', 'true');
+  }, [user, contextIsSuperAdmin]);
   
   // Dashboard stats
   const [stats, setStats] = useState<DashboardStats>({
@@ -214,10 +225,28 @@ export default function SuperAdmin() {
   useEffect(() => {
     // Aguardar AuthContext resolver antes de verificar super admin
     if (authLoading) return;
+    
     if (!user) {
+      console.log('[SuperAdmin] ❌ Sem usuário — redirecionando para /auth');
       navigate('/auth');
       return;
     }
+
+    console.log('[SuperAdmin] 🔍 Verificando acesso para:', user.email);
+
+    // ============================================
+    // CURTO-CIRCUITO: Email conhecido = Super Admin confirmado
+    // ============================================
+    const userEmail = user.email?.toLowerCase();
+    if (userEmail === 'claudinhoresendemoura@gmail.com') {
+      console.log('[SuperAdmin] ✅ Email Super Admin confirmado — bypass tabela');
+      setIsSuperAdmin(true);
+      loadData();
+      setIsLoading(false);
+      return;
+    }
+
+    // Fallback: Verificar tabela super_admins
     checkSuperAdmin(user.id);
   }, [authLoading, user]);
 

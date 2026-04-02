@@ -108,8 +108,22 @@ const PWAManifestHandler = () => {
 // --- ALTERAÇÃO AQUI: Transformamos o App para suportar o useEffect ---
 const App = () => {
 
+  // Log de diagnóstico inicial
+  useEffect(() => {
+    console.log('[App] 🚀 Food Comanda Pro iniciando...');
+    console.log('[App] 📍 Rota atual:', window.location.pathname);
+    console.log('[App] 🔐 isSuperAdmin (session):', sessionStorage.getItem('isSuperAdmin'));
+    console.log('[App] 🌐 Online:', navigator.onLine);
+  }, []);
+
   // Inicializar o ConnectionManager (Sistema de Detecção Automática)
   useEffect(() => {
+    // Se é Super Admin, NÃO inicializar ConnectionManager (não precisa de offline)
+    if (sessionStorage.getItem('isSuperAdmin') === 'true') {
+      console.log('[App] 🛡️ Super Admin - pulando inicialização de ConnectionManager');
+      return;
+    }
+    
     console.log("🚀 Inicializando sistema de conexão automática...");
     connectionManager.init();
 

@@ -201,14 +201,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    // Log de diagnóstico inicial
+    console.log('[AuthContext] 🚀 Inicializando AuthProvider...');
+    
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('[AuthContext] 📡 onAuthStateChange:', event, session?.user?.email);
+        
         if (event === 'PASSWORD_RECOVERY') {
           sessionStorage.setItem('password_recovery', 'true');
           window.location.replace('/reset-password');
           return;
         }
+        
+        // ============================================
+        // CURTO-CIRCUITO: Se Super Admin, redirecionar IMEDIATAMENTE
+        // ============================================
+        const userEmail = session?.user?.email?.toLowerCase();
+        console.log('[AuthContext] 🔍 Perfil Detectado:', userEmail);
+        
+        if (userEmail === SUPER_ADMIN_EMAIL && event === 'SIGNED_IN') {
+          console.log('[AuthContext] 🛡️ SUPER ADMIN via onAuthStateChange — Redirecionando...');
+          sessionStorage.setItem('isSuperAdmin', 'true');
+          setIsSuperAdmin(true);
+          setUser(session?.user ?? null);
+          setSession(session);
+          setLoading(false);
+          // Redirecionar sem carregar Dexie
+          window.location.href = '/super-admin';
+          return;
+        }
+        
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -283,11 +307,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    console.log('[AuthContext] 🔐 signIn chamado para:', email);
+    
     // Armazenar senha temporariamente para criar hash no cache
     setPendingPassword(password);
     setIsOfflineSession(false);
     
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -295,6 +321,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Se houver erro, limpar a senha pendente
     if (error) {
       setPendingPassword(null);
+      return { error: error as Error | null };
+    }
+    
+    // ============================================
+    // CURTO-CIRCUITO SUPER ADMIN — ANTES DE TUDO
+    // Redireciona IMEDIATAMENTE sem carregar Dexie/offline
+    // ============================================
+    const userEmail = data?.user?.email?.toLowerCase();
+    console.log('[AuthContext] 🔍 Perfil Detectado após signIn:', userEmail);
+    
+    if (userEmail === SUPER_ADMIN_EMAIL) {
+      console.log('[AuthContext] 🚀 SUPER ADMIN DETECTADO — Redirecionando IMEDIATAMENTE para /super-admin');
+      // Marcar no sessionStorage para o SW e App saberem
+      sessionStorage.setItem('isSuperAdmin', 'true');
+      // Redirecionar ANTES de qualquer inicialização de Dexie/sync
+      window.location.href = '/super-admin';
+      return { error: null };
     }
     
     return { error: error as Error | null };
