@@ -46,6 +46,10 @@ export default function Dashboard() {
     
     const hidratarCache = async () => {
       try {
+        const today = new Date();
+        const startOfTodayISO = startOfDay(today).toISOString();
+        const endOfTodayISO = endOfDay(today).toISOString();
+
         // Hidratar mesas
         const mesasLocais = await db.mesas.where('empresa_id').equals(empresaId).toArray();
         if (mesasLocais.length > 0) {
@@ -60,6 +64,42 @@ export default function Dashboard() {
           if (!cacheAtual || cacheAtual.length === 0) {
             queryClient.setQueryData(['mesas', empresaId], dadosFormatados);
             console.log('[Dashboard Hidratação] Mesas carregadas:', dadosFormatados.length);
+          }
+        }
+
+        // Hidratar comandas de hoje (elimina loading spinner)
+        const cacheComandas = queryClient.getQueryData<any[]>(['comandas-hoje', empresaId]);
+        if (!cacheComandas || cacheComandas.length === 0) {
+          const comandasLocais = await db.comandas.where('empresa_id').equals(empresaId).toArray();
+          const comandasHojeLocal = comandasLocais.filter((c: any) => {
+            const ts = c.created_at || c.criado_em;
+            if (!ts) return false;
+            const createdAt = new Date(ts).toISOString();
+            return createdAt >= startOfTodayISO && createdAt <= endOfTodayISO;
+          }).map((c: any) => ({
+            id: c.id, total: c.total || 0, status: c.status, created_at: c.created_at || c.criado_em,
+          }));
+          if (comandasHojeLocal.length > 0) {
+            queryClient.setQueryData(['comandas-hoje', empresaId], comandasHojeLocal);
+            console.log('[Dashboard Hidratação] Comandas hoje carregadas:', comandasHojeLocal.length);
+          }
+        }
+
+        // Hidratar vendas concluídas de hoje
+        const cacheVendas = queryClient.getQueryData<any[]>(['vendas-concluidas-hoje', empresaId]);
+        if (!cacheVendas || cacheVendas.length === 0) {
+          const vendasLocais = await db.vendas_concluidas.where('empresa_id').equals(empresaId).toArray();
+          const vendasHojeLocal = vendasLocais.filter((v: any) => {
+            const ts = v.created_at || v.criado_em;
+            if (!ts) return false;
+            const createdAt = new Date(ts).toISOString();
+            return !v.comanda_id && createdAt >= startOfTodayISO && createdAt <= endOfTodayISO;
+          }).map((v: any) => ({
+            id: v.id, valor_total: v.valor_total || 0, created_at: v.created_at || v.criado_em,
+          }));
+          if (vendasHojeLocal.length > 0) {
+            queryClient.setQueryData(['vendas-concluidas-hoje', empresaId], vendasHojeLocal);
+            console.log('[Dashboard Hidratação] Vendas hoje carregadas:', vendasHojeLocal.length);
           }
         }
       } catch (err) {
@@ -118,7 +158,7 @@ export default function Dashboard() {
     queryFn: async () => {
       if (!empresaId) return null;
       
-      // 1. Buscar dados locais primeiro
+      // 1. Buscar dados locais IMEDIATAMENTE
       let empresaLocal = null;
       try {
         empresaLocal = await db.empresa.where('id').equals(empresaId).first();
@@ -126,22 +166,24 @@ export default function Dashboard() {
         console.warn('[Offline-First] Erro ao ler empresa do IndexedDB:', err);
       }
       
-      // 2. Se online, buscar do Supabase
-      if (navigator.onLine) {
-        try {
-          const { data } = await supabase
-            .from('empresas')
-            .select('nome_fantasia')
-            .eq('id', empresaId)
-            .single();
-          if (data) {
-            // Salvar localmente
-            await db.empresa.put({ id: empresaId, ...data, sincronizado: 1 }).catch(() => {});
-            return data;
-          }
-        } catch (err) {
-          console.warn('[Offline-First] Supabase inacessível para empresa:', err);
+      // 2. Se offline, retornar dados locais sem esperar
+      if (!navigator.onLine) {
+        return empresaLocal ? { nome_fantasia: empresaLocal.nome_fantasia } : null;
+      }
+
+      // 3. Se online, tentar Supabase com fallback local
+      try {
+        const { data } = await supabase
+          .from('empresas')
+          .select('nome_fantasia')
+          .eq('id', empresaId)
+          .single();
+        if (data) {
+          db.empresa.put({ id: empresaId, ...data, sincronizado: 1 }).catch(() => {});
+          return data;
         }
+      } catch (err) {
+        console.warn('[Offline-First] Supabase inacessível para empresa:', err);
       }
       
       return empresaLocal ? { nome_fantasia: empresaLocal.nome_fantasia } : null;
@@ -459,9 +501,10 @@ export default function Dashboard() {
       // 1. Buscar dados locais primeiro
       let dadosLocais: { date: string; faturamento: number; pedidos: number }[] = [];
       try {
-        const [comandas, pedidos] = await Promise.all([
+        const [comandas, pedidos, vendasConc] = await Promise.all([
           db.comandas.where('empresa_id').equals(empresaId).toArray(),
-          db.pedidos.toArray()
+          db.pedidos.toArray(),
+          db.vendas_concluidas.where('empresa_id').equals(empresaId).toArray()
         ]);
         
         // Helper para validar data
@@ -475,6 +518,14 @@ export default function Dashboard() {
           if (!isValidDate(c.created_at)) return false;
           const createdAt = new Date(c.created_at).toISOString();
           return c.status === 'fechada' && createdAt >= weekStart && createdAt <= weekEnd;
+        });
+
+        // Vendas avulsas concluídas (sem comanda_id) na semana
+        const vendasAvulsas = vendasConc.filter((v: any) => {
+          const ts = v.created_at || v.criado_em;
+          if (!isValidDate(ts)) return false;
+          const createdAt = new Date(ts).toISOString();
+          return !v.comanda_id && createdAt >= weekStart && createdAt <= weekEnd;
         });
         
         const comandaIds = comandasFechadas.map((c: any) => c.id);
@@ -500,6 +551,19 @@ export default function Dashboard() {
             const existing = salesByDay.get(dateStr);
             if (existing) {
               existing.faturamento += c.total || 0;
+            }
+          } catch { /* ignora registro com data invalida */ }
+        });
+
+        // Somar vendas avulsas ao faturamento por dia
+        vendasAvulsas.forEach((v: any) => {
+          try {
+            const ts = v.created_at || v.criado_em;
+            if (!ts || isNaN(new Date(ts).getTime())) return;
+            const dateStr = new Date(ts).toISOString().split('T')[0];
+            const existing = salesByDay.get(dateStr);
+            if (existing) {
+              existing.faturamento += v.valor_total || 0;
             }
           } catch { /* ignora registro com data invalida */ }
         });

@@ -20,8 +20,13 @@ interface SubscriptionGuardProps {
 
 export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const navigate = useNavigate();
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading, signOut, isSuperAdmin } = useAuth();
   const { status, isLoading, isBlocked, reason } = useSubscription();
+
+  // CURTO-CIRCUITO: Super Admin nunca é bloqueado, nunca espera loading
+  if (isSuperAdmin) {
+    return <>{children}</>;
+  }
 
   // Se ainda está carregando auth ou subscription, mostra loading
   if (authLoading || isLoading) {
@@ -189,7 +194,14 @@ export function useSubscription() {
       return;
     }
 
-    // Verifica se é super admin (nunca bloqueia)
+    // CURTO-CIRCUITO por email: Super Admin nunca espera query
+    if (user.email?.toLowerCase() === 'claudinhoresendemoura@gmail.com') {
+      setStatus({ blocked: false, status: 'super_admin' });
+      setIsLoading(false);
+      return;
+    }
+
+    // Verifica se é super admin por tabela (fallback)
     try {
       const { data: superAdmin } = await supabase
         .from('super_admins')

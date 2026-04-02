@@ -186,6 +186,49 @@ export default function Pedidos() {
   const processedPedidosRef = useRef<Set<string>>(new Set()); // Evitar processar o mesmo pedido múltiplas vezes
   const printedPedidosRef = useRef<Set<string>>(new Set()); // Evitar imprimir o mesmo pedido múltiplas vezes
 
+  // Hidratação inicial: Carregar pedidos do IndexedDB para o cache IMEDIATAMENTE
+  useEffect(() => {
+    if (!profile?.empresa_id) return;
+    const cacheAtual = queryClient.getQueryData<any[]>(["pedidos-kds", profile.empresa_id]);
+    if (cacheAtual && cacheAtual.length > 0) return; // Já tem dados no cache
+
+    const hidratarPedidos = async () => {
+      try {
+        const [pedidosLocais, comandas, mesas, produtos, categorias] = await Promise.all([
+          db.pedidos.toArray(),
+          db.comandas.toArray(),
+          db.mesas.toArray(),
+          db.produtos.toArray(),
+          db.categorias.toArray()
+        ]);
+        const comandasMap = new Map(comandas.map((c: any) => [c.id, c]));
+        const mesasMap = new Map(mesas.map((m: any) => [m.id, m]));
+        const produtosMap = new Map(produtos.map((p: any) => [p.id, p]));
+        const categoriasMap = new Map(categorias.map((c: any) => [c.id, c]));
+
+        const dados = pedidosLocais.map((pedido: any) => {
+          const comanda = comandasMap.get(pedido.comanda_id) as any;
+          const mesa = comanda ? mesasMap.get(comanda.mesa_id) as any : null;
+          const produto = produtosMap.get(pedido.produto_id) as any;
+          const categoria = produto ? categoriasMap.get(produto.categoria_id) as any : null;
+          return {
+            ...pedido,
+            produto: produto ? { nome: produto.nome, preco: produto.preco, categoria: categoria ? { nome: categoria.nome } : null } : null,
+            comanda: comanda ? { id: comanda.id, nome_cliente: comanda.nome_cliente, empresa_id: comanda.empresa_id, mesa: mesa ? { numero_mesa: mesa.numero_mesa || mesa.numero } : null } : null,
+          };
+        }).filter((p: any) => p.comanda?.empresa_id === profile.empresa_id);
+
+        if (dados.length > 0) {
+          queryClient.setQueryData(["pedidos-kds", profile.empresa_id], dados);
+          console.log('[KDS Hidratação] Pedidos carregados do IndexedDB:', dados.length);
+        }
+      } catch (err) {
+        console.warn('[KDS Hidratação] Erro:', err);
+      }
+    };
+    hidratarPedidos();
+  }, [profile?.empresa_id, queryClient]);
+
   // ===============================
   // QUERY ÚNICA → Offline-First Híbrido
   // ===============================
@@ -284,7 +327,7 @@ export default function Pedidos() {
     },
     enabled: !!profile?.empresa_id,
     staleTime: 3000,
-    refetchInterval: navigator.onLine ? 8000 : false,
+    refetchInterval: navigator.onLine ? 8000 : 5000, // Offline: poll Dexie a cada 5s para detectar pedidos novos
   });
 
   // Query para chamadas de garçom pendentes - Offline-First
@@ -330,7 +373,7 @@ export default function Pedidos() {
       return dadosLocais;
     },
     enabled: !!profile?.empresa_id,
-    refetchInterval: navigator.onLine ? 5000 : false,
+    refetchInterval: navigator.onLine ? 5000 : 5000, // Poll Dexie também offline
   });
 
   // Query para mesas (para exibir nome/número) - Offline-First

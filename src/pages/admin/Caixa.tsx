@@ -182,6 +182,63 @@ export default function Caixa() {
 
   const queryClient = useQueryClient();
 
+  // Hidratação inicial: Carregar mesas pendentes e comandas abertas do IndexedDB IMEDIATAMENTE
+  useEffect(() => {
+    if (!profile?.empresa_id) return;
+    const hidratarCaixa = async () => {
+      try {
+        // Hidratar mesas pendentes
+        const cacheMesas = queryClient.getQueryData<any[]>(['mesas-pendentes', profile.empresa_id]);
+        if (!cacheMesas || cacheMesas.length === 0) {
+          const mesasLocais = await db.mesas.where('empresa_id').equals(profile.empresa_id).toArray();
+          const pendentes = mesasLocais
+            .filter((m: any) => ['solicitou_fechamento', 'aguardando_pagamento'].includes(m.status))
+            .map((m: any) => ({
+              id: m.id,
+              numero_mesa: m.numero_mesa ?? m.numero,
+              status: m.status,
+              nome: m.nome || null,
+            }))
+            .sort((a: any, b: any) => a.numero_mesa - b.numero_mesa);
+          if (pendentes.length > 0) {
+            queryClient.setQueryData(['mesas-pendentes', profile.empresa_id], pendentes);
+            console.log('[Caixa Hidratação] Mesas pendentes:', pendentes.length);
+          }
+        }
+
+        // Hidratar comandas abertas
+        const cacheComandas = queryClient.getQueryData<any[]>(['comandas-abertas', profile.empresa_id]);
+        if (!cacheComandas || cacheComandas.length === 0) {
+          const comandasLocais = await db.comandas.where('empresa_id').equals(profile.empresa_id).toArray();
+          const abertasLocais = comandasLocais.filter((c: any) => c.status === 'aberta');
+          if (abertasLocais.length > 0) {
+            // Reconstruir com mesas e pedidos
+            const [mesas, pedidos, produtos] = await Promise.all([
+              db.mesas.toArray(), db.pedidos.toArray(), db.produtos.toArray()
+            ]);
+            const mesasMap = new Map(mesas.map((m: any) => [m.id, m]));
+            const produtosMap = new Map(produtos.map((p: any) => [p.id, p]));
+            const dados = abertasLocais.map((comanda: any) => {
+              const mesa = mesasMap.get(comanda.mesa_id);
+              const pedidosComanda = pedidos
+                .filter((p: any) => p.comanda_id === comanda.id)
+                .map((p: any) => {
+                  const produto = produtosMap.get(p.produto_id) as any;
+                  return { id: p.id, quantidade: p.quantidade, preco_unitario: p.preco_unitario || produto?.preco || 0, subtotal: p.subtotal || (p.quantidade * (p.preco_unitario || produto?.preco || 0)), produto: produto ? { nome: produto.nome } : null };
+                });
+              return { ...comanda, mesa: mesa ? { numero_mesa: (mesa as any).numero_mesa || (mesa as any).numero } : null, pedidos: pedidosComanda };
+            });
+            queryClient.setQueryData(['comandas-abertas', profile.empresa_id], dados);
+            console.log('[Caixa Hidratação] Comandas abertas:', dados.length);
+          }
+        }
+      } catch (err) {
+        console.warn('[Caixa Hidratação] Erro:', err);
+      }
+    };
+    hidratarCaixa();
+  }, [profile?.empresa_id, queryClient]);
+
 
 
   // Carrega configurações do localStorage
@@ -492,21 +549,23 @@ export default function Caixa() {
 
   const adicionarProdutoAvulso = (produto: { id?: string; nome: string; preco: number }) => {
 
-    const existente = vendaAvulsaItens.findIndex(i => i.nome === produto.nome);
+    setVendaAvulsaItens(prev => {
 
-    if (existente >= 0) {
+      const existente = prev.findIndex(i => i.nome === produto.nome);
 
-      const novos = [...vendaAvulsaItens];
+      if (existente >= 0) {
 
-      novos[existente].quantidade += 1;
+        const novos = [...prev];
 
-      setVendaAvulsaItens(novos);
+        novos[existente] = { ...novos[existente], quantidade: novos[existente].quantidade + 1 };
 
-    } else {
+        return novos;
 
-      setVendaAvulsaItens([...vendaAvulsaItens, { nome: produto.nome, preco: produto.preco, quantidade: 1, produtoId: produto.id }]);
+      }
 
-    }
+      return [...prev, { nome: produto.nome, preco: produto.preco, quantidade: 1, produtoId: produto.id }];
+
+    });
 
   };
 
