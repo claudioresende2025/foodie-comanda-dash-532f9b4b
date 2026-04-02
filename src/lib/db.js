@@ -19,6 +19,7 @@ const MAX_REOPEN_ATTEMPTS = 2;
 /**
  * GARANTE que o banco está aberto ANTES de qualquer operação
  * Se fechado, reabre automaticamente com retry
+ * Agora usa initializeDb() para tratar VersionError
  */
 export async function ensureDbOpen() {
   // Se já está aberto, retorna imediatamente
@@ -50,19 +51,30 @@ export async function ensureDbOpen() {
   console.log(`[Dexie] 🔄 Reabrindo banco de dados (tentativa ${reopenAttempts}/${MAX_REOPEN_ATTEMPTS})...`);
   
   try {
-    // Se banco está fechado mas não deletado, reabrir
-    if (!db.isOpen()) {
-      reopenPromise = db.open();
-      await reopenPromise;
+    // Usar initializeDb() para ter tratamento de VersionError
+    reopenPromise = initializeDb();
+    const result = await reopenPromise;
+    
+    if (result) {
+      console.log('[Dexie] ✅ Banco reaberto com sucesso');
+      reopenAttempts = 0; // Reset em sucesso
+      return true;
     }
-    console.log('[Dexie] ✅ Banco reaberto com sucesso');
-    reopenAttempts = 0; // Reset em sucesso
-    return true;
+    
+    return false;
   } catch (err) {
     console.error('[Dexie] ❌ Erro ao reabrir banco:', err);
     
-    // Se InvalidStateError, tentar limpar e recriar conexão
+    // VersionError já é tratado em initializeDb()
+    // Outros erros: tentar recuperação forçada
     const errMsg = (err?.message || '').toLowerCase();
+    const errName = err?.name || '';
+    
+    // Não tentar recovery se for VersionError (já tratado)
+    if (errName === 'VersionError') {
+      return false;
+    }
+    
     if (errMsg.includes('invalidstateerror') || errMsg.includes('closed')) {
       console.log('[Dexie] 🔧 Tentando recuperação forçada...');
       try {
@@ -70,13 +82,15 @@ export async function ensureDbOpen() {
         if (db.isOpen()) {
           db.close();
         }
-        // Aguardar um tick e reabrir
+        // Aguardar um tick e reabrir via initializeDb
         await new Promise(r => setTimeout(r, 100));
-        reopenPromise = db.open();
-        await reopenPromise;
-        console.log('[Dexie] ✅ Recuperação forçada bem-sucedida');
-        reopenAttempts = 0;
-        return true;
+        const recovered = await initializeDb();
+        if (recovered) {
+          console.log('[Dexie] ✅ Recuperação forçada bem-sucedida');
+          reopenAttempts = 0;
+          return true;
+        }
+        return false;
       } catch (retryErr) {
         console.error('[Dexie] ❌ Recuperação forçada falhou:', retryErr);
         return false;
@@ -93,6 +107,7 @@ export async function ensureDbOpen() {
 /**
  * Wrapper OBRIGATÓRIO para operações Dexie
  * Garante banco aberto + auto-retry em falha
+ * Agora trata VersionError adequadamente
  */
 export async function safeDbOperation(operation) {
   // PASSO 1: Garantir banco aberto ANTES da operação
@@ -105,6 +120,14 @@ export async function safeDbOperation(operation) {
     return await operation();
   } catch (err) {
     const errMsg = (err?.message || '').toLowerCase();
+    const errName = err?.name || '';
+    
+    // VersionError: Banco precisa ser recriado
+    if (errName === 'VersionError' || errMsg.includes('version')) {
+      console.warn('[Dexie] ⚠️ VersionError durante operação - iniciando recuperação...');
+      await initializeDb(); // Vai deletar e recarregar
+      throw new Error('Banco de dados sendo atualizado. A página será recarregada.');
+    }
     
     // InvalidStateError ou Database Closed → única tentativa de retry
     if (errMsg.includes('invalidstateerror') || 
@@ -125,36 +148,151 @@ export async function safeDbOperation(operation) {
   }
 }
 
-// Handler para versionchange - evita fechamento quando múltiplas abas abertas
+// ============================================
+// HANDLER AGRESSIVO DE VERSIONCHANGE
+// Quando outra aba abre versão diferente, FECHA e RECARREGA
+// ============================================
 db.on('versionchange', (event) => {
-  console.log('[Dexie] ⚡ Detectada mudança de versão em outra aba');
-  // NÃO fechar o banco - permite que outras abas continuem funcionando
-  // Apenas notificar o usuário se necessário
+  console.warn('[Dexie] ⚡ VERSIONCHANGE DETECTADO - Fechando banco e recarregando...');
+  console.warn('[Dexie] oldVersion:', event.oldVersion, 'newVersion:', event.newVersion);
+  
+  // Notificar antes de fechar
   if (typeof window !== 'undefined' && window.dispatchEvent) {
     window.dispatchEvent(new CustomEvent('dexie-versionchange', { detail: event }));
   }
-  // Retornar false para NÃO fechar o banco
-  return false;
+  
+  // FECHAR o banco para liberar o lock
+  db.close();
+  
+  // Recarregar a página para obter nova versão
+  setTimeout(() => {
+    window.location.reload();
+  }, 100);
 });
 
 // Handler para blocked - banco está bloqueado por outra aba
 db.on('blocked', () => {
-  console.warn('[Dexie] ⏳ Banco bloqueado por outra aba');
+  console.warn('[Dexie] ⏳ Banco bloqueado por outra aba - Aguardando...');
 });
 
 // Handler para ready - banco pronto
 db.on('ready', () => {
-  console.log('[Dexie] ✅ Banco de dados pronto');
+  console.log('[Dexie] ✅ Banco de dados pronto (versão 16)');
 });
 
-// Versão 12: Adicionada tabela logs_sincronizacao para auditoria
+// ============================================
+// INICIALIZAÇÃO SEGURA COM TRATAMENTO DE VERSIONERROR
+// ============================================
+let dbInitialized = false;
+let dbInitPromise = null;
+
+/**
+ * Inicializa o banco de dados com tratamento de VersionError
+ * Se VersionError ocorrer, DELETA o banco e RECARREGA a página
+ * @returns {Promise<boolean>} true se inicializado com sucesso
+ */
+export async function initializeDb() {
+  // Se já inicializado, retornar
+  if (dbInitialized && db.isOpen()) {
+    return true;
+  }
+  
+  // Se já tem uma promise de init em andamento, aguardar
+  if (dbInitPromise) {
+    return dbInitPromise;
+  }
+  
+  dbInitPromise = (async () => {
+    try {
+      console.log('[Dexie] 🔄 Inicializando banco de dados (versão 16)...');
+      
+      if (!db.isOpen()) {
+        await db.open();
+      }
+      
+      dbInitialized = true;
+      console.log('[Dexie] ✅ Banco inicializado com sucesso');
+      return true;
+      
+    } catch (err) {
+      const errName = err?.name || '';
+      const errMsg = (err?.message || '').toLowerCase();
+      
+      console.error('[Dexie] ❌ Erro ao abrir banco:', err);
+      
+      // VERSIONERROR: Versão do código diferente da versão no navegador
+      if (errName === 'VersionError' || errMsg.includes('version')) {
+        console.warn('[Dexie] 🔧 VersionError detectado - DELETANDO banco e recarregando...');
+        
+        try {
+          // Fechar se estiver aberto
+          if (db.isOpen()) {
+            db.close();
+          }
+          
+          // Deletar o banco completamente
+          await Dexie.delete('FoodComandaPro_DB');
+          console.log('[Dexie] 🗑️ Banco deletado com sucesso');
+          
+          // Limpar caches do localStorage relacionados
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('dexie') || key.includes('Dexie'))) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+          
+          // Recarregar a página para recriar o banco
+          console.log('[Dexie] 🔄 Recarregando página...');
+          setTimeout(() => window.location.reload(), 200);
+          
+          return false;
+        } catch (deleteErr) {
+          console.error('[Dexie] ❌ Erro ao deletar banco:', deleteErr);
+          // Forçar reload mesmo assim
+          setTimeout(() => window.location.reload(), 500);
+          return false;
+        }
+      }
+      
+      // Outros erros: tentar abrir novamente
+      throw err;
+    } finally {
+      dbInitPromise = null;
+    }
+  })();
+  
+  return dbInitPromise;
+}
+
+// ============================================
+// AUTO-INICIALIZAÇÃO NA IMPORTAÇÃO
+// ============================================
+// Tentar abrir o banco automaticamente ao importar o módulo
+// Isso captura VersionError o mais cedo possível
+if (typeof window !== 'undefined') {
+  initializeDb().catch(err => {
+    console.error('[Dexie] ❌ Falha na auto-inicialização:', err);
+  });
+}
+
+// ============================================
+// VERSÃO 16: CORREÇÃO DE VERSIONERROR
+// ============================================
+// Histórico:
+// - v12: Adicionada logs_sincronizacao
+// - v13-15: Atualizações incrementais (browser cache)
+// - v16: Consolidação de esquema + tratamento de VersionError
+//
 // sync_status: 'pending' | 'synced' | 'error' - Estado da sincronização
 // sync_error: string | null - Mensagem de erro se houver falha
 // sync_error_code: string | null - Código do erro (ex: 23503 para FK violation)
 // sync_error_at: string | null - Timestamp do erro
 // atualizado_em: string - Timestamp para Last Write Wins
 // logs_sincronizacao: Últimas 50 operações de sync para diagnóstico
-db.version(12).stores({
+db.version(16).stores({
     // Tabelas do salão (com campos de conflito)
     pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em, impresso_local, sync_status, atualizado_em',
     comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em, sync_status, atualizado_em',
