@@ -2,7 +2,6 @@
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { handleLoginWithOffline } from '@/lib/loginHandler';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,7 +35,7 @@ export default function Auth() {
   const [registeredEmail, setRegisteredEmail] = useState('');
   const hasRedirected = useRef(false);
   
-  const { signIn, signUp, user, profile, loading: authLoading } = useAuth();
+  const { signIn, signUp, user, profile, loading: authLoading, isOfflineSession } = useAuth();
   const navigate = useNavigate();
 
   // Ler tab da URL e mostrar mensagem de plano selecionado
@@ -115,10 +114,20 @@ export default function Auth() {
 
   // FunÃ§Ã£o para verificar o role do usuÃ¡rio e redirecionar apropriadamente
   const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
+    console.log('[Auth] redirectBasedOnRole - userId:', userId, 'empresaId:', empresaId);
+    
     // CURTO-CIRCUITO: Super Admin por email — redireciona IMEDIATAMENTE sem queries
     const currentEmail = user?.email?.toLowerCase();
     if (currentEmail === 'claudinhoresendemoura@gmail.com') {
+      console.log('[Auth] Super Admin detectado - redirecionando para /super-admin');
       navigate('/super-admin');
+      return;
+    }
+
+    // Se OFFLINE, não fazer queries ao Supabase - usar dados locais
+    if (!navigator.onLine) {
+      console.log('[Auth] OFFLINE - redirecionando direto para /admin');
+      navigate('/admin');
       return;
     }
 
@@ -141,20 +150,18 @@ export default function Auth() {
 
     // Buscar todos os roles do usuÃ¡rio (pode ter em vÃ¡rias empresas)
     let userRoles: { role: string; empresa_id: string }[] | null = null;
-    if (navigator.onLine) {
-      try {
-        const { data } = await supabase
-          .from('user_roles')
-          .select('role, empresa_id')
-          .eq('user_id', userId);
-        userRoles = data;
-      } catch (e) {
-        console.warn('[Auth] Erro ao buscar roles online:', e);
-      }
+    try {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role, empresa_id')
+        .eq('user_id', userId);
+      userRoles = data;
+    } catch (e) {
+      console.warn('[Auth] Erro ao buscar roles online:', e);
     }
 
     // Fallback offline: usar role salvo no localStorage
-    if (!userRoles) {
+    if (!userRoles || userRoles.length === 0) {
       const savedRole = localStorage.getItem(`user_role_${userId}_${empresaId}`);
       if (savedRole && empresaId) {
         userRoles = [{ role: savedRole, empresa_id: empresaId }];
@@ -189,7 +196,15 @@ export default function Auth() {
     const userRole = userRoles?.find(r => r.empresa_id === empresaId);
     const role = userRole?.role;
 
-    if (role && STAFF_ROLES.includes(role)) {
+    // Se tem empresa_id mas não encontrou role, assumir staff e ir para admin
+    // (evita redirecionar para menu do cardápio)
+    if (!role) {
+      console.log('[Auth] Role não encontrado para empresa, assumindo acesso admin');
+      navigate('/admin');
+      return;
+    }
+
+    if (STAFF_ROLES.includes(role)) {
       // Se Ã© motoboy, redireciona direto para o painel do entregador
       if (role === 'motoboy') {
         navigate('/admin/entregador');
@@ -205,10 +220,21 @@ export default function Auth() {
   useEffect(() => {
     // SÃ³ redireciona se nÃ£o estiver carregando, tiver usuÃ¡rio autenticado e nÃ£o tiver redirecionado ainda
     if (!authLoading && user && profile && !hasRedirected.current) {
+      console.log('[Auth] Verificando redirecionamento - user:', user.email, 'profile:', profile.empresa_id, 'isOffline:', isOfflineSession);
+      
+      // Se é sessão offline, o AuthContext já fez o redirecionamento correto
+      // Não interferir - apenas redirecionar para /admin se ainda estiver aqui
+      if (isOfflineSession) {
+        console.log('[Auth] Sessão offline detectada - redirecionando para /admin');
+        hasRedirected.current = true;
+        window.location.href = '/admin';
+        return;
+      }
+      
       hasRedirected.current = true;
       redirectBasedOnRole(user.id, profile.empresa_id);
     }
-  }, [user, profile, redirectBasedOnRole, authLoading]);
+  }, [user, profile, redirectBasedOnRole, authLoading, isOfflineSession]);
 
   const validateLogin = () => {
     try {
@@ -246,37 +272,45 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      const result = await handleLoginWithOffline(email, password, signIn);
+      console.log('[Auth] Iniciando login para:', email);
+      console.log('[Auth] navigator.onLine:', navigator.onLine);
       
-      if (result.success) {
+      // Usar APENAS o signIn do AuthContext
+      // Ele internamente já trata offline/online e faz redirecionamento
+      const { error } = await signIn(email, password);
+      
+      if (error) {
         setIsLoading(false);
+        console.log('[Auth] Erro no login:', error.message);
         
-        if (result.isOffline) {
-          // Login offline bem-sucedido
-          if (result.daysRemaining && result.daysRemaining <= 2) {
-            toast.warning(`Login Offline - Sessao expira em ${result.daysRemaining} dia(s). Conecte-se online em breve.`);
-          } else {
-            toast.success('Login Offline realizado com sucesso!');
-          }
-          
-          // Redirecionamento para a rota apropriada
-          setTimeout(() => {
-            if (result.redirectTo) {
-              window.location.href = result.redirectTo;
-            } else {
-              window.location.href = '/admin';
-            }
-          }, 800);
+        // Mensagens de erro específicas
+        if (error.message.includes('Invalid login credentials')) {
+          toast.error('E-mail ou senha incorretos');
+        } else if (error.message.includes('Super Admin requer')) {
+          toast.error('Super Admin requer conexão com internet.');
+        } else if (error.message.includes('Usuário não encontrado')) {
+          toast.error('Usuário não encontrado. Faça login online pelo menos uma vez.');
         } else {
-          // Login online bem-sucedido
-          toast.success('Login realizado com sucesso!');
-          // O useEffect original cuidara do redirecionamento via profile
+          toast.error(error.message || 'Erro ao conectar. Tente novamente.');
         }
-      } else {
-        // Login falhou
-        setIsLoading(false);
-        toast.error(result.error || 'Erro ao conectar. Tente novamente.');
+        return;
       }
+      
+      // Login bem-sucedido
+      console.log('[Auth] Login bem-sucedido!');
+      
+      // Se offline, o AuthContext já redirecionou via window.location.href
+      // Se online, o useEffect vai detectar user/profile e redirecionar
+      if (!navigator.onLine) {
+        toast.success('Login Offline realizado com sucesso!');
+        // AuthContext já fez o redirecionamento, mas garantir
+        setIsLoading(false);
+      } else {
+        toast.success('Login realizado com sucesso!');
+        setIsLoading(false);
+        // Aguardar o useEffect redirecionar via redirectBasedOnRole
+      }
+      
     } catch (err: any) {
       setIsLoading(false);
       console.error('[Auth] Erro inesperado no login:', err);
