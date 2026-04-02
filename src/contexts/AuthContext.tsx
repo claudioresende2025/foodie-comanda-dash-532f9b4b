@@ -28,6 +28,13 @@ interface UserPermissions {
 // Email do Super Admin — opera 100% online, sem Dexie/offline
 const SUPER_ADMIN_EMAIL = 'claudinhoresendemoura@gmail.com';
 
+// Chaves de localStorage para persistência
+const STORAGE_KEYS = {
+  OFFLINE_USER: 'offline_user',
+  OFFLINE_SESSION: 'offline_session',
+  EMPRESA_DATA: 'empresa_data',
+};
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -71,6 +78,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Logout automático após 1 hora de inatividade
   useInactivityTimeout(!!user);
+
+  // ==================== PERSISTÊNCIA LOCAL ====================
+  
+  /**
+   * Salva dados do usuário e empresa no localStorage
+   * Garante que o App sabe "quem" está logado mesmo offline
+   */
+  const persistUserLocally = (userData: { id: string; email: string; nome: string; empresa_id: string | null; role?: string; permissions?: UserPermissions }) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.OFFLINE_USER, JSON.stringify(userData));
+      console.log('[AuthContext] 💾 Usuário persistido localmente');
+    } catch (e) {
+      console.warn('[AuthContext] Erro ao persistir usuário:', e);
+    }
+  };
+  
+  /**
+   * Recupera dados do usuário do localStorage
+   */
+  const getPersistedUser = (): { id: string; email: string; nome: string; empresa_id: string | null; role?: string; permissions?: UserPermissions } | null => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.OFFLINE_USER);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  };
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -189,7 +223,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.warn('[AuthContext] Erro ao buscar perfil (offline?):', error);
-      // Se offline, não impede o uso - permissões padrão
+      
+      // Se offline, tentar usar dados persistidos localmente
+      const persistedUser = getPersistedUser();
+      if (persistedUser && persistedUser.empresa_id) {
+        console.log('[AuthContext] 📴 Offline - usando dados persistidos');
+        setProfile({
+          id: persistedUser.id,
+          nome: persistedUser.nome,
+          email: persistedUser.email,
+          empresa_id: persistedUser.empresa_id,
+          avatar_url: null,
+        });
+        if (persistedUser.permissions) {
+          setPermissions(persistedUser.permissions);
+        } else {
+          setPermissions(defaultPermissions);
+        }
+        setIsOfflineSession(true);
+        return;
+      }
+      
+      // Se não tem dados locais, permissões padrão
       setPermissions(defaultPermissions);
     }
   };
@@ -203,8 +258,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Log de diagnóstico inicial
     console.log('[AuthContext] 🚀 Inicializando AuthProvider...');
+    console.log('[AuthContext] 📍 navigator.onLine:', navigator.onLine);
     
-    // Set up auth state listener FIRST
+    // ============================================
+    // OFFLINE PRIORITÁRIO: Se offline, restaurar sessão local ANTES de tudo
+    // ============================================
+    if (!navigator.onLine) {
+      console.log('[AuthContext] 📴 OFFLINE - Verificando sessão local ANTES de Supabase');
+      const persistedUser = getPersistedUser();
+      
+      if (persistedUser) {
+        console.log('[AuthContext] ✅ Usuário encontrado no localStorage:', persistedUser.email);
+        setUser({ id: persistedUser.id, email: persistedUser.email } as User);
+        setProfile({
+          id: persistedUser.id,
+          nome: persistedUser.nome,
+          email: persistedUser.email,
+          empresa_id: persistedUser.empresa_id,
+          avatar_url: null,
+        });
+        setPermissions(persistedUser.permissions || defaultPermissions);
+        setIsOfflineSession(true);
+        setLoading(false);
+        return; // NÃO tentar Supabase
+      }
+      
+      // Tentar sessão offline do Dexie
+      import('@/lib/offlineAuth').then(({ getOfflineSession }) => {
+        const offlineSession = getOfflineSession();
+        if (offlineSession) {
+          console.log('[AuthContext] ✅ Sessão offline Dexie encontrada');
+          setUser({ id: offlineSession.user.id, email: offlineSession.user.email } as User);
+          setProfile({
+            id: offlineSession.user.id,
+            nome: offlineSession.user.nome,
+            email: offlineSession.user.email,
+            empresa_id: offlineSession.user.empresa_id,
+            avatar_url: null,
+          });
+          setPermissions(offlineSession.user.permissions);
+          setIsOfflineSession(true);
+        }
+        setLoading(false);
+      }).catch(() => {
+        setLoading(false);
+      });
+      
+      return; // NÃO configurar listener Supabase quando offline
+    }
+    
+    // ============================================
+    // ONLINE: Set up auth state listener
+    // ============================================
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         console.log('[AuthContext] 📡 onAuthStateChange:', event, session?.user?.email);
@@ -331,6 +436,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     console.log('[AuthContext] 🔐 signIn chamado para:', email);
+    console.log('[AuthContext] 📍 navigator.onLine:', navigator.onLine);
+    
+    // ============================================
+    // OFFLINE PRIORITÁRIO: Se offline, usar loginHandler DIRETO
+    // PROIBIDO chamar supabase.auth quando offline
+    // ============================================
+    if (!navigator.onLine) {
+      console.log('[AuthContext] 📴 OFFLINE - Usando loginHandler (Supabase BLOQUEADO)');
+      
+      // Super Admin requer internet
+      if (email.toLowerCase() === SUPER_ADMIN_EMAIL) {
+        return { error: new Error('Super Admin requer conexão com internet.') };
+      }
+      
+      try {
+        const { handleLoginWithOffline } = await import('@/lib/loginHandler');
+        const result = await handleLoginWithOffline(email, password, async () => ({ error: new Error('Offline') }));
+        
+        if (result.success && result.user) {
+          console.log('[AuthContext] ✅ Login offline bem-sucedido');
+          
+          // Configurar estado da aplicação
+          setIsOfflineSession(true);
+          setUser({ id: result.user.id, email: result.user.email } as User);
+          setProfile({
+            id: result.user.id,
+            nome: result.user.nome,
+            email: result.user.email,
+            empresa_id: result.user.empresa_id,
+            avatar_url: null,
+          });
+          setPermissions(result.user.permissions || defaultPermissions);
+          
+          // Persistir localmente
+          persistUserLocally(result.user);
+          
+          // Redirecionar para admin
+          if (result.redirectTo) {
+            window.location.href = result.redirectTo;
+          }
+          
+          return { error: null };
+        }
+        
+        return { error: new Error(result.error || 'Falha no login offline') };
+      } catch (err: any) {
+        console.error('[AuthContext] ❌ Erro no login offline:', err);
+        return { error: new Error(err.message || 'Erro no login offline') };
+      }
+    }
+    
+    // ============================================
+    // ONLINE: Fluxo normal com Supabase
+    // ============================================
     
     // Armazenar senha temporariamente para criar hash no cache
     setPendingPassword(password);
@@ -344,6 +503,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Se houver erro, limpar a senha pendente
     if (error) {
       setPendingPassword(null);
+      
+      // Se erro de rede, tentar fallback offline
+      const errMsg = (error.message || '').toLowerCase();
+      if (errMsg.includes('network') || errMsg.includes('fetch') || errMsg.includes('failed')) {
+        console.log('[AuthContext] ⚠️ Erro de rede, tentando fallback offline...');
+        try {
+          const { handleLoginWithOffline } = await import('@/lib/loginHandler');
+          const result = await handleLoginWithOffline(email, password, async () => ({ error }));
+          
+          if (result.success && result.user) {
+            setIsOfflineSession(true);
+            setUser({ id: result.user.id, email: result.user.email } as User);
+            setProfile({
+              id: result.user.id,
+              nome: result.user.nome,
+              email: result.user.email,
+              empresa_id: result.user.empresa_id,
+              avatar_url: null,
+            });
+            setPermissions(result.user.permissions || defaultPermissions);
+            persistUserLocally(result.user);
+            
+            if (result.redirectTo) {
+              window.location.href = result.redirectTo;
+            }
+            return { error: null };
+          }
+        } catch {}
+      }
+      
       return { error: error as Error | null };
     }
     

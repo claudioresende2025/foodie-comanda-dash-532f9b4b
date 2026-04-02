@@ -7,35 +7,82 @@ import { supabase } from '@/integrations/supabase/client';
 export const db = new Dexie('FoodComandaPro_DB');
 
 // ============================================
-// TRATADORES DE ERROS E ESTABILIZAÇÃO
+// TRATADORES DE ERROS E ESTABILIZAÇÃO ROBUSTA
 // ============================================
 
 // Flag para evitar múltiplas tentativas de reopen simultâneas
 let isReopening = false;
 let reopenPromise = null;
+let reopenAttempts = 0;
+const MAX_REOPEN_ATTEMPTS = 2;
 
 /**
- * Auto-reopen: Se o banco fechar inesperadamente, reabre automaticamente
+ * GARANTE que o banco está aberto ANTES de qualquer operação
+ * Se fechado, reabre automaticamente com retry
  */
-async function ensureDbOpen() {
-  if (db.isOpen()) return true;
+export async function ensureDbOpen() {
+  // Se já está aberto, retorna imediatamente
+  if (db.isOpen()) {
+    reopenAttempts = 0; // Reset contador em sucesso
+    return true;
+  }
   
-  if (isReopening) {
-    // Aguardar reopen em andamento
-    if (reopenPromise) await reopenPromise;
-    return db.isOpen();
+  // Se outra tentativa de reopen está em andamento, aguarda
+  if (isReopening && reopenPromise) {
+    try {
+      await reopenPromise;
+      return db.isOpen();
+    } catch {
+      return false;
+    }
+  }
+  
+  // Verificar limite de tentativas
+  if (reopenAttempts >= MAX_REOPEN_ATTEMPTS) {
+    console.error('[Dexie] ❌ Máximo de tentativas de reopen atingido');
+    // Reset após 5s para permitir nova tentativa
+    setTimeout(() => { reopenAttempts = 0; }, 5000);
+    return false;
   }
   
   isReopening = true;
-  console.log('[Dexie] 🔄 Reabrindo banco de dados...');
+  reopenAttempts++;
+  console.log(`[Dexie] 🔄 Reabrindo banco de dados (tentativa ${reopenAttempts}/${MAX_REOPEN_ATTEMPTS})...`);
   
   try {
-    reopenPromise = db.open();
-    await reopenPromise;
+    // Se banco está fechado mas não deletado, reabrir
+    if (!db.isOpen()) {
+      reopenPromise = db.open();
+      await reopenPromise;
+    }
     console.log('[Dexie] ✅ Banco reaberto com sucesso');
+    reopenAttempts = 0; // Reset em sucesso
     return true;
   } catch (err) {
     console.error('[Dexie] ❌ Erro ao reabrir banco:', err);
+    
+    // Se InvalidStateError, tentar limpar e recriar conexão
+    const errMsg = (err?.message || '').toLowerCase();
+    if (errMsg.includes('invalidstateerror') || errMsg.includes('closed')) {
+      console.log('[Dexie] 🔧 Tentando recuperação forçada...');
+      try {
+        // Fechar conexão atual se existir
+        if (db.isOpen()) {
+          db.close();
+        }
+        // Aguardar um tick e reabrir
+        await new Promise(r => setTimeout(r, 100));
+        reopenPromise = db.open();
+        await reopenPromise;
+        console.log('[Dexie] ✅ Recuperação forçada bem-sucedida');
+        reopenAttempts = 0;
+        return true;
+      } catch (retryErr) {
+        console.error('[Dexie] ❌ Recuperação forçada falhou:', retryErr);
+        return false;
+      }
+    }
+    
     return false;
   } finally {
     isReopening = false;
@@ -44,25 +91,34 @@ async function ensureDbOpen() {
 }
 
 /**
- * Wrapper para operações Dexie com auto-reopen em caso de Database Closed
+ * Wrapper OBRIGATÓRIO para operações Dexie
+ * Garante banco aberto + auto-retry em falha
  */
 export async function safeDbOperation(operation) {
+  // PASSO 1: Garantir banco aberto ANTES da operação
+  const isOpen = await ensureDbOpen();
+  if (!isOpen) {
+    throw new Error('Banco de dados indisponível. Reinicie o aplicativo.');
+  }
+  
   try {
     return await operation();
   } catch (err) {
     const errMsg = (err?.message || '').toLowerCase();
     
-    // InvalidStateError ou Database Closed → tentar reabrir
+    // InvalidStateError ou Database Closed → única tentativa de retry
     if (errMsg.includes('invalidstateerror') || 
         errMsg.includes('database') && errMsg.includes('closed') ||
         errMsg.includes('database is closing')) {
-      console.warn('[Dexie] ⚠️ Banco fechado, tentando reabrir...');
+      console.warn('[Dexie] ⚠️ Banco fechou durante operação, tentando reabrir...');
       
       const reopened = await ensureDbOpen();
       if (reopened) {
-        // Retry da operação
+        console.log('[Dexie] 🔄 Repetindo operação após reopen...');
         return await operation();
       }
+      
+      throw new Error('Banco de dados fechou inesperadamente. Reinicie o aplicativo.');
     }
     
     throw err;

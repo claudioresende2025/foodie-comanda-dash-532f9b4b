@@ -1,15 +1,19 @@
 /**
- * loginHandler.ts - Lógica de Login Híbrido (Online + Offline)
+ * loginHandler.ts - Login Híbrido com PRIORIDADE OFFLINE TOTAL
  * 
- * Este módulo gerencia o fluxo de login com fallback offline:
- * 1. Verifica se está online
- * 2. Se offline, vai direto para cache local (Dexie)
- * 3. Se online, tenta Supabase primeiro
- * 4. Em caso de erro de rede, usa fallback offline
- * 5. Em sucesso online, salva dados no cache para futuro uso offline
+ * REGRA CRÍTICA: Se navigator.onLine === false, PROIBIDO tentar Supabase
+ * 
+ * Fluxo de Login:
+ * 1. OFFLINE TOTAL: Dexie → Servidor Local (backup)
+ * 2. ONLINE: Supabase → Salvar no cache para próximo offline
+ * 
+ * O gerente PRECISA conseguir logar mesmo com roteador desligado.
  */
 
 import { supabase } from '@/integrations/supabase/client';
+
+// Super Admin REQUER internet
+const SUPER_ADMIN_EMAIL = 'claudinhoresendemoura@gmail.com';
 
 // ==================== TIPOS ====================
 
@@ -27,6 +31,7 @@ export interface LoginResult {
   };
   redirectTo?: string;
   daysRemaining?: number;
+  emergencyToken?: string;
 }
 
 // ==================== HELPERS ====================
@@ -67,7 +72,7 @@ function calculateDaysRemaining(lastOnlineAt: string): number {
   const daysSinceLastOnline = Math.floor(
     (Date.now() - lastOnline.getTime()) / (24 * 60 * 60 * 1000)
   );
-  return 7 - daysSinceLastOnline;
+  return Math.max(0, 7 - daysSinceLastOnline);
 }
 
 /**
@@ -83,40 +88,49 @@ function getRedirectRoute(role: string, permissions?: any): string {
   return '/delivery';
 }
 
-// ==================== LOGIN VIA CACHE LOCAL (DEXIE) ====================
+// ==================== LOGIN VIA CACHE LOCAL (DEXIE) - PRINCIPAL ====================
 
 /**
- * Tenta fazer login usando o cache local (Dexie)
+ * LOGIN OFFLINE VIA DEXIE
+ * Esta é a função PRINCIPAL quando offline
+ * Valida credenciais via hash SHA-256 e gera Token de Emergência
  */
 export async function loginViaCache(email: string, password: string): Promise<LoginResult> {
+  console.log('[LoginHandler] 🔐 Iniciando login via cache local (Dexie)...');
+  
   try {
-    console.log('[LoginHandler] Tentando login via cache local (Dexie)...');
+    // Importar funções do offlineAuth
+    const { 
+      validateOfflineLogin, 
+      createOfflineSession,
+      ensureDbOpen 
+    } = await import('@/lib/offlineAuth');
     
-    const { validateOfflineLogin, createOfflineSession } = await import('@/lib/offlineAuth');
-    const { db } = await import('@/lib/db');
+    const { db, ensureDbOpen: dbEnsureOpen } = await import('@/lib/db');
     
-    // Verificar se usuário existe no cache
-    const cachedUser = await db.users_cache.get(email.toLowerCase());
-    
-    if (!cachedUser) {
-      console.log('[LoginHandler] Usuario nao encontrado no cache');
+    // PASSO 1: Garantir banco aberto ANTES de qualquer operação
+    console.log('[LoginHandler] 📂 Verificando estado do banco...');
+    const isOpen = await dbEnsureOpen();
+    if (!isOpen) {
+      console.error('[LoginHandler] ❌ Falha ao abrir banco de dados');
       return {
         success: false,
         isOffline: true,
-        error: 'Usuario nao encontrado. Faca login online primeiro.',
+        error: 'Banco de dados indisponível. Reinicie o aplicativo.',
       };
     }
+    console.log('[LoginHandler] ✅ Banco de dados pronto');
     
-    // Validar credenciais com hash seguro
+    // PASSO 2: Validar credenciais via hash
     const result = await validateOfflineLogin(email, password);
     
     if (result.success && result.user) {
-      console.log('[LoginHandler] Login offline valido:', result.user.email);
+      console.log('[LoginHandler] ✅ Login offline válido:', result.user.email);
       
-      // Criar sessão offline
-      createOfflineSession(result.user);
+      // PASSO 3: Criar sessão offline com Token de Emergência
+      createOfflineSession(result.user, result.emergencyToken);
       
-      // Salvar no localStorage para compatibilidade
+      // PASSO 4: Salvar no localStorage para compatibilidade
       const offlineUser = {
         id: result.user.id,
         email: result.user.email,
@@ -135,15 +149,16 @@ export async function loginViaCache(email: string, password: string): Promise<Lo
         user: offlineUser,
         redirectTo: getRedirectRoute(result.user.role, result.user.permissions),
         daysRemaining,
+        emergencyToken: result.emergencyToken,
       };
     }
     
-    // Sessão expirada?
+    // Sessão expirada ou credenciais inválidas
     if (result.requiresOnlineLogin) {
       return {
         success: false,
         isOffline: true,
-        error: result.error || 'Sessao expirada. Conecte-se online para revalidar.',
+        error: result.error || 'Sessão expirada. Conecte-se online para revalidar.',
       };
     }
     
@@ -151,30 +166,68 @@ export async function loginViaCache(email: string, password: string): Promise<Lo
     return {
       success: false,
       isOffline: true,
-      error: 'Senha incorreta',
+      error: result.error || 'Senha incorreta',
     };
     
   } catch (err: any) {
-    console.error('[LoginHandler] Erro no cache local:', err.message);
+    console.error('[LoginHandler] ❌ Erro no cache local:', err.message);
+    
+    // Se erro de banco fechado, tentar reabrir uma vez
+    const errMsg = (err?.message || '').toLowerCase();
+    if (errMsg.includes('invalidstateerror') || errMsg.includes('closed')) {
+      console.log('[LoginHandler] 🔄 Banco fechado, tentando recuperação...');
+      try {
+        const { db, ensureDbOpen } = await import('@/lib/db');
+        const reopened = await ensureDbOpen();
+        if (reopened) {
+          console.log('[LoginHandler] ✅ Banco reaberto, repetindo validação...');
+          // Tentar novamente
+          const { validateOfflineLogin, createOfflineSession } = await import('@/lib/offlineAuth');
+          const result = await validateOfflineLogin(email, password);
+          if (result.success && result.user) {
+            createOfflineSession(result.user, result.emergencyToken);
+            localStorage.setItem('offline_user', JSON.stringify({
+              id: result.user.id,
+              email: result.user.email,
+              nome: result.user.nome,
+              empresa_id: result.user.empresa_id,
+              role: result.user.role,
+              permissions: result.user.permissions
+            }));
+            return {
+              success: true,
+              isOffline: true,
+              user: result.user,
+              redirectTo: getRedirectRoute(result.user.role, result.user.permissions),
+              emergencyToken: result.emergencyToken,
+            };
+          }
+        }
+      } catch (retryErr) {
+        console.error('[LoginHandler] ❌ Recuperação falhou:', retryErr);
+      }
+    }
+    
     return {
       success: false,
       isOffline: true,
-      error: 'Erro ao acessar cache local: ' + err.message,
+      error: 'Erro ao acessar dados offline. Reinicie o aplicativo.',
     };
   }
 }
 
-// ==================== LOGIN VIA SERVIDOR LOCAL ====================
+// ==================== LOGIN VIA SERVIDOR LOCAL (BACKUP) ====================
 
 /**
  * Tenta login no servidor local (PC do caixa na rede interna)
+ * Usado como backup quando Dexie falha
  */
 export async function loginViaLocalServer(email: string, password: string): Promise<LoginResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 3000);
 
   try {
-    console.log('[LoginHandler] Tentando login no servidor local...');
+    console.log('[LoginHandler] 🌐 Tentando login no servidor local...');
     
     const response = await fetch('http://192.168.2.111:3000/api/local/login', {
       method: 'POST',
@@ -188,7 +241,7 @@ export async function loginViaLocalServer(email: string, password: string): Prom
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.user) {
-        console.log('[LoginHandler] Sucesso via servidor local');
+        console.log('[LoginHandler] ✅ Sucesso via servidor local');
         localStorage.setItem('offline_user', JSON.stringify(data.user));
         
         return {
@@ -203,16 +256,16 @@ export async function loginViaLocalServer(email: string, password: string): Prom
     return {
       success: false,
       isOffline: true,
-      error: 'Servidor local nao autorizou',
+      error: 'Servidor local não autorizou',
     };
     
   } catch (err: any) {
     clearTimeout(timeoutId);
-    console.warn('[LoginHandler] Servidor local inacessivel:', err.message);
+    console.warn('[LoginHandler] ⚠️ Servidor local inacessível:', err.message);
     return {
       success: false,
       isOffline: true,
-      error: 'Servidor local inacessivel',
+      error: 'Servidor local inacessível',
     };
   }
 }
@@ -220,13 +273,14 @@ export async function loginViaLocalServer(email: string, password: string): Prom
 // ==================== LOGIN PRINCIPAL ====================
 
 /**
- * Função principal de login com fallback offline
+ * FUNÇÃO PRINCIPAL DE LOGIN
+ * 
+ * REGRA ABSOLUTA: Se navigator.onLine === false, PROIBIDO chamar Supabase
  * 
  * Fluxo:
- * 1. Se offline -> tenta servidor local -> tenta cache Dexie
- * 2. Se online -> tenta Supabase
- *    - Se erro de rede -> fallback offline
- *    - Se sucesso -> salva no cache para próximo acesso offline
+ * 1. OFFLINE → Dexie DIRETO (prioridade) → Servidor Local (backup)
+ * 2. SUPER ADMIN → Sempre online, erro se offline
+ * 3. ONLINE → Supabase → Salvar cache → Em erro de rede, fallback offline
  */
 export async function handleLoginWithOffline(
   email: string, 
@@ -234,55 +288,89 @@ export async function handleLoginWithOffline(
   signInFn: (email: string, password: string) => Promise<{ error: Error | null }>
 ): Promise<LoginResult> {
   
+  console.log('[LoginHandler] 🚀 handleLoginWithOffline iniciado');
+  console.log('[LoginHandler] 📍 navigator.onLine:', navigator.onLine);
+  console.log('[LoginHandler] 📧 Email:', email);
+  
   // ==============================================
-  // CASO 1: OFFLINE - Ir direto para cache local
+  // VERIFICAÇÃO SUPER ADMIN
+  // ==============================================
+  if (email.toLowerCase() === SUPER_ADMIN_EMAIL) {
+    if (!navigator.onLine) {
+      console.log('[LoginHandler] ❌ Super Admin requer internet');
+      return {
+        success: false,
+        isOffline: true,
+        error: 'Super Admin requer conexão com internet.',
+      };
+    }
+    // Super Admin vai direto para Supabase (online flow abaixo)
+    console.log('[LoginHandler] 🛡️ Super Admin detectado, usando flow online');
+  }
+  
+  // ==============================================
+  // CASO 1: OFFLINE TOTAL - PRIORIDADE MÁXIMA
   // ==============================================
   if (!navigator.onLine) {
-    console.log('[LoginHandler] Dispositivo offline - usando cache local...');
+    console.log('[LoginHandler] 📴 OFFLINE DETECTADO - Usando cache local EXCLUSIVAMENTE');
+    console.log('[LoginHandler] ⛔ Supabase BLOQUEADO (navigator.onLine = false)');
     
-    // Tentar servidor local primeiro (pode estar numa rede interna)
-    const localServerResult = await loginViaLocalServer(email, password);
-    if (localServerResult.success) return localServerResult;
-    
-    // Tentar cache Dexie
+    // TENTAR DEXIE PRIMEIRO (mais rápido, tem hash de senha)
     const cacheResult = await loginViaCache(email, password);
-    if (cacheResult.success) return cacheResult;
+    if (cacheResult.success) {
+      console.log('[LoginHandler] ✅ Login offline via Dexie bem-sucedido');
+      return cacheResult;
+    }
+    
+    // Se Dexie falhou mas não é erro de credencial, tentar servidor local
+    if (cacheResult.error && !cacheResult.error.includes('Senha incorreta')) {
+      console.log('[LoginHandler] 🌐 Dexie falhou, tentando servidor local...');
+      const localServerResult = await loginViaLocalServer(email, password);
+      if (localServerResult.success) {
+        console.log('[LoginHandler] ✅ Login offline via servidor local bem-sucedido');
+        return localServerResult;
+      }
+    }
     
     // Nenhum fallback funcionou
+    console.log('[LoginHandler] ❌ Todos os métodos offline falharam');
     return {
       success: false,
       isOffline: true,
-      error: cacheResult.error || 'Sem conexao. Faca login online primeiro.',
+      error: cacheResult.error || 'Sem conexão. Faça login online pelo menos uma vez.',
     };
   }
 
   // ==============================================
-  // CASO 2: ONLINE - Tentar Supabase primeiro
+  // CASO 2: ONLINE - Tentar Supabase
   // ==============================================
   try {
-    console.log('[LoginHandler] Tentando login via Supabase...');
+    console.log('[LoginHandler] 🌐 ONLINE - Tentando login via Supabase...');
     const { error } = await signInFn(email, password);
 
     if (error) {
-      // Verificar se é erro de rede
+      // Verificar se é erro de rede (pode ter caído durante a requisição)
       if (isNetworkError(error)) {
-        console.log('[LoginHandler] Erro de rede no Supabase, usando fallback...');
+        console.log('[LoginHandler] ⚠️ Erro de rede detectado, usando fallback offline...');
         
-        const localServerResult = await loginViaLocalServer(email, password);
-        if (localServerResult.success) return localServerResult;
-        
+        // Tentar cache Dexie
         const cacheResult = await loginViaCache(email, password);
         if (cacheResult.success) return cacheResult;
+        
+        // Tentar servidor local
+        const localServerResult = await loginViaLocalServer(email, password);
+        if (localServerResult.success) return localServerResult;
         
         return {
           success: false,
           isOffline: false,
-          error: 'Erro de conexao. Tente novamente.',
+          error: 'Erro de conexão. Verifique sua internet.',
         };
       }
 
-      // Erro de credenciais
+      // Erro de credenciais inválidas
       if (error.message.includes('Invalid login credentials')) {
+        console.log('[LoginHandler] ❌ Credenciais inválidas');
         return {
           success: false,
           isOffline: false,
@@ -291,13 +379,13 @@ export async function handleLoginWithOffline(
       }
 
       // Outro erro - tentar fallback
-      console.log('[LoginHandler] Erro Supabase, tentando alternativas...');
-      
-      const localServerResult = await loginViaLocalServer(email, password);
-      if (localServerResult.success) return localServerResult;
+      console.log('[LoginHandler] ⚠️ Erro Supabase, tentando alternativas...', error.message);
       
       const cacheResult = await loginViaCache(email, password);
       if (cacheResult.success) return cacheResult;
+      
+      const localServerResult = await loginViaLocalServer(email, password);
+      if (localServerResult.success) return localServerResult;
       
       return {
         success: false,
@@ -309,7 +397,7 @@ export async function handleLoginWithOffline(
     // ==============================================
     // LOGIN ONLINE SUCESSO - Salvar no cache
     // ==============================================
-    console.log('[LoginHandler] Login Supabase bem-sucedido!');
+    console.log('[LoginHandler] ✅ Login Supabase bem-sucedido!');
     
     // Disparar pre-cache das rotas em background
     triggerRoutePrecache();
@@ -347,10 +435,19 @@ export async function handleLoginWithOffline(
           password: password // Será hasheado, NÃO armazenado em texto
         });
         
-        console.log('[LoginHandler] Usuario salvo no cache para login offline futuro');
+        // Salvar também no localStorage para redundância
+        localStorage.setItem('offline_user', JSON.stringify({
+          id: userData.user.id,
+          email: userData.user.email || email,
+          nome: profileData?.nome || email.split('@')[0],
+          empresa_id: profileData?.empresa_id || null,
+          role: role,
+        }));
+        
+        console.log('[LoginHandler] ✅ Usuário salvo no cache para login offline futuro');
       }
     } catch (cacheErr) {
-      console.warn('[LoginHandler] Nao foi possivel salvar no cache:', cacheErr);
+      console.warn('[LoginHandler] ⚠️ Não foi possível salvar no cache:', cacheErr);
       // Não bloquear o login por causa disso
     }
     
@@ -361,16 +458,16 @@ export async function handleLoginWithOffline(
 
   } catch (err: any) {
     // Exceção capturada - provavelmente erro de rede
-    console.log('[LoginHandler] Excecao no login:', err.message);
+    console.log('[LoginHandler] ⚠️ Exceção no login:', err.message);
     
     if (isNetworkError(err)) {
-      console.log('[LoginHandler] Erro de rede detectado, usando fallback...');
-      
-      const localServerResult = await loginViaLocalServer(email, password);
-      if (localServerResult.success) return localServerResult;
+      console.log('[LoginHandler] 🔄 Erro de rede detectado, usando fallback offline...');
       
       const cacheResult = await loginViaCache(email, password);
       if (cacheResult.success) return cacheResult;
+      
+      const localServerResult = await loginViaLocalServer(email, password);
+      if (localServerResult.success) return localServerResult;
     }
     
     return {
