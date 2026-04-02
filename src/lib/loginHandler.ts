@@ -11,6 +11,15 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+// ============================================
+// IMPORTS ESTÁTICOS PARA FUNCIONAR OFFLINE
+// ============================================
+import { db, ensureDbOpen } from '@/lib/db';
+import { 
+  validateOfflineLogin, 
+  createOfflineSession,
+  saveUserToCache
+} from '@/lib/offlineAuth';
 
 // Super Admin REQUER internet
 const SUPER_ADMIN_EMAIL = 'claudinhoresendemoura@gmail.com';
@@ -99,18 +108,9 @@ export async function loginViaCache(email: string, password: string): Promise<Lo
   console.log('[LoginHandler] 🔐 Iniciando login via cache local (Dexie)...');
   
   try {
-    // Importar funções do offlineAuth
-    const { 
-      validateOfflineLogin, 
-      createOfflineSession,
-      ensureDbOpen 
-    } = await import('@/lib/offlineAuth');
-    
-    const { db, ensureDbOpen: dbEnsureOpen } = await import('@/lib/db');
-    
     // PASSO 1: Garantir banco aberto ANTES de qualquer operação
     console.log('[LoginHandler] 📂 Verificando estado do banco...');
-    const isOpen = await dbEnsureOpen();
+    const isOpen = await ensureDbOpen();
     if (!isOpen) {
       console.error('[LoginHandler] ❌ Falha ao abrir banco de dados');
       return {
@@ -177,12 +177,10 @@ export async function loginViaCache(email: string, password: string): Promise<Lo
     if (errMsg.includes('invalidstateerror') || errMsg.includes('closed')) {
       console.log('[LoginHandler] 🔄 Banco fechado, tentando recuperação...');
       try {
-        const { db, ensureDbOpen } = await import('@/lib/db');
         const reopened = await ensureDbOpen();
         if (reopened) {
           console.log('[LoginHandler] ✅ Banco reaberto, repetindo validação...');
           // Tentar novamente
-          const { validateOfflineLogin, createOfflineSession } = await import('@/lib/offlineAuth');
           const result = await validateOfflineLogin(email, password);
           if (result.success && result.user) {
             createOfflineSession(result.user, result.emergencyToken);
@@ -403,7 +401,6 @@ export async function handleLoginWithOffline(
     triggerRoutePrecache();
     
     try {
-      const { saveUserToCache } = await import('@/lib/offlineAuth');
       const { data: userData } = await supabase.auth.getUser();
       
       if (userData?.user) {

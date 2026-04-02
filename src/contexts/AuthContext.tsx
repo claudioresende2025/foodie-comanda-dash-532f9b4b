@@ -3,6 +3,22 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
 import { connectionManager } from '@/lib/connectionManager';
+// ============================================
+// IMPORTS ESTÁTICOS PARA FUNCIONAR OFFLINE
+// ============================================
+// NUNCA usar import() dinâmico para módulos críticos offline
+// O browser não consegue fazer fetch de módulos quando offline
+import { 
+  handleLoginWithOffline 
+} from '@/lib/loginHandler';
+import { 
+  saveUserToCache, 
+  getPermissionsByRole, 
+  updateLastOnlineAt,
+  getOfflineSession,
+  clearOfflineSession
+} from '@/lib/offlineAuth';
+import { baixarDadosIniciais } from '@/lib/db';
 
 interface Profile {
   id: string;
@@ -136,12 +152,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // BAIXAR DADOS PARA INDEXEDDB QUANDO TEMOS EMPRESA_ID (Offline-First)
         if (data.empresa_id && navigator.onLine) {
           console.log('📥 Baixando dados para modo offline...');
-          import('@/lib/db').then(({ baixarDadosIniciais }) => {
-            baixarDadosIniciais(data.empresa_id).catch(err => {
-              console.warn('Erro ao baixar dados iniciais:', err);
-            });
-          }).catch(err => {
-            console.warn('Erro ao importar db:', err);
+          baixarDadosIniciais(data.empresa_id).catch(err => {
+            console.warn('Erro ao baixar dados iniciais:', err);
           });
         }
         
@@ -163,8 +175,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           // Usar o novo sistema de cache seguro com hash
           if (pendingPassword) {
-            const { saveUserToCache, getPermissionsByRole, updateLastOnlineAt } = await import('@/lib/offlineAuth');
-            
             // Salvar com hash da senha
             await saveUserToCache({
               email: data.email,
@@ -183,7 +193,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setPendingPassword(null);
           } else {
             // Apenas atualizar timestamp de última conexão
-            const { updateLastOnlineAt, getPermissionsByRole } = await import('@/lib/offlineAuth');
             await updateLastOnlineAt(data.email);
             
             // Definir permissões
@@ -284,7 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       // Tentar sessão offline do Dexie
-      import('@/lib/offlineAuth').then(({ getOfflineSession }) => {
+      try {
         const offlineSession = getOfflineSession();
         if (offlineSession) {
           console.log('[AuthContext] ✅ Sessão offline Dexie encontrada');
@@ -300,9 +309,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsOfflineSession(true);
         }
         setLoading(false);
-      }).catch(() => {
+      } catch (e) {
+        console.warn('[AuthContext] Erro ao buscar sessão offline:', e);
         setLoading(false);
-      });
+      }
       
       return; // NÃO configurar listener Supabase quando offline
     }
@@ -359,7 +369,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Função para tentar restaurar sessão offline
     const tryRestoreOfflineSession = async () => {
       try {
-        const { getOfflineSession } = await import('@/lib/offlineAuth');
         const offlineSession = getOfflineSession();
         
         if (offlineSession) {
@@ -451,7 +460,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       try {
-        const { handleLoginWithOffline } = await import('@/lib/loginHandler');
         const result = await handleLoginWithOffline(email, password, async () => ({ error: new Error('Offline') }));
         
         if (result.success && result.user) {
@@ -509,7 +517,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (errMsg.includes('network') || errMsg.includes('fetch') || errMsg.includes('failed')) {
         console.log('[AuthContext] ⚠️ Erro de rede, tentando fallback offline...');
         try {
-          const { handleLoginWithOffline } = await import('@/lib/loginHandler');
           const result = await handleLoginWithOffline(email, password, async () => ({ error }));
           
           if (result.success && result.user) {
@@ -612,7 +619,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Limpar sessão offline
     try {
-      const { clearOfflineSession } = await import('@/lib/offlineAuth');
       clearOfflineSession();
     } catch (e) {
       console.warn('[AuthContext] Erro ao limpar sessão offline:', e);
