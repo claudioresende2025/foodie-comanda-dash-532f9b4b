@@ -683,9 +683,10 @@ export default function Garcom() {
           }
 
           // Liberar mesa
-          await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaForBaixa.id }).catch(() => {
-            supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaForBaixa.id);
-          });
+          const { error: rpcError } = await supabase.rpc('liberar_mesa', { p_mesa_id: selectedMesaForBaixa.id });
+          if (rpcError) {
+            await supabase.from('mesas').update({ status: 'disponivel' }).eq('id', selectedMesaForBaixa.id);
+          }
           await db.mesas.update(selectedMesaForBaixa.id, { sincronizado: 1 });
 
           // Atender chamadas

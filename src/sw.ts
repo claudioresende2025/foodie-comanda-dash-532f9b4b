@@ -132,6 +132,7 @@ const navigationRoute = new NavigationRoute(navigationHandler, {
   denylist: [
     /^\/api\//,
     /^\/__/,
+    /\/version\.json$/,
   ],
 });
 registerRoute(navigationRoute);

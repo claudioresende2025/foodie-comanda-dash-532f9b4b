@@ -393,9 +393,9 @@ export default function Dashboard() {
           .sort((a: any, b: any) => new Date(b.created_at || b.criado_em).getTime() - new Date(a.created_at || a.criado_em).getTime())
           .slice(0, 10)
           .map((p: any) => {
-            const produto = produtosMap.get(p.produto_id);
-            const comanda = comandasMap.get(p.comanda_id);
-            const mesa = comanda ? mesasMap.get(comanda.mesa_id) : null;
+            const produto = produtosMap.get(p.produto_id) as any;
+            const comanda = comandasMap.get(p.comanda_id) as any;
+            const mesa = comanda ? mesasMap.get(comanda.mesa_id) as any : null;
             return {
               id: p.id,
               quantidade: p.quantidade,
