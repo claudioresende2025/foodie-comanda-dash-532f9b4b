@@ -107,13 +107,13 @@ export async function ensureDbOpen() {
 /**
  * Wrapper OBRIGATÓRIO para operações Dexie
  * Garante banco aberto + auto-retry em falha
- * Agora trata VersionError adequadamente
  */
 export async function safeDbOperation(operation) {
   // PASSO 1: Garantir banco aberto ANTES da operação
   const isOpen = await ensureDbOpen();
   if (!isOpen) {
-    throw new Error('Banco de dados indisponível. Reinicie o aplicativo.');
+    console.warn('[Dexie] Banco não disponível, operação ignorada');
+    return null;
   }
   
   try {
@@ -122,11 +122,10 @@ export async function safeDbOperation(operation) {
     const errMsg = (err?.message || '').toLowerCase();
     const errName = err?.name || '';
     
-    // VersionError: Banco precisa ser recriado
+    // VersionError: Apenas logar, não tentar reload
     if (errName === 'VersionError' || errMsg.includes('version')) {
-      console.warn('[Dexie] ⚠️ VersionError durante operação - iniciando recuperação...');
-      await initializeDb(); // Vai deletar e recarregar
-      throw new Error('Banco de dados sendo atualizado. A página será recarregada.');
+      console.warn('[Dexie] ⚠️ VersionError durante operação');
+      return null;
     }
     
     // InvalidStateError ou Database Closed → única tentativa de retry
@@ -149,25 +148,22 @@ export async function safeDbOperation(operation) {
 }
 
 // ============================================
-// HANDLER AGRESSIVO DE VERSIONCHANGE
-// Quando outra aba abre versão diferente, FECHA e RECARREGA
+// HANDLER DE VERSIONCHANGE (SEM RELOAD AUTOMÁTICO)
 // ============================================
 db.on('versionchange', (event) => {
-  console.warn('[Dexie] ⚡ VERSIONCHANGE DETECTADO - Fechando banco e recarregando...');
+  console.warn('[Dexie] ⚡ VERSIONCHANGE DETECTADO');
   console.warn('[Dexie] oldVersion:', event.oldVersion, 'newVersion:', event.newVersion);
   
-  // Notificar antes de fechar
+  // Notificar componentes React
   if (typeof window !== 'undefined' && window.dispatchEvent) {
     window.dispatchEvent(new CustomEvent('dexie-versionchange', { detail: event }));
   }
   
-  // FECHAR o banco para liberar o lock
+  // Fechar o banco para liberar lock
   db.close();
   
-  // Recarregar a página para obter nova versão
-  setTimeout(() => {
-    window.location.reload();
-  }, 100);
+  // NÃO fazer reload automático - deixar o usuário decidir
+  console.log('[Dexie] Banco fechado. Próxima operação vai reabrir.');
 });
 
 // Handler para blocked - banco está bloqueado por outra aba
@@ -221,44 +217,23 @@ export async function initializeDb() {
       console.error('[Dexie] ❌ Erro ao abrir banco:', err);
       
       // VERSIONERROR: Versão do código diferente da versão no navegador
+      // Apenas logar - NÃO deletar automaticamente para evitar loop
       if (errName === 'VersionError' || errMsg.includes('version')) {
-        console.warn('[Dexie] 🔧 VersionError detectado - DELETANDO banco e recarregando...');
+        console.warn('[Dexie] 🔧 VersionError detectado - Banco precisa ser recriado');
+        console.warn('[Dexie] Para resolver: limpe os dados do site no navegador ou use Ctrl+Shift+Delete');
         
-        try {
-          // Fechar se estiver aberto
-          if (db.isOpen()) {
-            db.close();
-          }
-          
-          // Deletar o banco completamente
-          await Dexie.delete('FoodComandaPro_DB');
-          console.log('[Dexie] 🗑️ Banco deletado com sucesso');
-          
-          // Limpar caches do localStorage relacionados
-          const keysToRemove = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && (key.includes('dexie') || key.includes('Dexie'))) {
-              keysToRemove.push(key);
-            }
-          }
-          keysToRemove.forEach(key => localStorage.removeItem(key));
-          
-          // Recarregar a página para recriar o banco
-          console.log('[Dexie] 🔄 Recarregando página...');
-          setTimeout(() => window.location.reload(), 200);
-          
-          return false;
-        } catch (deleteErr) {
-          console.error('[Dexie] ❌ Erro ao deletar banco:', deleteErr);
-          // Forçar reload mesmo assim
-          setTimeout(() => window.location.reload(), 500);
-          return false;
+        // Marcar flag para UI mostrar mensagem
+        if (typeof window !== 'undefined') {
+          window.__DEXIE_VERSION_ERROR__ = true;
         }
+        
+        // NÃO fazer reload automático - causa loop infinito
+        return false;
       }
       
-      // Outros erros: tentar abrir novamente
-      throw err;
+      // Outros erros: apenas logar
+      console.error('[Dexie] Erro não tratado:', err);
+      return false;
     } finally {
       dbInitPromise = null;
     }
@@ -268,15 +243,10 @@ export async function initializeDb() {
 }
 
 // ============================================
-// AUTO-INICIALIZAÇÃO NA IMPORTAÇÃO
+// NÃO AUTO-INICIALIZAR NA IMPORTAÇÃO
 // ============================================
-// Tentar abrir o banco automaticamente ao importar o módulo
-// Isso captura VersionError o mais cedo possível
-if (typeof window !== 'undefined') {
-  initializeDb().catch(err => {
-    console.error('[Dexie] ❌ Falha na auto-inicialização:', err);
-  });
-}
+// A inicialização será feita sob demanda quando necessário
+// Isso evita loops de reload e tela branca
 
 // ============================================
 // VERSÃO 16: CORREÇÃO DE VERSIONERROR
