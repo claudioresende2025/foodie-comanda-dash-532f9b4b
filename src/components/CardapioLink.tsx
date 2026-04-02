@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ interface CardapioLinkProps {
 
 export function CardapioLink({ className, showCard = true }: CardapioLinkProps) {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
   // Buscar dados da empresa para obter o slug ou ID
@@ -58,8 +60,8 @@ export function CardapioLink({ className, showCard = true }: CardapioLinkProps) 
   };
 
   const handleOpen = () => {
-    if (!cardapioUrl) return;
-    window.open(cardapioUrl, '_blank');
+    if (!empresa?.id) return;
+    navigate(`/menu/${empresa.id}`);
   };
 
   if (isLoading) {
@@ -138,7 +140,7 @@ export function CardapioLink({ className, showCard = true }: CardapioLinkProps) 
                 variant="outline"
                 size="icon"
                 onClick={handleOpen}
-                title="Abrir cardápio em nova aba"
+                title="Abrir cardápio"
               >
                 <ExternalLink className="h-4 w-4" />
               </Button>

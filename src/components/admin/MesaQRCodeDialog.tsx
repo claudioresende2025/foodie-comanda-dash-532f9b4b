@@ -1,10 +1,12 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download, Share2, ExternalLink, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/lib/db';
 
 type MesaQRCodeDialogProps = {
   open: boolean;
@@ -19,7 +21,9 @@ type MesaQRCodeDialogProps = {
 const BASE_CLIENT_URL = window.location.origin;
 
 export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empresaId, mesaStatus }: MesaQRCodeDialogProps) {
+  const navigate = useNavigate();
   const menuUrl = `${BASE_CLIENT_URL}/menu/${empresaId}/${mesaId}`;
+  const menuPath = `/menu/${empresaId}/${mesaId}`;
 
   const [reservation, setReservation] = useState<null | { nome_cliente?: string | null; data_reserva?: string | null; horario_reserva?: string | null }>(null);
   const [loadingReserva, setLoadingReserva] = useState(false);
@@ -98,60 +102,82 @@ export function MesaQRCodeDialog({ open, onOpenChange, mesaNumero, mesaId, empre
   };
 
   const handleOpenMenu = async () => {
-    // Abrir o menu PRIMEIRO, para não bloquear a experiência do cliente
-    window.open(menuUrl, '_blank');
-    
-    // Depois, tentar atualizar status da mesa para 'ocupada' (background)
+    // Dexie PRIMEIRO - marcar mesa como ocupada localmente
+    await db.mesas.update(mesaId, { status: 'ocupada', sincronizado: 0, atualizado_em: new Date().toISOString() }).catch(() => {});
+
+    // Fechar o dialog e navegar internamente (SPA, funciona offline)
+    onOpenChange(false);
+    navigate(menuPath, { state: { mesaNumero, mesaId, empresaId } });
+
+    // Background: sincronizar com Supabase se online
     if (mesaId && empresaId && navigator.onLine) {
       try {
-        await supabase
-          .from('mesas')
-          .update({ status: 'ocupada' })
-          .eq('id', mesaId);
+        await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+        await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
       } catch {
-        // Silencia erro para não bloquear a experiência do cliente
+        // Será sincronizado depois
       }
     }
   };
 
   const handleCancelarComanda = async () => {
+    const agora = new Date().toISOString();
     try {
-      const { data: comanda } = await supabase
-        .from('comandas')
-        .select('id')
-        .eq('mesa_id', mesaId)
-        .eq('status', 'aberta')
-        .limit(1)
-        .maybeSingle();
+      // 1. DEXIE PRIMEIRO - buscar comanda aberta localmente
+      let comandaLocal = await db.comandas
+        .where('empresa_id').equals(empresaId)
+        .filter(c => c.mesa_id === mesaId && c.status === 'aberta')
+        .first()
+        .catch(() => null);
 
-      if (!comanda) {
-        // Mesmo sem comanda aberta, libera a mesa se estiver ocupada
-        await supabase
-          .from('mesas')
-          .update({ status: 'disponivel', nome: null, mesa_juncao_id: null })
-          .eq('id', mesaId);
-
-        toast.success('Mesa liberada com sucesso');
-        onOpenChange(false);
-        return;
+      if (comandaLocal) {
+        // Marcar comanda como cancelada no Dexie
+        await db.comandas.update(comandaLocal.id, {
+          status: 'cancelada',
+          data_fechamento: agora,
+          sincronizado: 0,
+          atualizado_em: agora,
+        }).catch(() => {});
       }
 
-      // Marca comanda como cancelada
-      const { error: err } = await supabase
-        .from('comandas')
-        .update({ status: 'cancelada', data_fechamento: new Date().toISOString() })
-        .eq('id', comanda.id);
+      // Liberar mesa no Dexie
+      await db.mesas.update(mesaId, {
+        status: 'disponivel',
+        nome: null,
+        mesa_juncao_id: null,
+        sincronizado: 0,
+        atualizado_em: agora,
+      }).catch(() => {});
 
-      if (err) throw err;
-
-      // Libera a mesa
-      await supabase
-        .from('mesas')
-        .update({ status: 'disponivel', nome: null, mesa_juncao_id: null })
-        .eq('id', mesaId);
-
-      toast.success('Comanda cancelada e mesa liberada');
+      toast.success(comandaLocal ? 'Comanda cancelada e mesa liberada' : 'Mesa liberada com sucesso');
       onOpenChange(false);
+
+      // 2. SE ONLINE, sincronizar com Supabase
+      if (navigator.onLine) {
+        try {
+          if (!comandaLocal) {
+            // Tentar buscar comanda no Supabase caso não existisse localmente
+            const { data: comanda } = await supabase
+              .from('comandas')
+              .select('id')
+              .eq('mesa_id', mesaId)
+              .eq('status', 'aberta')
+              .limit(1)
+              .maybeSingle();
+            if (comanda) comandaLocal = comanda as any;
+          }
+
+          if (comandaLocal) {
+            await supabase.from('comandas').update({ status: 'cancelada', data_fechamento: agora }).eq('id', comandaLocal.id);
+            await db.comandas.update(comandaLocal.id, { sincronizado: 1 }).catch(() => {});
+          }
+
+          await supabase.from('mesas').update({ status: 'disponivel', nome: null, mesa_juncao_id: null }).eq('id', mesaId);
+          await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
+        } catch (syncErr) {
+          console.warn('[Offline-First] Cancelamento será sincronizado depois:', syncErr);
+        }
+      }
     } catch (e) {
       console.error('Erro cancelando comanda:', e);
       toast.error('Erro ao cancelar comanda');
