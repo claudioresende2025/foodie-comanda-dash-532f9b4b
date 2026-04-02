@@ -115,25 +115,51 @@ export default function Auth() {
 
   // FunÃ§Ã£o para verificar o role do usuÃ¡rio e redirecionar apropriadamente
   const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
-    // Verificar primeiro se Ã© super admin
-    const { data: superAdmin } = await supabase
-      .from('super_admins')
-      .select('id, ativo')
-      .eq('user_id', userId)
-      .eq('ativo', true)
-      .maybeSingle();
-    
-    // Se for super admin ativo, redireciona para pÃ¡gina de super admin
-    if (superAdmin?.ativo) {
+    // CURTO-CIRCUITO: Super Admin por email — redireciona IMEDIATAMENTE sem queries
+    const currentEmail = user?.email?.toLowerCase();
+    if (currentEmail === 'claudinhoresendemoura@gmail.com') {
       navigate('/super-admin');
       return;
     }
 
+    // Verificar primeiro se Ã© super admin (fallback por tabela)
+    try {
+      const { data: superAdmin } = await supabase
+        .from('super_admins')
+        .select('id, ativo')
+        .eq('user_id', userId)
+        .eq('ativo', true)
+        .maybeSingle();
+      
+      if (superAdmin?.ativo) {
+        navigate('/super-admin');
+        return;
+      }
+    } catch (e) {
+      console.warn('[Auth] Erro ao verificar super_admins:', e);
+    }
+
     // Buscar todos os roles do usuÃ¡rio (pode ter em vÃ¡rias empresas)
-    const { data: userRoles } = await supabase
-      .from('user_roles')
-      .select('role, empresa_id')
-      .eq('user_id', userId);
+    let userRoles: { role: string; empresa_id: string }[] | null = null;
+    if (navigator.onLine) {
+      try {
+        const { data } = await supabase
+          .from('user_roles')
+          .select('role, empresa_id')
+          .eq('user_id', userId);
+        userRoles = data;
+      } catch (e) {
+        console.warn('[Auth] Erro ao buscar roles online:', e);
+      }
+    }
+
+    // Fallback offline: usar role salvo no localStorage
+    if (!userRoles) {
+      const savedRole = localStorage.getItem(`user_role_${userId}_${empresaId}`);
+      if (savedRole && empresaId) {
+        userRoles = [{ role: savedRole, empresa_id: empresaId }];
+      }
+    }
 
     // Se nÃ£o tem empresa_id E nÃ£o tem nenhum role, Ã© um cliente de delivery
     if (!empresaId && (!userRoles || userRoles.length === 0)) {
@@ -173,7 +199,7 @@ export default function Auth() {
     } else {
       navigate(`/menu/${empresaId}`);
     }
-  }, [navigate]);
+  }, [navigate, user]);
 
   // Efeito para redirecionar quando jÃ¡ estÃ¡ logado (apenas uma vez)
   useEffect(() => {

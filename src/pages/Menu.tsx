@@ -169,7 +169,7 @@ export default function Menu() {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Cart persistido no localStorage para sobreviver a re-renders offline
+  // Cart persistido no Dexie + localStorage para sobreviver a crashes
   const cartStorageKey = `cart_${empresaId}_${mesaId}`;
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
@@ -178,14 +178,52 @@ export default function Menu() {
     } catch { return []; }
   });
 
-  // Sincronizar cart → localStorage a cada mudança
+  // Hidratar carrinho do Dexie na montagem (Dexie é mais confiável que localStorage)
+  useEffect(() => {
+    if (!empresaId || !mesaId) return;
+    db.cart
+      .where('empresa_id').equals(empresaId)
+      .filter((item: any) => item.mesa_id === mesaId)
+      .toArray()
+      .then((items: any[]) => {
+        if (items.length > 0) {
+          const cartItems: CartItem[] = items.map((i: any) => i.data).filter(Boolean);
+          if (cartItems.length > 0) {
+            setCart(prev => prev.length > 0 ? prev : cartItems);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [empresaId, mesaId]);
+
+  // Sincronizar cart → localStorage + Dexie a cada mudança
   useEffect(() => {
     if (cart.length > 0) {
       localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+      // Persistir cada item no Dexie (atômico por item)
+      if (empresaId && mesaId) {
+        const dexieItems = cart.map(item => ({
+          cartKey: item.cartKey,
+          empresa_id: empresaId,
+          mesa_id: mesaId,
+          data: item,
+        }));
+        // Limpa e reescreve (simples e seguro)
+        db.cart.where('empresa_id').equals(empresaId)
+          .filter((i: any) => i.mesa_id === mesaId)
+          .delete()
+          .then(() => db.cart.bulkPut(dexieItems))
+          .catch(() => {});
+      }
     } else {
       localStorage.removeItem(cartStorageKey);
+      if (empresaId && mesaId) {
+        db.cart.where('empresa_id').equals(empresaId)
+          .filter((i: any) => i.mesa_id === mesaId)
+          .delete().catch(() => {});
+      }
     }
-  }, [cart, cartStorageKey]);
+  }, [cart, cartStorageKey, empresaId, mesaId]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [comandaId, setComandaId] = useState<string | null>(null);
   const [meusPedidos, setMeusPedidos] = useState<Pedido[]>([]);

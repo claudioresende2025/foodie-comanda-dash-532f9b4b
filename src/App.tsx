@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { sincronizarTudo } from "./lib/db";
 import { connectionManager } from "./lib/connectionManager";
@@ -10,49 +10,64 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
-import Auth from "@/pages/Auth";
-import ResetPassword from "@/pages/ResetPassword";
-import AuthCliente from "@/pages/AuthCliente";
-import EmailConfirmation from "@/pages/EmailConfirmation";
-import NotFound from "@/pages/NotFound";
-import Menu from "@/pages/Menu";
-import Delivery from "@/pages/Delivery";
-import DeliveryRestaurant from "@/pages/DeliveryRestaurant";
-import DeliverySuccess from "@/pages/DeliverySuccess";
-import DeliveryTracking from "@/pages/DeliveryTracking";
-import DeliveryAuth from "@/pages/DeliveryAuth";
-import DeliveryOrders from "@/pages/DeliveryOrders";
-import DeliveryProfile from "@/pages/DeliveryProfile";
-import Install from "@/pages/Install";
-import Index from "@/pages/Index";
-import LandingRestaurantes from "@/pages/LandingRestaurantes";
-import Planos from "@/pages/Planos";
-import SuperAdmin from "@/pages/SuperAdmin";
-import SubscriptionSuccess from "@/pages/subscription/Success";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { SubscriptionGuard } from "@/components/subscription/SubscriptionGuard";
-import Dashboard from "@/pages/admin/Dashboard";
-import Onboarding from "@/pages/admin/Onboarding";
-import Mesas from "@/pages/admin/Mesas";
-import Cardapio from "@/pages/admin/Cardapio";
-import Pedidos from "@/pages/admin/Pedidos";
-import Caixa from "@/pages/admin/Caixa";
-import Equipe from "@/pages/admin/Equipe";
-import Empresa from "@/pages/admin/Empresa";
-import Configuracoes from "@/pages/admin/Configuracoes";
-import Garcom from "@/pages/admin/Garcom";
-import PedidosDelivery from "@/pages/admin/PedidosDelivery";
-import DeliveryDashboard from "@/pages/admin/DeliveryDashboard";
-import EntregadorPanel from "@/pages/admin/EntregadorPanel";
-import Marketing from "@/pages/admin/Marketing";
-import Assinatura from "@/pages/admin/Assinatura";
-import DiagnosticoStripe from "@/pages/admin/DiagnosticoStripe";
-import AdminDesempenho from "@/pages/admin/AdminDesempenho";
-import AdminAvaliacoes from "@/pages/admin/AdminAvaliacoes";
 import usePWAManifest from "@/hooks/usePWAManifest";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import ErrorBoundary from '@/components/ErrorBoundary';
-import CardapioDigitalDemo from '@/pages/CardapioDigitalDemo';
+import { Loader2 } from 'lucide-react';
+
+// ============================================
+// CODE SPLITTING: React.lazy para todas as páginas
+// Cada rota é carregada sob demanda — Login não carrega Mesas, etc.
+// ============================================
+const Auth = lazy(() => import("@/pages/Auth"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
+const AuthCliente = lazy(() => import("@/pages/AuthCliente"));
+const EmailConfirmation = lazy(() => import("@/pages/EmailConfirmation"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+const Menu = lazy(() => import("@/pages/Menu"));
+const Delivery = lazy(() => import("@/pages/Delivery"));
+const DeliveryRestaurant = lazy(() => import("@/pages/DeliveryRestaurant"));
+const DeliverySuccess = lazy(() => import("@/pages/DeliverySuccess"));
+const DeliveryTracking = lazy(() => import("@/pages/DeliveryTracking"));
+const DeliveryAuth = lazy(() => import("@/pages/DeliveryAuth"));
+const DeliveryOrders = lazy(() => import("@/pages/DeliveryOrders"));
+const DeliveryProfile = lazy(() => import("@/pages/DeliveryProfile"));
+const Install = lazy(() => import("@/pages/Install"));
+const Index = lazy(() => import("@/pages/Index"));
+const LandingRestaurantes = lazy(() => import("@/pages/LandingRestaurantes"));
+const Planos = lazy(() => import("@/pages/Planos"));
+const SuperAdmin = lazy(() => import("@/pages/SuperAdmin"));
+const SubscriptionSuccess = lazy(() => import("@/pages/subscription/Success"));
+const CardapioDigitalDemo = lazy(() => import("@/pages/CardapioDigitalDemo"));
+
+// Admin pages
+const Dashboard = lazy(() => import("@/pages/admin/Dashboard"));
+const Onboarding = lazy(() => import("@/pages/admin/Onboarding"));
+const Mesas = lazy(() => import("@/pages/admin/Mesas"));
+const Cardapio = lazy(() => import("@/pages/admin/Cardapio"));
+const Pedidos = lazy(() => import("@/pages/admin/Pedidos"));
+const Caixa = lazy(() => import("@/pages/admin/Caixa"));
+const Equipe = lazy(() => import("@/pages/admin/Equipe"));
+const Empresa = lazy(() => import("@/pages/admin/Empresa"));
+const Configuracoes = lazy(() => import("@/pages/admin/Configuracoes"));
+const Garcom = lazy(() => import("@/pages/admin/Garcom"));
+const PedidosDelivery = lazy(() => import("@/pages/admin/PedidosDelivery"));
+const DeliveryDashboard = lazy(() => import("@/pages/admin/DeliveryDashboard"));
+const EntregadorPanel = lazy(() => import("@/pages/admin/EntregadorPanel"));
+const Marketing = lazy(() => import("@/pages/admin/Marketing"));
+const Assinatura = lazy(() => import("@/pages/admin/Assinatura"));
+const DiagnosticoStripe = lazy(() => import("@/pages/admin/DiagnosticoStripe"));
+const AdminDesempenho = lazy(() => import("@/pages/admin/AdminDesempenho"));
+const AdminAvaliacoes = lazy(() => import("@/pages/admin/AdminAvaliacoes"));
+
+// Fallback de carregamento global para Suspense
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-screen bg-background">
+    <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+  </div>
+);
 
 // QueryClient configurado para Offline-First
 const queryClient = new QueryClient({
@@ -117,6 +132,7 @@ const App = () => {
             <SubscriptionHandler />
             <PWAManifestHandler />
             <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/para-restaurantes" element={<LandingRestaurantes />} />
@@ -167,6 +183,7 @@ const App = () => {
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </Suspense>
             </ErrorBoundary>
           </AuthProvider>
         </BrowserRouter>

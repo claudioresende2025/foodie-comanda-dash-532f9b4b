@@ -13,7 +13,7 @@
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
-import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst, NetworkOnly } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -173,9 +173,9 @@ setCatchHandler(async ({ event }) => {
       }
     }
     
-    // 3. Pagina de erro minima
+    // 3. SPA Fallback mínimo: redireciona para a app (nunca mostra 'Tentar novamente')
     return new Response(
-      '<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff"><h2>Food Comanda Pro</h2><p>Voce esta offline. Tente novamente.</p><button onclick="location.reload()" style="background:#f97316;color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Tentar novamente</button></body></html>',
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Food Comanda Pro</title></head><body><script>window.location.replace("/")</script></body></html>',
       { headers: { 'Content-Type': 'text/html' }, status: 200 }
     );
   }
@@ -257,8 +257,9 @@ registerRoute(
 );
 
 // ============================================
-// BYPASS: Supabase API calls go straight to network (no SW interception)
-// Also bypass localhost/dev servers
+// SUPABASE API: NetworkFirst com timeout curto
+// Se offline, falha em 3s em vez de ~30s de timeout do browser
+// Isso permite que o Dexie assuma imediatamente
 // ============================================
 registerRoute(
   ({ url }) => {
@@ -266,13 +267,19 @@ registerRoute(
       url.hostname.includes('supabase.co') ||
       url.pathname.includes('/rest/v1/') ||
       url.pathname.includes('/auth/v1/') ||
-      url.pathname.includes('/storage/v1/') ||
       url.pathname.includes('/functions/v1/') ||
       url.hostname === 'localhost' ||
       url.hostname === '127.0.0.1'
     );
   },
-  new NetworkOnly()
+  new NetworkFirst({
+    cacheName: 'supabase-api-cache',
+    networkTimeoutSeconds: 3,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 60 * 5 })
+    ]
+  })
 );
 
 // ============================================
@@ -280,14 +287,19 @@ registerRoute(
 // ============================================
 // Serve do cache imediatamente enquanto busca atualizacao
 
+// ============================================
+// CACHE-FIRST PARA ARQUIVOS ESTÁTICOS (.js, .css)
+// Servidos instantaneamente do cache — sem ida à rede
+// O precache do Workbox já garante versões atualizadas no build
+// ============================================
 registerRoute(
   /\.(?:js|css)$/,
-  new StaleWhileRevalidate({
+  new CacheFirst({
     cacheName: 'static-resources',
     plugins: [
       new ExpirationPlugin({
-        maxEntries: 60,
-        maxAgeSeconds: 60 * 60 * 24 * 7 // 7 dias
+        maxEntries: 80,
+        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 dias
       }),
       new CacheableResponsePlugin({
         statuses: [0, 200]
@@ -296,15 +308,15 @@ registerRoute(
   })
 );
 
-// HTML files - StaleWhileRevalidate para navegacao rapida offline
+// HTML files - CacheFirst para navegação offline instantânea
 registerRoute(
   /\.html$/,
-  new StaleWhileRevalidate({
+  new CacheFirst({
     cacheName: 'html-cache',
     plugins: [
       new ExpirationPlugin({
         maxEntries: 10,
-        maxAgeSeconds: 60 * 60 * 24 // 1 dia
+        maxAgeSeconds: 60 * 60 * 24 * 7 // 7 dias
       }),
       new CacheableResponsePlugin({
         statuses: [0, 200]

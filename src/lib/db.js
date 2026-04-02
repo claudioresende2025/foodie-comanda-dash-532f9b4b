@@ -11,7 +11,7 @@ export const db = new Dexie('FoodComandaPro_DB');
 // sync_error_at: string | null - Timestamp do erro
 // atualizado_em: string - Timestamp para Last Write Wins
 // logs_sincronizacao: Últimas 50 operações de sync para diagnóstico
-db.version(11).stores({
+db.version(12).stores({
     // Tabelas do salão (com campos de conflito)
     pedidos: 'id, comanda_id, produto_id, status_cozinha, sincronizado, criado_em, impresso_local, sync_status, atualizado_em',
     comandas: 'id, mesa_id, empresa_id, status, sincronizado, criado_em, sync_status, atualizado_em',
@@ -41,6 +41,8 @@ db.version(11).stores({
     // last_online_at = última vez que conectou online (para revalidação)
     // session_expires_at = expiração da sessão (24h)
     users_cache: 'email, id, nome, empresa_id, role, session_hash, cached_at, last_online_at, session_expires_at',
+    // Carrinho offline-first: cada item persiste em IndexedDB (não depende de RAM)
+    cart: '++id, cartKey, empresa_id, mesa_id',
     // Logs de sincronização para auditoria e suporte técnico
     // Mantém as últimas 50 operações de sync para diagnóstico remoto
     logs_sincronizacao: '++id, timestamp, type, operation, table, recordId',
