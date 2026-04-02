@@ -13,7 +13,7 @@
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -132,9 +132,18 @@ const navigationRoute = new NavigationRoute(navigationHandler, {
   denylist: [
     /^\/api\//,
     /^\/__/,
+    /\/version\.json$/,
   ],
 });
 registerRoute(navigationRoute);
+
+// ============================================
+// VERSION.JSON - SEMPRE DA REDE (nunca cachear)
+// ============================================
+registerRoute(
+  ({ url }) => url.pathname === '/version.json',
+  new NetworkOnly()
+);
 
 // ============================================
 // CATCH HANDLER - FALLBACK PARA QUALQUER FALHA
