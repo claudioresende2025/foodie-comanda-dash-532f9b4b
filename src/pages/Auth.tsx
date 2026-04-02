@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -393,10 +393,10 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden" style={{ height: '100vh', maxHeight: '100vh' }}>
+    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden">
       <div className="w-full max-w-md animate-fade-in">
         {/* Logo */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-4">
           {empresaUrl?.logo_url ? (
             <img 
               src={empresaUrl.logo_url} 
@@ -602,13 +602,13 @@ export default function Auth() {
           </CardContent>
         </Card>
         {/* Link para clientes */}
-        <div className="mt-4 text-center">
+        <div className="mt-3 text-center">
           <button
             type="button"
             className="text-sm text-muted-foreground hover:text-primary transition-colors"
             onClick={() => navigate('/auth/cliente')}
           >
-            E cliente? <span className="underline">Faca seus pedidos aqui</span>
+            {'É'} cliente? <span className="underline">{`Faça`} seus pedidos aqui</span>
           </button>
         </div>
       </div>

@@ -18,8 +18,8 @@ export default defineConfig(async ({ mode }) => {
         type: "module"
       },
       injectManifest: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,jpg,jpeg,webp}"],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024 // 3MB
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot,jpg,jpeg,webp,json}"],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024 // 5MB
       },
       manifest: {
         name: "Food Comanda Pro",

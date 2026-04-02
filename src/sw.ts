@@ -3,8 +3,9 @@
 // Service Worker com suporte a Web Push Notifications
 // Este arquivo é usado pelo VitePWA injectManifest
 // 
-// VERSÃO: 2.1.0 - StaleWhileRevalidate + Pre-caching + SPA Fallback
+// VERSÃO: 2.2.0 - Fix ERR_FAILED offline navigation
 // Changelog:
+// - v2.2.0: Remove listener fetch duplicado que conflitava com NavigationRoute
 // - v2.1.0: StaleWhileRevalidate para JS/CSS, pre-cache rotas, fallback SPA
 // - v2.0.0: skipWaiting() forçado, Dexie.js, limpeza caches
 
@@ -18,7 +19,7 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 declare const self: ServiceWorkerGlobalScope;
 
 // Versão do Service Worker (incrementar a cada deploy)
-const SW_VERSION = '2.1.0';
+const SW_VERSION = '2.2.0';
 const SW_BUILD_DATE = new Date().toISOString();
 
 // Extended notification options for service worker
@@ -120,17 +121,16 @@ precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
 // ============================================
-// NAVIGATION ROUTE - CRÍTICO PARA SPA OFFLINE
+// NAVIGATION ROUTE - CRITICO PARA SPA OFFLINE
 // ============================================
-// Para SPAs, todas as rotas devem retornar o index.html
-// Isso permite navegar entre páginas (/admin/mesas, /admin/pedidos, etc) offline
+// createHandlerBoundToURL serve /index.html do PRECACHE (funciona 100% offline)
+// Isso permite navegar entre /admin/mesas, /admin/cardapio, etc sem network
 const navigationHandler = createHandlerBoundToURL('/index.html');
 const navigationRoute = new NavigationRoute(navigationHandler, {
-  // Exclusões: não interceptar chamadas de API ou arquivos estáticos
+  // Apenas excluir chamadas de API - NAO excluir rotas da aplicacao
   denylist: [
     /^\/api\//,
     /^\/__/,
-    /\/[^/?]+\.[^/]+$/, // arquivos com extensão (ex: .json, .js, .css)
   ],
 });
 registerRoute(navigationRoute);
@@ -278,8 +278,7 @@ async function precacheMainRoutes(): Promise<void> {
 }
 
 // Escutar mensagem do cliente para iniciar pre-cache
-self.addEventListener('message', (event: ExtendableMessageEvent) => {
-  if (event.data && event.data.type === 'PRECACHE_ROUTES') {
+self.addEventListener('message', (event: ExtendableMessageEvent) => {  if (event.data && event.data.type === 'PRECACHE_ROUTES') {
     console.log('[SW] Iniciando pre-cache de rotas...');
     event.waitUntil(precacheMainRoutes());
   }
@@ -294,81 +293,6 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
       buildDate: SW_BUILD_DATE
     });
   }
-});
-
-// ============================================
-// FALLBACK MELHORADO PARA SPA OFFLINE
-// ============================================
-// Intercepta erros de navegacao e retorna index.html
-
-self.addEventListener('fetch', (event: FetchEvent) => {
-  const request = event.request;
-  
-  // Apenas navegacoes (nao APIs ou assets)
-  if (request.mode !== 'navigate') return;
-  
-  // Se ja estiver sendo tratado pelo NavigationRoute, ignorar
-  if (request.url.includes('.') && !request.url.endsWith('.html')) return;
-  
-  event.respondWith(
-    (async () => {
-      try {
-        // Tentar buscar da rede primeiro
-        const networkResponse = await fetch(request);
-        return networkResponse;
-      } catch (networkError) {
-        // Se falhar, buscar index.html do cache
-        console.log('[SW] Navegacao offline, servindo index.html do cache');
-        
-        // Tentar do cache de rotas primeiro
-        const routesCache = await caches.open('routes-cache');
-        const cachedRoute = await routesCache.match(new URL(request.url).pathname);
-        if (cachedRoute) {
-          return cachedRoute;
-        }
-        
-        // Fallback para index.html do precache do workbox
-        const precacheCache = await caches.open('workbox-precache-v2');
-        const keys = await precacheCache.keys();
-        const indexKey = keys.find(k => k.url.includes('index.html'));
-        if (indexKey) {
-          const cachedIndex = await precacheCache.match(indexKey);
-          if (cachedIndex) return cachedIndex;
-        }
-        
-        // Ultimo fallback - tentar qualquer cache
-        const cachedResponse = await caches.match('/index.html');
-        if (cachedResponse) return cachedResponse;
-        
-        // Se nada funcionar, retornar pagina de erro offline
-        return new Response(
-          `<!DOCTYPE html>
-          <html>
-          <head>
-            <title>Food Comanda Pro - Offline</title>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-              body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #1a1a2e; color: white; }
-              .container { text-align: center; padding: 20px; }
-              h1 { color: #f97316; }
-              button { background: #f97316; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin-top: 20px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <h1>Food Comanda Pro</h1>
-              <p>Voce esta offline e esta pagina ainda nao foi cacheada.</p>
-              <p>Conecte-se a internet e tente novamente.</p>
-              <button onclick="location.reload()">Tentar Novamente</button>
-            </div>
-          </body>
-          </html>`,
-          { headers: { 'Content-Type': 'text/html' }, status: 503 }
-        );
-      }
-    })()
-  );
 });
 
 // ============================================
