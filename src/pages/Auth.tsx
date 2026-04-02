@@ -393,8 +393,8 @@ export default function Auth() {
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden">
-      <div className="w-full max-w-md animate-fade-in">
+    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-y-auto scrollbar-none">
+      <div className="w-full max-w-md animate-fade-in py-4">
         {/* Logo */}
         <div className="text-center mb-4">
           {empresaUrl?.logo_url ? (

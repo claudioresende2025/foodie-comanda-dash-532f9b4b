@@ -138,6 +138,18 @@ export const UpdateNotification = () => {
       navigator.serviceWorker.addEventListener('message', onMessage as EventListener);
       checkSW();
 
+      // Polling de atualizacao SW a cada 5 min - essencial para mobile PWA
+      // (iOS/Safari nao dispara updatefound conflavelmente, precisamos verificar ativamente)
+      const swPollInterval = window.setInterval(async () => {
+        try {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) {
+            await reg.update();
+            if (reg.waiting) scheduleNotification(reg.waiting);
+          }
+        } catch (e) { /* ignorar erros de polling */ }
+      }, 5 * 60 * 1000); // 5 minutos
+
       // Verificar ao voltar para a aba
       const handleVisibility = () => {
         if (!document.hidden) {
@@ -154,6 +166,7 @@ export const UpdateNotification = () => {
         navigator.serviceWorker.removeEventListener('message', onMessage as EventListener);
         if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
         if (checkIntervalRef.current) window.clearInterval(checkIntervalRef.current);
+        window.clearInterval(swPollInterval);
       };
     }
 

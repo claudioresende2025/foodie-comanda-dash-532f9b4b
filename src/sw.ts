@@ -5,13 +5,14 @@
 // 
 // VERSÃO: 2.2.0 - Fix ERR_FAILED offline navigation
 // Changelog:
+// - v2.3.0: setCatchHandler para fallback offline, notificacao mobile melhorada
 // - v2.2.0: Remove listener fetch duplicado que conflitava com NavigationRoute
 // - v2.1.0: StaleWhileRevalidate para JS/CSS, pre-cache rotas, fallback SPA
 // - v2.0.0: skipWaiting() forçado, Dexie.js, limpeza caches
 
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
-import { registerRoute, NavigationRoute } from 'workbox-routing';
+import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
@@ -19,7 +20,7 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 declare const self: ServiceWorkerGlobalScope;
 
 // Versão do Service Worker (incrementar a cada deploy)
-const SW_VERSION = '2.2.0';
+const SW_VERSION = '2.3.0';
 const SW_BUILD_DATE = new Date().toISOString();
 
 // Extended notification options for service worker
@@ -136,7 +137,42 @@ const navigationRoute = new NavigationRoute(navigationHandler, {
 registerRoute(navigationRoute);
 
 // ============================================
-// CACHE DE ASSETS ESTÁTICOS
+// CATCH HANDLER - FALLBACK PARA QUALQUER FALHA
+// ============================================
+// setCatchHandler e chamado quando uma rota registrada lanca erro
+// Garante que navegacoes offline SEMPRE recebam index.html
+setCatchHandler(async ({ event }) => {
+  const req = (event as FetchEvent).request;
+  
+  // Para navegacoes: tentar todos os caches em ordem
+  if (req.mode === 'navigate') {
+    console.log('[SW] setCatchHandler: navegacao falhou, buscando index.html do cache');
+    
+    // 1. Tentar precache workbox
+    const precached = await caches.match('/index.html');
+    if (precached) return precached;
+    
+    // 2. Varrer todos os caches
+    const cacheNames = await caches.keys();
+    for (const cacheName of cacheNames) {
+      const cache = await caches.open(cacheName);
+      const keys = await cache.keys();
+      const indexKey = keys.find(k => k.url.includes('index.html'));
+      if (indexKey) {
+        const match = await cache.match(indexKey);
+        if (match) return match;
+      }
+    }
+    
+    // 3. Pagina de erro minima
+    return new Response(
+      '<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#111;color:#fff"><h2>Food Comanda Pro</h2><p>Voce esta offline. Tente novamente.</p><button onclick="location.reload()" style="background:#f97316;color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Tentar novamente</button></body></html>',
+      { headers: { 'Content-Type': 'text/html' }, status: 200 }
+    );
+  }
+  
+  return Response.error();
+});
 // ============================================
 
 // Cache Google Fonts
