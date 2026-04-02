@@ -94,6 +94,8 @@ import { printCaixaReceipt } from '@/utils/kitchenPrinter';
 
 import { AddItemModal } from '@/components/caixa/AddItemModal';
 
+import { CaixaSkeleton } from '@/components/ui/PageSkeletons';
+
 
 
 type PaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
@@ -2767,15 +2769,7 @@ export default function Caixa() {
 
   if (isLoadingPage) {
 
-    return (
-
-      <div className="flex items-center justify-center h-64">
-
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-
-      </div>
-
-    );
+    return <CaixaSkeleton />;
 
   }
 

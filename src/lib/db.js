@@ -46,51 +46,60 @@ db.version(11).stores({
     logs_sincronizacao: '++id, timestamp, type, operation, table, recordId',
 });
 
-// 2. DOWNLOAD INICIAL (POPULAR O PC DO RESTAURANTE)
-export async function baixarDadosIniciais(empresaId, supabaseClient = supabase) {
-    if (!navigator.onLine || !empresaId) return;
-
-    console.log("📥 Atualizando banco local com dados da nuvem...");
-    const tabelasParaBaixar = [
-        { nome: 'produtos', filtro: 'empresa_id' },
-        { nome: 'categorias', filtro: 'empresa_id' },
-        { nome: 'mesas', filtro: 'empresa_id' },
-        { nome: 'comandas', filtro: 'empresa_id' },
-        { nome: 'pedidos', filtro: null }, // Pedidos via join com comandas
-    ];
-
-    for (const tabela of tabelasParaBaixar) {
+// 2. DOWNLOAD INICIAL POR LOTES PRIORIZADOS (POPULAR O PC DO RESTAURANTE)
+// P1 (imediato): mesas + empresa (< 50 registros, essencial para UI)
+// P2 (background): produtos + categorias (cardápio)
+// P3 (background): pedidos + comandas dos últimos 7 dias apenas
+async function baixarLote(tabelas, empresaId, supabaseClient) {
+    await Promise.all(tabelas.map(async (tabela) => {
         try {
             let query = supabaseClient.from(tabela.nome).select('*');
-            
-            if (tabela.filtro) {
-                query = query.eq(tabela.filtro, empresaId);
+            if (tabela.filtro) query = query.eq(tabela.filtro, empresaId);
+            if (tabela.dateFilter) {
+                const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                query = query.gte(tabela.dateFilter, since);
             }
-            
             const { data, error } = await query;
-
             if (!error && data && db[tabela.nome]) {
-                // Limpar dados antigos desta empresa
                 if (tabela.filtro) {
                     const existentes = await db[tabela.nome].where(tabela.filtro).equals(empresaId).toArray();
-                    const idsParaRemover = existentes.map(e => e.id);
-                    if (idsParaRemover.length > 0) {
-                        await db[tabela.nome].bulkDelete(idsParaRemover);
-                    }
+                    const ids = existentes.map(e => e.id);
+                    if (ids.length > 0) await db[tabela.nome].bulkDelete(ids);
                 }
-                
-                const dadosComSync = data.map(item => ({ 
-                    ...item, 
+                const dadosComSync = data.map(item => ({
+                    ...item,
                     sincronizado: 1,
-                    numero: item.numero_mesa || item.numero // compatibilidade mesas
+                    numero: item.numero_mesa || item.numero
                 }));
                 await db[tabela.nome].bulkPut(dadosComSync);
             }
         } catch (e) {
             console.error(`Erro ao baixar ${tabela.nome}:`, e);
         }
-    }
-    console.log("✅ Banco local pronto para uso offline!");
+    }));
+}
+
+export async function baixarDadosIniciais(empresaId, supabaseClient = supabase) {
+    if (!navigator.onLine || !empresaId) return;
+
+    console.log("📥 [P1] Baixando mesas e empresa...");
+    // P1 — Dados essenciais para renderização imediata
+    await baixarLote([
+        { nome: 'mesas', filtro: 'empresa_id' },
+        { nome: 'empresa', filtro: 'id' },
+    ], empresaId, supabaseClient);
+    console.log("✅ [P1] Mesas e empresa prontos!");
+
+    // P2 + P3 — Rodam em paralelo, sem bloquear a UI
+    console.log("📥 [P2+P3] Baixando cardápio e pedidos recentes...");
+    baixarLote([
+        { nome: 'produtos', filtro: 'empresa_id' },
+        { nome: 'categorias', filtro: 'empresa_id' },
+        { nome: 'comandas', filtro: 'empresa_id', dateFilter: 'criado_em' },
+        { nome: 'pedidos', filtro: null, dateFilter: 'criado_em' },
+    ], empresaId, supabaseClient).then(() => {
+        console.log("✅ [P2+P3] Cardápio e pedidos recentes prontos!");
+    }).catch(e => console.warn('[P2+P3] Erro parcial:', e));
 }
 
 // 3. FUNÇÃO GENÉRICA PARA SALVAR

@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, Users, Loader2, Merge, X, QrCode, RefreshCw, CheckCircle, Clock, CalendarCheck, Link2, Receipt, DollarSign } from 'lucide-react';
+import { MesasSkeleton } from '@/components/ui/PageSkeletons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MesaQRCodeDialog } from '@/components/admin/MesaQRCodeDialog';
@@ -458,11 +459,7 @@ export default function Mesas() {
 
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <MesasSkeleton />;
   }
 
   return (

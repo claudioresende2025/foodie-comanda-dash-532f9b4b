@@ -232,15 +232,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     // THEN check for existing session - controls initial loading
-    // Timeout para evitar loading infinito quando offline
+    // Race: quem resolver primeiro (getSession vs offline restore) libera a UI
     const sessionTimeout = setTimeout(async () => {
       console.warn('[AuthContext] Timeout ao verificar sessão - possivelmente offline');
-      
-      // Tentar restaurar sessão offline
       await tryRestoreOfflineSession();
-      
       setLoading(false);
-    }, 5000); // 5 segundos de timeout
+    }, 1500); // 1.5s — suficiente para conexão boa, fallback rápido offline
     
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(sessionTimeout);
@@ -335,9 +332,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    // Limpar sessão do Supabase
-    await supabase.auth.signOut();
-    
+    // Limpar estados PRIMEIRO (redirecionamento imediato)
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    setPermissions(null);
+    setIsOfflineSession(false);
+
     // Limpar sessão offline
     try {
       const { clearOfflineSession } = await import('@/lib/offlineAuth');
@@ -345,13 +346,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn('[AuthContext] Erro ao limpar sessão offline:', e);
     }
-    
-    // Limpar estados
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-    setPermissions(null);
-    setIsOfflineSession(false);
+
+    // Limpar sessão do Supabase apenas se online (evita bloqueio)
+    if (navigator.onLine) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('[AuthContext] Erro ao deslogar do Supabase (offline):', e);
+      }
+    }
   };
 
   return (

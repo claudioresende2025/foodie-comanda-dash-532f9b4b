@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
 import { SmartUpsellSection } from "@/components/smart/SmartUpsellSection";
 import { apiLocal } from '../services/api';
+import { MenuSkeleton } from '@/components/ui/PageSkeletons';
 
 // --- Tipos de Dados (Types) ---
 
@@ -167,7 +168,24 @@ export default function Menu() {
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Cart persistido no localStorage para sobreviver a re-renders offline
+  const cartStorageKey = `cart_${empresaId}_${mesaId}`;
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(cartStorageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  // Sincronizar cart → localStorage a cada mudança
+  useEffect(() => {
+    if (cart.length > 0) {
+      localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+    } else {
+      localStorage.removeItem(cartStorageKey);
+    }
+  }, [cart, cartStorageKey]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [comandaId, setComandaId] = useState<string | null>(null);
   const [meusPedidos, setMeusPedidos] = useState<Pedido[]>([]);
@@ -566,18 +584,17 @@ export default function Menu() {
       }
 
       // ===============================
-      // OFFLINE-FIRST: Busca dados do IndexedDB primeiro
+      // CACHE-FIRST: Mostra dados do Dexie IMEDIATAMENTE
       // ===============================
       let empresaLocal: Empresa | null = null;
       let categoriasLocal: Categoria[] = [];
       let produtosLocal: Produto[] = [];
       let mesaLocal: any = null;
+      let temDadosLocais = false;
 
       try {
         const empresaData = await db.empresa.where('id').equals(empresaId).first();
-        if (empresaData) {
-          empresaLocal = empresaData as Empresa;
-        }
+        if (empresaData) empresaLocal = empresaData as Empresa;
 
         const catData = await db.categorias.where('empresa_id').equals(empresaId).toArray();
         categoriasLocal = catData.filter((c: any) => c.ativo !== false).sort((a: any, b: any) => (a.ordem || 0) - (b.ordem || 0));
@@ -588,10 +605,24 @@ export default function Menu() {
         if (mesaId) {
           mesaLocal = await db.mesas.where('id').equals(mesaId).first();
         }
+
+        // Se tem dados locais, renderiza IMEDIATAMENTE (sem esperar Supabase)
+        if (empresaLocal && produtosLocal.length > 0) {
+          temDadosLocais = true;
+          setEmpresa(empresaLocal);
+          setCategorias(categoriasLocal);
+          setProdutos(produtosLocal);
+          if (mesaLocal) setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
+          setIsLoading(false); // UI liberada AQUI
+          console.log('[Cache-First] ✅ Dados do Dexie exibidos instantaneamente');
+        }
       } catch (dexieErr) {
-        console.warn('[Emergency Fallback] Dexie falhou, indo direto ao Supabase:', dexieErr);
+        console.warn('[Cache-First] Dexie falhou, indo direto ao Supabase:', dexieErr);
       }
 
+      // ===============================
+      // BACKGROUND REFRESH: Atualiza do Supabase sem bloquear UI
+      // ===============================
       if (navigator.onLine) {
         try {
           const { data: empresaData, error: empresaError } = await supabase
@@ -605,9 +636,7 @@ export default function Menu() {
           if (empresaData) {
             setEmpresa(empresaData as Empresa);
             await db.empresa.put({ ...empresaData, sincronizado: 1 }).catch(() => { });
-          } else if (empresaLocal) {
-            setEmpresa(empresaLocal);
-          } else {
+          } else if (!temDadosLocais) {
             setError("Restaurante não encontrado. Verifique o link e tente novamente.");
             setIsLoading(false);
             return;
@@ -615,11 +644,7 @@ export default function Menu() {
 
           if (mesaId) {
             const { data: mesaData } = await supabase.from("mesas").select("numero_mesa").eq("id", mesaId).maybeSingle();
-            if (mesaData) {
-              setMesaNumero(mesaData.numero_mesa);
-            } else if (mesaLocal) {
-              setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
-            }
+            if (mesaData) setMesaNumero(mesaData.numero_mesa);
           }
 
           const { data: catData, error: catError } = await supabase
@@ -633,8 +658,6 @@ export default function Menu() {
             setCategorias(catData || []);
             const catsSync = catData.map((c: any) => ({ ...c, sincronizado: 1 }));
             await db.categorias.bulkPut(catsSync).catch(() => { });
-          } else {
-            setCategorias(categoriasLocal);
           }
 
           const { data: prodData, error: prodError } = await supabase
@@ -648,40 +671,18 @@ export default function Menu() {
             setProdutos(prodData || []);
             const prodsSync = prodData.map((p: any) => ({ ...p, sincronizado: 1 }));
             await db.produtos.bulkPut(prodsSync).catch(() => { });
-          } else {
-            setProdutos(produtosLocal);
           }
         } catch (err) {
-          console.warn("[Offline-First] Supabase inacessível, usando dados locais:", err);
-
-          if (empresaLocal) {
-            setEmpresa(empresaLocal);
-            if (mesaLocal) {
-              setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
-            }
-            setCategorias(categoriasLocal);
-            setProdutos(produtosLocal);
-          } else {
+          console.warn("[Cache-First] Supabase inacessível, dados locais mantidos:", err);
+          if (!temDadosLocais) {
             setError("Sem conexão e sem dados salvos localmente.");
           }
         }
-      } else {
-        console.log('[Offline-First] Modo offline - usando dados do IndexedDB');
-
-        if (empresaLocal) {
-          setEmpresa(empresaLocal);
-          if (mesaLocal) {
-            setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
-          }
-          setCategorias(categoriasLocal);
-          setProdutos(produtosLocal);
-        } else {
-          setError("Sem conexão e sem dados salvos localmente. Conecte-se à internet pelo menos uma vez para carregar o cardápio.");
-        }
+      } else if (!temDadosLocais) {
+        setError("Sem conexão e sem dados salvos localmente. Conecte-se à internet pelo menos uma vez para carregar o cardápio.");
       }
     } catch (globalErr) {
-      // FALLBACK GLOBAL: Se qualquer coisa falhar, tentar Supabase direto
-      console.error('[Emergency] Erro global no fetchMenuData, tentando Supabase direto:', globalErr);
+      console.error('[Emergency] Erro global no fetchMenuData:', globalErr);
       try {
         if (navigator.onLine) {
           const [empRes, catRes, prodRes] = await Promise.all([
@@ -977,11 +978,7 @@ export default function Menu() {
   // --- Renderização de UI ---
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <MenuSkeleton />;
   }
 
   if (error) {
@@ -1171,7 +1168,7 @@ export default function Menu() {
                 <Card key={produto.id} className="overflow-hidden border-0 shadow-fcd">
                   <div className="aspect-video bg-muted relative">
                     {produto.imagem_url ? (
-                      <img src={produto.imagem_url} alt={produto.nome} className="w-full h-full object-cover" />
+                      <img src={produto.imagem_url} alt={produto.nome} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <ChefHat className="w-12 h-12 text-muted-foreground/30" />

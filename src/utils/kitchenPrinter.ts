@@ -1,4 +1,5 @@
-// Kitchen Order Print Utility for Thermal Printers (80mm)
+// Kitchen Order Print Utility for Thermal Printers (58mm / 80mm)
+// Detecta largura da bobina via localStorage('fcd-printer-width') → '58' | '80' (default: '80')
 
 type PrintItem = {
   nome: string;
@@ -43,28 +44,45 @@ type CaixaReceiptData = {
   timestamp: Date;
 };
 
+/** Largura em colunas: 58mm ≈ 32 cols, 80mm ≈ 40 cols */
+const getColWidth = (): number => {
+  const w = localStorage.getItem('fcd-printer-width');
+  return w === '58' ? 32 : 40;
+};
+
+const getPaperMm = (): number => {
+  const w = localStorage.getItem('fcd-printer-width');
+  return w === '58' ? 58 : 80;
+};
+
+const centerText = (text: string, width: number): string => {
+  const padding = Math.max(0, Math.floor((width - text.length) / 2));
+  return ' '.repeat(padding) + text;
+};
+
 export const formatKitchenOrder = (order: PrintOrder): string => {
   const { mesaNumero, itens, timestamp } = order;
-  
-  const divider = '='.repeat(40);
-  const thinDivider = '-'.repeat(40);
+  const cols = getColWidth();
+
+  const divider = '='.repeat(cols);
+  const thinDivider = '-'.repeat(cols);
   
   let receipt = '';
   
   // Header
   receipt += '\n';
   receipt += divider + '\n';
-  receipt += centerText('*** NOVO PEDIDO ***', 40) + '\n';
+  receipt += centerText('*** NOVO PEDIDO ***', cols) + '\n';
   receipt += divider + '\n';
   receipt += '\n';
   
-  // Table info
+  // Restaurant info
   if (order.empresaNome) {
-    receipt += centerText(order.empresaNome.toUpperCase(), 40) + '\n';
-    if (order.empresaEndereco) receipt += centerText(order.empresaEndereco, 40) + '\n';
+    receipt += centerText(order.empresaNome.toUpperCase(), cols) + '\n';
+    if (order.empresaEndereco) receipt += centerText(order.empresaEndereco, cols) + '\n';
     receipt += '\n';
   }
-  receipt += centerText(`MESA ${mesaNumero}`, 40) + '\n';
+  receipt += centerText(`MESA ${mesaNumero}`, cols) + '\n';
   receipt += '\n';
   
   // Date/Time
@@ -88,10 +106,10 @@ export const formatKitchenOrder = (order: PrintOrder): string => {
   
   receipt += '\n';
   receipt += divider + '\n';
-  receipt += centerText(`Total de itens: ${itens.reduce((sum, i) => sum + i.quantidade, 0)}`, 40) + '\n';
+  receipt += centerText(`Total de itens: ${itens.reduce((sum, i) => sum + i.quantidade, 0)}`, cols) + '\n';
   receipt += divider + '\n';
   receipt += '\n';
-  // Totals: taxa de serviço e couver quando aplicáveis
+  // Totals
   if (order.incluirTaxaServico && order.taxaServicoPercentual) {
     receipt += `Taxa de Servico: ${order.taxaServicoPercentual}%\n`;
   }
@@ -100,7 +118,7 @@ export const formatKitchenOrder = (order: PrintOrder): string => {
   }
   if (typeof order.total === 'number') {
     receipt += thinDivider + '\n';
-    receipt += centerText(`TOTAL: R$ ${order.total.toFixed(2)}`, 40) + '\n';
+    receipt += centerText(`TOTAL: R$ ${order.total.toFixed(2)}`, cols) + '\n';
     receipt += thinDivider + '\n';
   }
   receipt += '\n\n\n';
@@ -108,69 +126,93 @@ export const formatKitchenOrder = (order: PrintOrder): string => {
   return receipt;
 };
 
-const centerText = (text: string, width: number): string => {
-  const padding = Math.max(0, Math.floor((width - text.length) / 2));
-  return ' '.repeat(padding) + text;
-};
-
 export const printKitchenOrder = (order: PrintOrder): void => {
   const content = formatKitchenOrder(order);
+  const paperMm = getPaperMm();
+  const bodyWidth = paperMm - 10; // margem útil
   
-  // Create a hidden iframe for printing
+  // Create a hidden iframe for silent printing
   const iframe = document.createElement('iframe');
-  iframe.style.position = 'absolute';
+  iframe.style.position = 'fixed';
   iframe.style.top = '-10000px';
   iframe.style.left = '-10000px';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
   document.body.appendChild(iframe);
   
   const doc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!doc) {
-    console.error('Could not access iframe document');
+    console.error('[KDS Print] Could not access iframe document');
     document.body.removeChild(iframe);
     return;
   }
   
   doc.open();
-  doc.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Pedido Mesa ${order.mesaNumero}</title>
-      <style>
-        @page {
-          size: 80mm auto;
-          margin: 0;
-        }
-        body {
-          font-family: 'Courier New', monospace;
-          font-size: 12px;
-          line-height: 1.4;
-          margin: 0;
-          padding: 5mm;
-          width: 70mm;
-        }
-        pre {
-          margin: 0;
-          white-space: pre-wrap;
-          word-wrap: break-word;
-        }
-      </style>
-    </head>
-    <body>
-      <pre>${content}</pre>
-    </body>
-    </html>
-  `);
+  doc.write(`<!DOCTYPE html>
+<html>
+<head>
+<title>Pedido Mesa ${order.mesaNumero}</title>
+<style>
+/* ===== SILENT PRINT: Remove browser headers/footers ===== */
+@page {
+  size: ${paperMm}mm auto;
+  margin: 0 !important;
+}
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: ${bodyWidth}mm !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Hide any browser-injected elements */
+  header, footer, nav, aside { display: none !important; }
+}
+/* ===== Base styles ===== */
+html, body {
+  margin: 0;
+  padding: 2mm;
+  width: ${bodyWidth}mm;
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: ${paperMm === 58 ? '10px' : '12px'};
+  line-height: 1.3;
+  color: #000;
+  background: #fff;
+}
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+</style>
+</head>
+<body><pre>${content}</pre></body>
+</html>`);
   doc.close();
   
-  // Wait for content to load then print
-  iframe.onload = () => {
-    iframe.contentWindow?.print();
-    // Remove iframe after print dialog closes
+  // Wait for content to render then trigger print
+  const triggerPrint = () => {
+    try {
+      iframe.contentWindow?.print();
+    } catch (e) {
+      console.warn('[KDS Print] print() blocked:', e);
+    }
+    // Cleanup after print dialog closes (or immediately on silent printers)
     setTimeout(() => {
-      document.body.removeChild(iframe);
-    }, 1000);
+      try { document.body.removeChild(iframe); } catch {}
+    }, 2000);
   };
+
+  if (iframe.contentDocument?.readyState === 'complete') {
+    triggerPrint();
+  } else {
+    iframe.onload = triggerPrint;
+  }
 };
 
 // Auto-print trigger function

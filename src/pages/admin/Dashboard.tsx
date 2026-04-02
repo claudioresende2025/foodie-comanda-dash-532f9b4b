@@ -8,7 +8,6 @@ import {
   Users,
   TrendingUp,
   Clock,
-  Loader2,
   Download,
   FileSpreadsheet,
   RefreshCw,
@@ -28,6 +27,7 @@ import { exportSalesReport, exportSalesReportPDF, exportToCSV } from '@/utils/ex
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { DashboardSkeleton } from '@/components/admin/DashboardSkeleton';
 
 type DailySales = {
   date: string;
@@ -707,11 +707,7 @@ export default function Dashboard() {
   };
 
   if (isLoadingComandas) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   const statsCards = [

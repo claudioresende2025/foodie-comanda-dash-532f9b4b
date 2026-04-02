@@ -232,6 +232,31 @@ registerRoute(
 );
 
 // ============================================
+// CACHE-FIRST para imagens do Supabase Storage (fotos de produtos)
+// DEVE vir ANTES do bypass NetworkOnly do Supabase API
+// ============================================
+registerRoute(
+  ({ url }) => {
+    return (
+      url.hostname.includes('supabase.co') &&
+      url.pathname.includes('/storage/v1/object/public/')
+    );
+  },
+  new CacheFirst({
+    cacheName: 'supabase-images-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 200,
+        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+// ============================================
 // BYPASS: Supabase API calls go straight to network (no SW interception)
 // Also bypass localhost/dev servers
 // ============================================

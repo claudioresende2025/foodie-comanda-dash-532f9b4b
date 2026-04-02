@@ -184,6 +184,7 @@ export default function Pedidos() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const soundIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const processedPedidosRef = useRef<Set<string>>(new Set()); // Evitar processar o mesmo pedido múltiplas vezes
+  const printedPedidosRef = useRef<Set<string>>(new Set()); // Evitar imprimir o mesmo pedido múltiplas vezes
 
   // ===============================
   // QUERY ÚNICA → Offline-First Híbrido
@@ -391,6 +392,9 @@ export default function Pedidos() {
     if (!pedidos || pedidos.length === 0 || !profile?.empresa_id) return;
 
     const autoUpdatePedidos = async () => {
+      // Agrupar pedidos pendentes da mesma comanda para imprimir juntos
+      const pendentesParaImprimir: Map<string, any[]> = new Map();
+
       for (const pedido of pedidos) {
         const pedidoId = pedido.id;
         const statusAtual = pedido.status_cozinha as PedidoStatus;
@@ -398,23 +402,40 @@ export default function Pedidos() {
         // Evitar processar pedidos já processados
         if (processedPedidosRef.current.has(`${pedidoId}-${statusAtual}`)) continue;
 
-        // Pendente → Preparando (imediato)
+        // Pendente → Preparando (imediato) + Auto-print
         if (statusAtual === "pendente") {
           processedPedidosRef.current.add(`${pedidoId}-pendente`);
-          
-          try {
-            const { error } = await supabase
-              .from("pedidos")
-              .update({ status_cozinha: "preparando" })
-              .eq("id", pedidoId);
-            
-            if (!error) {
-              console.log(`[KDS] Pedido ${pedidoId} movido: pendente → preparando`);
-              queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
+
+          // Agrupar para impressão por comanda
+          if (!printedPedidosRef.current.has(pedidoId)) {
+            printedPedidosRef.current.add(pedidoId);
+            const comandaKey = (pedido as any).comanda?.id || 'unknown';
+            if (!pendentesParaImprimir.has(comandaKey)) {
+              pendentesParaImprimir.set(comandaKey, []);
             }
-          } catch (e) {
-            console.error("Erro ao auto-atualizar pendente → preparando:", e);
+            pendentesParaImprimir.get(comandaKey)!.push(pedido);
           }
+          
+          // DEXIE PRIMEIRO - Atualizar status localmente
+          await db.pedidos.update(pedidoId, { status_cozinha: "preparando", sincronizado: 0 }).catch(() => {});
+          
+          // Supabase em background
+          if (navigator.onLine) {
+            try {
+              const { error } = await supabase
+                .from("pedidos")
+                .update({ status_cozinha: "preparando" })
+                .eq("id", pedidoId);
+              
+              if (!error) {
+                await db.pedidos.update(pedidoId, { sincronizado: 1 }).catch(() => {});
+                console.log(`[KDS] Pedido ${pedidoId} movido: pendente → preparando`);
+              }
+            } catch (e) {
+              console.warn("[KDS] Sync pendente → preparando será retentada:", e);
+            }
+          }
+          queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
         }
         
         // Preparando → Pronto (após tempo de preparo dinâmico baseado no produto)
@@ -433,31 +454,58 @@ export default function Pedidos() {
             
             setTimeout(async () => {
               try {
-                // Verificar se ainda está "preparando" antes de atualizar
-                const { data: pedidoAtual } = await supabase
-                  .from("pedidos")
-                  .select("status_cozinha")
-                  .eq("id", pedidoId)
-                  .single();
-                
-                if (pedidoAtual?.status_cozinha === "preparando") {
-                  const { error } = await supabase
-                    .from("pedidos")
-                    .update({ status_cozinha: "pronto" })
-                    .eq("id", pedidoId);
+                // Verificar se ainda está "preparando" no Dexie primeiro
+                const pedidoLocal = await db.pedidos.get(pedidoId);
+                const aindaPreparando = pedidoLocal?.status_cozinha === "preparando";
+
+                if (aindaPreparando) {
+                  // DEXIE PRIMEIRO
+                  await db.pedidos.update(pedidoId, { status_cozinha: "pronto", sincronizado: 0 }).catch(() => {});
                   
-                  if (!error) {
-                    console.log(`[KDS] Pedido ${pedidoId} movido: preparando → pronto`);
-                    queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
-                    playNotificationSound(); // Tocar som quando pronto
-                    toast.success(`✅ ${nomeProduto || 'Pedido'} pronto para entrega!`, { duration: 4000 });
+                  if (navigator.onLine) {
+                    const { error } = await supabase
+                      .from("pedidos")
+                      .update({ status_cozinha: "pronto" })
+                      .eq("id", pedidoId);
+                    if (!error) {
+                      await db.pedidos.update(pedidoId, { sincronizado: 1 }).catch(() => {});
+                    }
                   }
+                  
+                  console.log(`[KDS] Pedido ${pedidoId} movido: preparando → pronto`);
+                  queryClient.invalidateQueries({ queryKey: ["pedidos-kds", profile.empresa_id] });
+                  playNotificationSound();
+                  toast.success(`✅ ${nomeProduto || 'Pedido'} pronto para entrega!`, { duration: 4000 });
                 }
               } catch (e) {
                 console.error("Erro ao auto-atualizar preparando → pronto:", e);
               }
-            }, tempoPreparo); // Tempo dinâmico baseado no tipo de produto
+            }, tempoPreparo);
           }
+        }
+      }
+
+      // ===============================
+      // AUTO-PRINT: Imprimir pedidos novos agrupados por comanda/mesa
+      // ===============================
+      const savedSettings = localStorage.getItem("fcd-settings");
+      const parsedSettings = savedSettings ? JSON.parse(savedSettings) : {};
+      if (parsedSettings.autoPrint !== false && pendentesParaImprimir.size > 0) {
+        for (const [, pedidosDoGrupo] of pendentesParaImprimir) {
+          const primeiro = pedidosDoGrupo[0] as any;
+          const mesaNum = primeiro.comanda?.mesa?.numero_mesa || 0;
+          const itens = pedidosDoGrupo.map((p: any) => ({
+            nome: p.produto?.nome || 'Item',
+            quantidade: p.quantidade || 1,
+            notas: p.notas_cliente || null,
+          }));
+
+          printKitchenOrder({
+            mesaNumero: mesaNum,
+            itens,
+            timestamp: new Date(),
+          });
+          console.log(`[KDS] Auto-print: ${itens.length} itens da Mesa ${mesaNum}`);
         }
       }
     };

@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { Plus, Loader2, Upload, Pencil, Trash2, ChefHat, FolderOpen, RefreshCw, X, Search, ScanLine } from 'lucide-react';
 import { ImageSearchModal } from '@/components/admin/ImageSearchModal';
 import { MenuScannerModal } from '@/components/admin/MenuScannerModal';
+import { CardapioSkeleton } from '@/components/ui/PageSkeletons';
 
 // Tipo para variações de tamanho
 export interface VariacaoTamanho {
@@ -698,11 +699,7 @@ export default function Cardapio() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <CardapioSkeleton />;
   }
 
   return (
@@ -1053,7 +1050,7 @@ export default function Cardapio() {
                 <Card key={produto.id} className={`shadow-fcd border-0 ${!produto.ativo ? 'opacity-60' : ''}`}>
                   <div className="aspect-video bg-muted rounded-t-lg overflow-hidden">
                     {produto.imagem_url ? (
-                      <img src={produto.imagem_url} alt={produto.nome} className="w-full h-full object-cover" />
+                      <img src={produto.imagem_url} alt={produto.nome} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <ChefHat className="w-12 h-12 text-muted-foreground/50" />
