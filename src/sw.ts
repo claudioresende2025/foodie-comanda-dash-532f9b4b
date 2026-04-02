@@ -138,6 +138,14 @@ const navigationRoute = new NavigationRoute(navigationHandler, {
 registerRoute(navigationRoute);
 
 // ============================================
+// VERSION.JSON - SEMPRE DA REDE (nunca cachear)
+// ============================================
+registerRoute(
+  ({ url }) => url.pathname === '/version.json',
+  new NetworkOnly()
+);
+
+// ============================================
 // CATCH HANDLER - FALLBACK PARA QUALQUER FALHA
 // ============================================
 // setCatchHandler e chamado quando uma rota registrada lanca erro
