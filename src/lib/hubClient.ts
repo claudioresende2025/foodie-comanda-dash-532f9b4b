@@ -336,12 +336,11 @@ export async function autoConnectToHub(): Promise<boolean> {
   
   // Tentar IPs comuns de rede local
   const commonIps = [
-    '192.168.192.1',  // IP padrão do Hub
+    '192.168.2.111',  // IP padrão do Hub
     '192.168.1.100',
     '192.168.1.1',
     '192.168.0.100',
     '192.168.0.1',
-    '192.168.2.111',
     'localhost'
   ];
   
