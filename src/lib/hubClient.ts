@@ -13,17 +13,12 @@ import { io, Socket } from 'socket.io-client';
 // CONFIGURAÇÃO
 // ============================================
 
-// IP do Hub Local (configurável via localStorage ou env)
+const HUB_PORT = 3001;
+
+// IP do Hub Local (configurável via localStorage)
 const getHubUrl = (): string => {
-  // Tentar pegar IP salvo
-  const savedIp = localStorage.getItem('hub_ip');
-  if (savedIp) {
-    return `http://${savedIp}:3001`;
-  }
-  
-  // IP padrão (rede local típica)
-  // Em produção, descobrir via mDNS ou configuração
-  return 'http://192.168.2.111:3001';
+  const savedIp = localStorage.getItem('hub_ip') || '192.168.192.1';
+  return `http://${savedIp}:${HUB_PORT}`;
 };
 
 // ============================================
@@ -49,7 +44,7 @@ export function connectToHub(ip?: string): Promise<boolean> {
       return;
     }
     
-    hubUrl = ip ? `http://${ip}:3001` : getHubUrl();
+    hubUrl = ip ? `http://${ip}:${HUB_PORT}` : getHubUrl();
     console.log(`[HubClient] Conectando ao Hub: ${hubUrl}`);
     
     socket = io(hubUrl, {
@@ -341,10 +336,11 @@ export async function autoConnectToHub(): Promise<boolean> {
   
   // Tentar IPs comuns de rede local
   const commonIps = [
+    '192.168.192.1',  // IP padrão do Hub
     '192.168.1.100',
-    '192.168.1.10',
+    '192.168.1.1',
     '192.168.0.100',
-    '192.168.0.10',
+    '192.168.0.1',
     '192.168.2.111',
     'localhost'
   ];
