@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
@@ -90,6 +90,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   
   // Variável para armazenar a senha temporariamente durante o login
+  // USAR REF para evitar problema de closure/timing com onAuthStateChange
+  const pendingPasswordRef = useRef<string | null>(null);
   const [pendingPassword, setPendingPassword] = useState<string | null>(null);
 
   // Logout automático após 1 hora de inatividade
@@ -174,7 +176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           
           // Usar o novo sistema de cache seguro com hash
-          if (pendingPassword) {
+          // USAR REF para pegar a senha (evita problema de closure)
+          const passwordToCache = pendingPasswordRef.current;
+          if (passwordToCache) {
             // Salvar com hash da senha
             await saveUserToCache({
               email: data.email,
@@ -182,14 +186,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               nome: data.nome,
               empresa_id: data.empresa_id,
               role: role,
-              password: pendingPassword // Será hasheado, não armazenado em texto
+              password: passwordToCache // Será hasheado, não armazenado em texto
             });
+            
+            console.log('[AuthContext] ✅ Credenciais salvas no cache para login offline');
             
             // Definir permissões
             const userPermissions = getPermissionsByRole(role);
             setPermissions(userPermissions);
             
             // Limpar senha pendente
+            pendingPasswordRef.current = null;
             setPendingPassword(null);
           } else {
             // Apenas atualizar timestamp de última conexão
@@ -500,6 +507,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // ============================================
     
     // Armazenar senha temporariamente para criar hash no cache
+    // USAR REF para garantir que o callback onAuthStateChange veja o valor
+    pendingPasswordRef.current = password;
     setPendingPassword(password);
     setIsOfflineSession(false);
     
@@ -510,6 +519,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     // Se houver erro, limpar a senha pendente
     if (error) {
+      pendingPasswordRef.current = null;
       setPendingPassword(null);
       
       // Se erro de rede, tentar fallback offline
