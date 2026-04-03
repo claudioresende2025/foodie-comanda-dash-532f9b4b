@@ -1,12 +1,29 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { autoConnectToHub } from "./lib/hubClient";
 
 // ============================================
 // INICIALIZAÇÃO DO APP
 // ============================================
 const root = document.getElementById("root")!;
 createRoot(root).render(<App />);
+
+// ============================================
+// CONEXÃO AUTOMÁTICA AO HUB LOCAL
+// ============================================
+setTimeout(() => {
+  console.log('[HubClient] 🔄 Tentando conectar ao Hub Local...');
+  autoConnectToHub().then((connected) => {
+    if (connected) {
+      console.log('[HubClient] ✅ Conectado ao Hub Local!');
+    } else {
+      console.log('[HubClient] ℹ️ Hub Local não disponível, usando Supabase diretamente');
+    }
+  }).catch((err) => {
+    console.warn('[HubClient] ⚠️ Erro ao conectar:', err.message);
+  });
+}, 2000); // Aguardar 2s para garantir que app carregou
 
 // ============================================
 // SERVICE WORKER REGISTRATION - FORÇADO E AGRESSIVO
