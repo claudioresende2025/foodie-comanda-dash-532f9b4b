@@ -17,7 +17,7 @@ const HUB_PORT = 3001;
 
 // IP do Hub Local (configurável via localStorage)
 const getHubUrl = (): string => {
-  const savedIp = localStorage.getItem('hub_ip') || '192.168.192.1';
+  const savedIp = localStorage.getItem('hub_ip') || '192.168.2.111';
   return `http://${savedIp}:${HUB_PORT}`;
 };
 
