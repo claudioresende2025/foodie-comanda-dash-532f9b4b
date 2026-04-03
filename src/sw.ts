@@ -3,9 +3,10 @@
 // ============================================
 // SERVICE WORKER - FOOD COMANDA PRO
 // ============================================
-// VERSÃO: 2.5.0 - Correção estrutural definitiva
+// VERSÃO: 2.6.0 - Fix loop infinito no setCatchHandler
 // 
 // Changelog:
+// - v2.6.0: Fix loop infinito - fallback offline não faz mais redirect
 // - v2.5.0: Registro forçado, ativação imediata agressiva
 // - v2.4.0: Fix install event
 // - v2.3.0: setCatchHandler para fallback offline
@@ -23,7 +24,7 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 declare const self: ServiceWorkerGlobalScope;
 
 // Versão do Service Worker
-const SW_VERSION = '2.5.0';
+const SW_VERSION = '2.6.0';
 const SW_BUILD_DATE = new Date().toISOString();
 
 // Extended notification options for service worker
@@ -215,9 +216,32 @@ setCatchHandler(async ({ event }) => {
       }
     }
     
-    // 3. SPA Fallback mínimo: redireciona para a app (nunca mostra 'Tentar novamente')
+    // 3. SPA Fallback estático - NÃO fazer redirect para evitar loop infinito
+    // Mostrar página de erro offline com botão de retry manual
     return new Response(
-      '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Food Comanda Pro</title></head><body><script>window.location.replace("/")</script></body></html>',
+      `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Offline - Food Comanda Pro</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+    .container { text-align: center; padding: 20px; }
+    h1 { color: #333; font-size: 1.5rem; }
+    p { color: #666; margin: 1rem 0; }
+    button { background: #22c55e; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+    button:hover { background: #16a34a; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📴 Modo Offline</h1>
+    <p>O aplicativo não está disponível no cache.<br>Conecte-se à internet para carregar.</p>
+    <button onclick="location.reload()">Tentar Novamente</button>
+  </div>
+</body>
+</html>`,
       { headers: { 'Content-Type': 'text/html' }, status: 200 }
     );
   }
