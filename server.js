@@ -119,14 +119,62 @@ function initDatabase() {
 
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
+  const candidates = [];
+  
+  // Coletar todos os IPs IPv4 não-internos
+  for (const [name, ifaces] of Object.entries(interfaces)) {
+    for (const iface of ifaces) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
+        candidates.push({
+          name,
+          address: iface.address,
+          // Priorizar interfaces físicas sobre virtuais
+          priority: getPriority(name, iface.address)
+        });
       }
     }
   }
+  
+  // Ordenar por prioridade (maior primeiro)
+  candidates.sort((a, b) => b.priority - a.priority);
+  
+  if (candidates.length > 0) {
+    // Log de todas as interfaces encontradas
+    console.log('📡 Interfaces de rede encontradas:');
+    candidates.forEach(c => console.log(`   - ${c.name}: ${c.address} (prioridade: ${c.priority})`));
+    return candidates[0].address;
+  }
+  
   return '127.0.0.1';
+}
+
+function getPriority(name, address) {
+  const nameLower = name.toLowerCase();
+  
+  // IPs que começam com 192.168.2.x ou 192.168.1.x são mais prováveis de ser rede local real
+  if (address.startsWith('192.168.2.') || address.startsWith('192.168.1.') || address.startsWith('192.168.0.')) {
+    return 100;
+  }
+  
+  // Interfaces físicas comuns
+  if (nameLower.includes('ethernet') || nameLower.includes('wi-fi') || nameLower.includes('wifi')) {
+    return 80;
+  }
+  
+  // Evitar interfaces virtuais (VPN, Docker, etc)
+  if (nameLower.includes('virtualbox') || nameLower.includes('vmware') || 
+      nameLower.includes('docker') || nameLower.includes('vethernet') ||
+      nameLower.includes('loopback') || nameLower.includes('vpn') ||
+      nameLower.includes('tailscale') || nameLower.includes('zerotier')) {
+    return 10;
+  }
+  
+  // IPs em ranges menos comuns para rede doméstica
+  if (address.startsWith('192.168.192.') || address.startsWith('172.') || address.startsWith('10.')) {
+    return 20;
+  }
+  
+  return 50; // Prioridade média para desconhecidos
 }
 
 function generateId() {

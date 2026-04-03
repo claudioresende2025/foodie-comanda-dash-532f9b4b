@@ -327,22 +327,28 @@ export async function autoConnectToHub(): Promise<boolean> {
   
   console.log('[HubClient] Tentando conexão automática...');
   
-  // Tentar IP salvo primeiro
+  // Limpar IP antigo se for de VPN/virtual
   const savedIp = localStorage.getItem('hub_ip');
-  if (savedIp) {
-    const connected = await connectToHub(savedIp);
-    if (connected) return true;
+  if (savedIp && (savedIp.startsWith('192.168.192.') || savedIp.startsWith('172.') || savedIp.startsWith('10.'))) {
+    console.log(`[HubClient] Removendo IP virtual salvo: ${savedIp}`);
+    localStorage.removeItem('hub_ip');
   }
   
-  // Tentar IPs comuns de rede local
+  // Tentar IPs na ordem de prioridade para rede local típica
   const commonIps = [
-    '192.168.2.111',  // IP padrão do Hub
+    '192.168.2.111',  // IP específico do notebook atual
     '192.168.1.100',
-    '192.168.1.1',
     '192.168.0.100',
+    '192.168.1.1',
     '192.168.0.1',
     'localhost'
   ];
+  
+  // Se tiver IP válido salvo, colocar no início
+  const validSavedIp = localStorage.getItem('hub_ip');
+  if (validSavedIp && !commonIps.includes(validSavedIp)) {
+    commonIps.unshift(validSavedIp);
+  }
   
   for (const ip of commonIps) {
     console.log(`[HubClient] Tentando ${ip}...`);
