@@ -1,0 +1,2 @@
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS variacoes JSONB DEFAULT NULL;
+COMMENT ON COLUMN produtos.variacoes IS 'Array de variações: [{"nome": "Pequena", "preco": 29.90}, {"nome": "Grande", "preco": 49.90}]';

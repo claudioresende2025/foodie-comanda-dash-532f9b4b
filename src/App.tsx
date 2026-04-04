@@ -1,8 +1,5 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { supabase } from "@/integrations/supabase/client";
-import { sincronizarTudo } from "./lib/db";
-import { connectionManager } from "./lib/connectionManager";
-import { initPWAMigration } from "./lib/pwaMigration";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -12,9 +9,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { SubscriptionGuard } from "@/components/subscription/SubscriptionGuard";
-import usePWAManifest from "@/hooks/usePWAManifest";
-import { UpdateNotification } from "@/components/UpdateNotification";
-import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
@@ -70,41 +64,18 @@ const PageLoader = () => (
   </div>
 );
 
-// QueryClient configurado para Offline-First
+// QueryClient configurado
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Manter dados em cache por 5 minutos mesmo quando stale
       staleTime: 5 * 60 * 1000,
-      // Manter dados em cache por 30 minutos
       gcTime: 30 * 60 * 1000,
-      // Não refetch automático em reconexão (o ConnectionManager cuida disso)
-      refetchOnReconnect: false,
-      // Não refetch em foco de janela offline
+      refetchOnReconnect: true,
       refetchOnWindowFocus: false,
-      // Retry apenas quando online
-      retry: (failureCount, error) => {
-        if (!navigator.onLine) return false;
-        return failureCount < 3;
-      },
-      // Permitir dados stale quando offline (não mostrar loading)
-      networkMode: 'offlineFirst',
-    },
-    mutations: {
-      // Mutations também funcionam offline
-      networkMode: 'offlineFirst',
-      retry: (failureCount, error) => {
-        if (!navigator.onLine) return false;
-        return failureCount < 3;
-      },
+      retry: 3,
     },
   },
 });
-
-const PWAManifestHandler = () => {
-  usePWAManifest();
-  return null;
-};
 
 // --- ALTERAÇÃO AQUI: Transformamos o App para suportar o useEffect ---
 const App = () => {
@@ -113,27 +84,6 @@ const App = () => {
   useEffect(() => {
     console.log('[App] 🚀 Food Comanda Pro iniciando...');
     console.log('[App] 📍 Rota atual:', window.location.pathname);
-    console.log('[App] 🔐 isSuperAdmin (session):', sessionStorage.getItem('isSuperAdmin'));
-    console.log('[App] 🌐 Online:', navigator.onLine);
-  }, []);
-
-  // Inicializar o ConnectionManager (Sistema de Detecção Automática)
-  useEffect(() => {
-    // Se é Super Admin, NÃO inicializar ConnectionManager (não precisa de offline)
-    if (sessionStorage.getItem('isSuperAdmin') === 'true') {
-      console.log('[App] 🛡️ Super Admin - pulando inicialização de ConnectionManager');
-      return;
-    }
-    
-    console.log("🚀 Inicializando sistema de conexão automática...");
-    connectionManager.init();
-
-    // Inicializar módulo PWA (migração, quota, logs)
-    initPWAMigration().catch(console.error);
-
-    return () => {
-      connectionManager.destroy();
-    };
   }, []);
 
   return (
@@ -141,12 +91,9 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <UpdateNotification />
-        <PWAInstallPrompt variant="floating" autoShowDelay={45000} />
         <BrowserRouter>
           <AuthProvider>
             <SubscriptionHandler />
-            <PWAManifestHandler />
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>
               <Routes>
