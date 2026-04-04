@@ -1,0 +1,81 @@
+{
+  "completas": [
+    "categorias",
+    "produtos",
+    "mesas",
+    "pedidos",
+    "enderecos_cliente"
+  ],
+  "incompletas": [
+    {
+      "tableName": "empresas",
+      "missing": [],
+      "extra": [
+        "slug",
+        "ativo",
+        "usuario_id"
+      ]
+    },
+    {
+      "tableName": "comandas",
+      "missing": [
+        "telefone_cliente",
+        "comanda_mestre_id",
+        "updated_at"
+      ],
+      "extra": []
+    },
+    {
+      "tableName": "config_delivery",
+      "missing": [
+        "valor_minimo_pedido",
+        "ativo",
+        "dias_funcionamento"
+      ],
+      "extra": [
+        "delivery_ativo",
+        "pedido_minimo",
+        "aceita_pix"
+      ]
+    },
+    {
+      "tableName": "itens_delivery",
+      "missing": [
+        "created_at"
+      ],
+      "extra": []
+    }
+  ],
+  "faltando": [
+    "cupons_uso",
+    "promocao_itens",
+    "fidelidade_transacoes",
+    "chat_conversas",
+    "chat_mensagens",
+    "notificacoes_push",
+    "password_reset_tokens",
+    "delivery_tracking",
+    "analytics_eventos",
+    "relatorio_vendas_diarias",
+    "relatorio_produtos_vendidos",
+    "relatorio_horarios_pico",
+    "relatorio_clientes_inativos",
+    "relatorio_fidelidade_clientes"
+  ],
+  "vazias": [
+    "pedidos_delivery",
+    "caixas",
+    "movimentacoes_caixa",
+    "chamadas_garcom",
+    "reservas",
+    "combos",
+    "combo_itens",
+    "cupons",
+    "promocoes",
+    "fidelidade_config",
+    "fidelidade_pontos",
+    "profiles",
+    "user_roles",
+    "avaliacoes"
+  ]
+}

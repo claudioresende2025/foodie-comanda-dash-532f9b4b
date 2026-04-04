@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Script para aplicar correção na tabela fidelidade_config
+
+echo "🔧 CORREÇÃO: Tabela fidelidade_config"
+echo "======================================"
+echo ""
+echo "Esta correção adiciona os campos faltantes:"
+echo "  - pontos_necessarios (INTEGER)"
+echo "  - valor_recompensa (DECIMAL)"
+echo ""
+echo "📝 Para aplicar esta migration:"
+echo ""
+echo "OPÇÃO 1 - Via Dashboard Supabase (RECOMENDADO)"
+echo "-----------------------------------------------"
+echo "1. Acesse: https://supabase.com/dashboard/project/zlwpxflqtyhdwanmupgy/editor"
+echo ""
+echo "2. Clique em 'SQL Editor' no menu lateral"
+echo ""
+echo "3. Cole e execute este SQL:"
+echo ""
+cat /workspaces/foodie-comanda-dash-532f9b4b/supabase/migrations/20260104_fix_fidelidade_config.sql
+echo ""
+echo ""
+echo "OPÇÃO 2 - Via CLI Supabase"
+echo "--------------------------"
+echo "supabase db push"
+echo ""
+echo "✅ Após aplicar, o erro de relacionamento será resolvido!"
+echo ""

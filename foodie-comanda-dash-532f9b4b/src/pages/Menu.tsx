@@ -1,0 +1,1579 @@
+import { useState, useEffect, useRef } from "react";
+import { useParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { db, sincronizarTudo } from "@/lib/db";
+import {
+  Loader2,
+  ChefHat,
+  UtensilsCrossed,
+  Search,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
+  Clock,
+  CheckCircle2,
+  X,
+  Bell,
+  Volume2,
+  Printer,
+  Receipt,
+} from "lucide-react";
+import { PixQRCode } from '@/components/pix/PixQRCode';
+// A LINHA ABAIXO ESTÁ COMENTADA PARA EVITAR O REFERENCE ERROR
+//import { triggerKitchenPrint } from '@/utils/kitchenPrinter';
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { UpsellDialog } from '@/components/delivery/UpsellDialog';
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { ProductSizeModal } from "@/components/delivery/ProductSizeModal";
+import { SmartUpsellSection } from "@/components/smart/SmartUpsellSection";
+import { apiLocal } from '../services/api';
+import { MenuSkeleton } from '@/components/ui/PageSkeletons';
+
+// --- Tipos de Dados (Types) ---
+
+// Tipo para variações de tamanho
+interface VariacaoTamanho {
+  nome: string;
+  preco: number;
+}
+
+type Categoria = {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  ordem: number;
+};
+
+type Produto = {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  preco: number;
+  imagem_url: string | null;
+  categoria_id: string | null;
+  ativo: boolean;
+  variacoes?: VariacaoTamanho[] | null;
+};
+
+type Empresa = {
+  id: string;
+  nome_fantasia: string;
+  logo_url: string | null;
+  chave_pix?: string | null;
+  endereco_completo?: string | null;
+};
+
+type CartItem = {
+  produto: Produto;
+  quantidade: number;
+  notas: string;
+  tamanhoSelecionado?: string | null;
+  precoUnitario: number;
+  cartKey: string;
+};
+
+type Pedido = {
+  id: string;
+  produto_id: string;
+  quantidade: number;
+  status_cozinha: "pendente" | "preparando" | "pronto" | "entregue" | "cancelado";
+  notas_cliente: string | null;
+  created_at: string;
+};
+
+// NOVO TIPO: Estrutura simplificada para ser enviada à RPC (jsonb)
+type RpcItem = {
+  produto_id: string;
+  quantidade: number;
+  preco_unitario: number;
+  subtotal: number;
+};
+
+// --- Configuração de Status ---
+
+const statusConfig = {
+  pendente: { label: "Aguardando", color: "bg-yellow-500", icon: Clock },
+  preparando: { label: "Preparando", color: "bg-blue-500", icon: ChefHat },
+  pronto: { label: "Pronto", color: "bg-green-500", icon: CheckCircle2 },
+  entregue: { label: "Entregue", color: "bg-gray-500", icon: CheckCircle2 },
+  cancelado: { label: "Cancelado", color: "bg-red-500", icon: X },
+};
+
+// --- Função de Som - Melhorada ---
+
+const playNotificationSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const audioContext = new AudioContextClass();
+
+    // Resume if suspended
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = 800;
+    oscillator.type = "sine";
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+
+    // Second beep
+    setTimeout(() => {
+      try {
+        const osc2 = audioContext.createOscillator();
+        const gain2 = audioContext.createGain();
+        osc2.connect(gain2);
+        gain2.connect(audioContext.destination);
+        osc2.frequency.value = 1000;
+        osc2.type = "sine";
+        gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        osc2.start(audioContext.currentTime);
+        osc2.stop(audioContext.currentTime + 0.5);
+      } catch (e) { }
+    }, 200);
+  } catch (e) {
+    console.log("Audio not supported");
+  }
+};
+
+// --- Componente Principal ---
+
+export default function Menu() {
+  const { empresaId, mesaId } = useParams<{ empresaId: string; mesaId: string }>();
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [mesaNumero, setMesaNumero] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Cart persistido no Dexie + localStorage para sobreviver a crashes
+  const cartStorageKey = `cart_${empresaId}_${mesaId}`;
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(cartStorageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  // Hidratar carrinho do Dexie na montagem (Dexie é mais confiável que localStorage)
+  useEffect(() => {
+    if (!empresaId || !mesaId) return;
+    db.cart
+      .where('empresa_id').equals(empresaId)
+      .filter((item: any) => item.mesa_id === mesaId)
+      .toArray()
+      .then((items: any[]) => {
+        if (items.length > 0) {
+          const cartItems: CartItem[] = items.map((i: any) => i.data).filter(Boolean);
+          if (cartItems.length > 0) {
+            setCart(prev => prev.length > 0 ? prev : cartItems);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [empresaId, mesaId]);
+
+  // Sincronizar cart → localStorage + Dexie a cada mudança
+  useEffect(() => {
+    if (cart.length > 0) {
+      localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+      // Persistir cada item no Dexie (atômico por item)
+      if (empresaId && mesaId) {
+        const dexieItems = cart.map(item => ({
+          cartKey: item.cartKey,
+          empresa_id: empresaId,
+          mesa_id: mesaId,
+          data: item,
+        }));
+        // Limpa e reescreve (simples e seguro)
+        db.cart.where('empresa_id').equals(empresaId)
+          .filter((i: any) => i.mesa_id === mesaId)
+          .delete()
+          .then(() => db.cart.bulkPut(dexieItems))
+          .catch(() => {});
+      }
+    } else {
+      localStorage.removeItem(cartStorageKey);
+      if (empresaId && mesaId) {
+        db.cart.where('empresa_id').equals(empresaId)
+          .filter((i: any) => i.mesa_id === mesaId)
+          .delete().catch(() => {});
+      }
+    }
+  }, [cart, cartStorageKey, empresaId, mesaId]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [comandaId, setComandaId] = useState<string | null>(null);
+  const [meusPedidos, setMeusPedidos] = useState<Pedido[]>([]);
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [isSendingOrder, setIsSendingOrder] = useState(false);
+  const [isCallingWaiter, setIsCallingWaiter] = useState(false);
+  const [waiterCallPending, setWaiterCallPending] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Upsell dialog states
+  const [showUpsellDialog, setShowUpsellDialog] = useState(false);
+  const [upsellShown, setUpsellShown] = useState(false);
+  // Estado para modal de seleção de tamanho
+  const [sizeModalProduct, setSizeModalProduct] = useState<Produto | null>(null);
+  const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
+
+  // Estado para solicitar fechamento de conta
+  const [isFecharContaDialogOpen, setIsFecharContaDialogOpen] = useState(false);
+  const [isRequestingFechamento, setIsRequestingFechamento] = useState(false);
+  const [fechamentoSolicitado, setFechamentoSolicitado] = useState(false);
+
+  // Cliente (quando abre comanda via QR) - coletar nome/telefone
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [clientFirstName, setClientFirstName] = useState('');
+  const [clientLastName, setClientLastName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+
+  // PIX modal for quick payments from menu
+  const [showPixModal, setShowPixModal] = useState(false);
+  const [pixValue, setPixValue] = useState(0);
+  const [pixConfirmEnabled, setPixConfirmEnabled] = useState(false);
+
+  // --- Efeitos e Fetch de Dados ---
+
+  useEffect(() => {
+    if (empresaId) {
+      fetchMenuData();
+    } else {
+      setError("Link inválido. Verifique o QR Code e tente novamente.");
+      setIsLoading(false);
+    }
+  }, [empresaId, mesaId]);
+
+  // Realtime subscription para status da comanda - detectar fechamento
+  useEffect(() => {
+    if (!comandaId) return;
+    const channel = supabase
+      .channel('menu-comanda-status')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'comandas', filter: `id=eq.${comandaId}` },
+        (payload) => {
+          const novoStatus = (payload.new as any).status;
+
+          if (novoStatus === 'fechada' || novoStatus === 'cancelada') {
+            setPixConfirmEnabled(novoStatus === 'fechada');
+            localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+            setComandaId(null);
+            setCart([]);
+            setFechamentoSolicitado(false);
+
+            if (novoStatus === 'fechada') {
+              toast.info('Esta comanda foi fechada pelo caixa. Solicite uma nova para continuar pedindo.');
+            } else {
+              toast.warning('Esta comanda foi cancelada.');
+            }
+          }
+        }
+      ).subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [comandaId, empresaId, mesaId]);
+
+  // Marca a mesa como 'ocupada' ao carregar o cardápio via QR - OFFLINE-FIRST
+  useEffect(() => {
+    if (!mesaId) return;
+    const markMesaOcupada = async () => {
+      try {
+        // 1. Dexie primeiro
+        const mesaLocal = await db.mesas.where('id').equals(mesaId).first();
+        if (mesaLocal && mesaLocal.status !== 'ocupada') {
+          await db.mesas.update(mesaId, { status: 'ocupada', sincronizado: 0, atualizado_em: new Date().toISOString() });
+        }
+        // 2. Supabase em background (se online)
+        if (navigator.onLine) {
+          const { data: mesa } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
+          if (mesa && mesa.status !== 'ocupada') {
+            await supabase.from('mesas').update({ status: 'ocupada' }).eq('id', mesaId);
+            await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        // Ignora erros silenciosamente - dados já estão em Dexie
+      }
+    };
+    markMesaOcupada();
+  }, [mesaId]);
+
+  // Check for existing comanda - OFFLINE-FIRST: Dexie primeiro, Supabase em background
+  useEffect(() => {
+    const validateAndLoadComanda = async () => {
+      // 1. DEXIE PRIMEIRO - Buscar comanda local
+      try {
+        const comandasLocais = await db.comandas
+          .where('empresa_id').equals(empresaId!)
+          .filter((c: any) => c.mesa_id === mesaId && c.status === 'aberta')
+          .toArray();
+        const comandaLocal = comandasLocais
+          .sort((a: any, b: any) => new Date(b.created_at || b.criado_em || 0).getTime() - new Date(a.created_at || a.criado_em || 0).getTime())[0];
+
+        if (comandaLocal) {
+          setComandaId(comandaLocal.id);
+          localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaLocal.id);
+          if (comandaLocal.nome_cliente) {
+            const clientKey = `client_info_${empresaId}_${mesaId}`;
+            const nameParts = (comandaLocal.nome_cliente || '').split(' ');
+            localStorage.setItem(clientKey, JSON.stringify({
+              firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') || '', phone: comandaLocal.telefone_cliente || ''
+            }));
+          }
+          fetchMeusPedidos(comandaLocal.id);
+          // Se online, atualiza do Supabase em background
+          if (navigator.onLine) {
+            Promise.resolve(supabase.from('comandas').select('id, status, nome_cliente, telefone_cliente')
+              .eq('id', comandaLocal.id).maybeSingle()).then(({ data }) => {
+                if (data && data.status !== 'aberta') {
+                  setComandaId(null); setMeusPedidos([]);
+                  localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+                }
+              }).catch(() => {});
+          }
+          return;
+        }
+      } catch (e) {
+        console.warn('[Offline-First] Erro ao buscar comanda local:', e);
+      }
+
+      // 2. localStorage fallback
+      const savedComandaId = localStorage.getItem(`comanda_${empresaId}_${mesaId}`);
+      if (savedComandaId) {
+        // Verificar no Dexie
+        const comandaDexie = await db.comandas.get(savedComandaId).catch(() => null);
+        if (comandaDexie && (comandaDexie as any).status === 'aberta') {
+          setComandaId(savedComandaId);
+          fetchMeusPedidos(savedComandaId);
+          return;
+        }
+      }
+
+      // 3. SUPABASE em background (se online) - para sincronizar entre dispositivos
+      if (navigator.onLine) {
+        try {
+          const { data: comandaMesa } = await supabase
+            .from('comandas').select('id, status, nome_cliente, telefone_cliente')
+            .eq('empresa_id', empresaId).eq('mesa_id', mesaId).eq('status', 'aberta')
+            .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+          if (comandaMesa) {
+            setComandaId(comandaMesa.id);
+            localStorage.setItem(`comanda_${empresaId}_${mesaId}`, comandaMesa.id);
+            // Salvar no Dexie
+            await db.comandas.put({ ...comandaMesa, empresa_id: empresaId, mesa_id: mesaId, sincronizado: 1 }).catch(() => {});
+            if (comandaMesa.nome_cliente) {
+              const clientKey = `client_info_${empresaId}_${mesaId}`;
+              const nameParts = (comandaMesa.nome_cliente || '').split(' ');
+              localStorage.setItem(clientKey, JSON.stringify({
+                firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') || '', phone: comandaMesa.telefone_cliente || ''
+              }));
+            }
+            fetchMeusPedidos(comandaMesa.id);
+            return;
+          }
+        } catch (e) {
+          console.warn('[Offline-First] Supabase inacessivel para comanda:', e);
+        }
+      }
+
+      // Nenhuma comanda encontrada
+      if (savedComandaId) localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+      setComandaId(null);
+      setMeusPedidos([]);
+    };
+
+    if (empresaId && mesaId) {
+      validateAndLoadComanda();
+    }
+  }, [empresaId, mesaId]);
+
+  // Check for pending waiter call - OFFLINE-FIRST
+  useEffect(() => {
+    if (!empresaId || !mesaId) return;
+
+    const checkPendingCall = async () => {
+      // 1. Dexie primeiro
+      try {
+        const chamadaLocal = await db.chamadas_garcom
+          .where('empresa_id').equals(empresaId!)
+          .filter((c: any) => c.mesa_id === mesaId && c.status === 'pendente')
+          .first();
+        if (chamadaLocal) { setWaiterCallPending(true); return; }
+      } catch (e) { /* fallback para Supabase */ }
+
+      // 2. Supabase se online
+      if (navigator.onLine) {
+        try {
+          const { data } = await supabase
+            .from('chamadas_garcom').select('id')
+            .eq('empresa_id', empresaId).eq('mesa_id', mesaId).eq('status', 'pendente')
+            .maybeSingle();
+          setWaiterCallPending(!!data);
+        } catch (e) { /* ignora */ }
+      }
+    };
+
+    const checkMesaStatus = async () => {
+      // 1. Dexie primeiro
+      try {
+        const mesaLocal = await db.mesas.where('id').equals(mesaId!).first();
+        if (mesaLocal) {
+          if ((mesaLocal as any).status === 'solicitou_fechamento') setFechamentoSolicitado(true);
+          else if ((mesaLocal as any).status === 'disponivel') setFechamentoSolicitado(false);
+          return;
+        }
+      } catch (e) { /* fallback */ }
+
+      // 2. Supabase se online
+      if (navigator.onLine) {
+        try {
+          const { data: mesa } = await supabase.from('mesas').select('status').eq('id', mesaId).maybeSingle();
+          if (mesa?.status === 'solicitou_fechamento') setFechamentoSolicitado(true);
+          else if (mesa?.status === 'disponivel') setFechamentoSolicitado(false);
+        } catch (e) { /* ignora */ }
+      }
+    };
+
+    checkPendingCall();
+    checkMesaStatus();
+  }, [empresaId, mesaId]);
+
+  // Realtime subscription for order status updates
+  useEffect(() => {
+    if (!comandaId) return;
+
+    const channel = supabase
+      .channel("pedidos-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pedidos",
+          filter: `comanda_id=eq.${comandaId}`,
+        },
+        (payload) => {
+          console.log("Pedido update:", payload);
+          if (payload.eventType === "UPDATE") {
+            const newPedido = payload.new as Pedido;
+            setMeusPedidos((prev) => prev.map((p) => (p.id === newPedido.id ? { ...p, ...newPedido } : p)));
+
+            const status = newPedido.status_cozinha;
+            if (status === "preparando") {
+              toast.info("Seu pedido está sendo preparado!");
+            } else if (status === "pronto") {
+              if (soundEnabled) {
+                playNotificationSound();
+              }
+              toast.success("🔔 Seu pedido está pronto!", {
+                duration: 10000,
+                description: "Aguarde o garçom trazer seu pedido",
+              });
+            }
+          } else if (payload.eventType === "INSERT") {
+            setMeusPedidos((prev) => [...prev, payload.new as Pedido]);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [comandaId, soundEnabled]);
+
+  // Realtime for waiter call status
+  useEffect(() => {
+    if (!empresaId || !mesaId) return;
+
+    const checkPendingCall = async () => {
+      const { data } = await supabase
+        .from("chamadas_garcom")
+        .select("id")
+        .eq("empresa_id", empresaId)
+        .eq("mesa_id", mesaId)
+        .eq("status", "pendente")
+        .maybeSingle();
+
+      setWaiterCallPending(!!data);
+    };
+
+    const channel = supabase
+      .channel("chamadas-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chamadas_garcom",
+          filter: `mesa_id=eq.${mesaId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "UPDATE") {
+            const newStatus = (payload.new as any).status;
+            if (newStatus === "atendida") {
+              setWaiterCallPending(false);
+              toast.success("O garçom está a caminho!");
+            }
+          }
+          if (payload.eventType === "DELETE") {
+            checkPendingCall();
+          }
+          if (payload.eventType === "INSERT") {
+            const status = (payload.new as any).status;
+            if (status === "pendente") {
+              setWaiterCallPending(true);
+            }
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [empresaId, mesaId]);
+
+  // Realtime for mesa status changes
+  useEffect(() => {
+    if (!mesaId) return;
+
+    const channel = supabase
+      .channel("mesa-status-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "mesas",
+          filter: `id=eq.${mesaId}`,
+        },
+        (payload) => {
+          const newStatus = (payload.new as any).status;
+
+          if (newStatus === "disponivel") {
+            setFechamentoSolicitado(false);
+            setComandaId(null);
+            setMeusPedidos([]);
+            localStorage.removeItem(`comanda_${empresaId}_${mesaId}`);
+            localStorage.removeItem(`client_info_${empresaId}_${mesaId}`);
+            toast.info("Conta fechada! Obrigado pela visita.");
+          }
+
+          if (newStatus === "ocupada" && !comandaId) {
+            window.location.reload();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [mesaId, empresaId, comandaId]);
+
+  // --- fetchMenuData (única versão) ---
+  const fetchMenuData = async () => {
+    if (!empresaId) {
+      setError("Link inválido.");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // 🔥 Tenta carregar do Servidor Local (PC do Caixa) primeiro
+      try {
+        const localData = await apiLocal.getCardapio();
+        if (localData && localData.produtos) {
+          setProdutos(localData.produtos);
+          setCategorias(localData.categorias);
+          const { data: emp } = await supabase.from("empresas").select("*").eq("id", empresaId).maybeSingle();
+          if (emp) setEmpresa(emp);
+          setIsLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.warn("Servidor Local Offline, seguindo para Nuvem/IndexedDB");
+      }
+
+      // ===============================
+      // CACHE-FIRST: Mostra dados do Dexie IMEDIATAMENTE
+      // ===============================
+      let empresaLocal: Empresa | null = null;
+      let categoriasLocal: Categoria[] = [];
+      let produtosLocal: Produto[] = [];
+      let mesaLocal: any = null;
+      let temDadosLocais = false;
+
+      try {
+        const empresaData = await db.empresa.where('id').equals(empresaId).first();
+        if (empresaData) empresaLocal = empresaData as Empresa;
+
+        const catData = await db.categorias.where('empresa_id').equals(empresaId).toArray();
+        categoriasLocal = catData.filter((c: any) => c.ativo !== false).sort((a: any, b: any) => (a.ordem || 0) - (b.ordem || 0));
+
+        const prodData = await db.produtos.where('empresa_id').equals(empresaId).toArray();
+        produtosLocal = prodData.filter((p: any) => p.ativo !== false).sort((a: any, b: any) => (a.nome || '').localeCompare(b.nome || ''));
+
+        if (mesaId) {
+          mesaLocal = await db.mesas.where('id').equals(mesaId).first();
+        }
+
+        // Se tem dados locais, renderiza IMEDIATAMENTE (sem esperar Supabase)
+        if (empresaLocal && produtosLocal.length > 0) {
+          temDadosLocais = true;
+          setEmpresa(empresaLocal);
+          setCategorias(categoriasLocal);
+          setProdutos(produtosLocal);
+          if (mesaLocal) setMesaNumero(mesaLocal.numero_mesa || mesaLocal.numero);
+          setIsLoading(false); // UI liberada AQUI
+          console.log('[Cache-First] ✅ Dados do Dexie exibidos instantaneamente');
+        }
+      } catch (dexieErr) {
+        console.warn('[Cache-First] Dexie falhou, indo direto ao Supabase:', dexieErr);
+      }
+
+      // ===============================
+      // BACKGROUND REFRESH: Atualiza do Supabase sem bloquear UI
+      // ===============================
+      if (navigator.onLine) {
+        try {
+          const { data: empresaData, error: empresaError } = await supabase
+            .from("empresas")
+            .select("id, nome_fantasia, logo_url, chave_pix, endereco_completo")
+            .eq("id", empresaId)
+            .maybeSingle();
+
+          if (empresaError) throw empresaError;
+
+          if (empresaData) {
+            setEmpresa(empresaData as Empresa);
+            await db.empresa.put({ ...empresaData, sincronizado: 1 }).catch(() => { });
+          } else if (!temDadosLocais) {
+            setError("Restaurante não encontrado. Verifique o link e tente novamente.");
+            setIsLoading(false);
+            return;
+          }
+
+          if (mesaId) {
+            const { data: mesaData } = await supabase.from("mesas").select("numero_mesa").eq("id", mesaId).maybeSingle();
+            if (mesaData) setMesaNumero(mesaData.numero_mesa);
+          }
+
+          const { data: catData, error: catError } = await supabase
+            .from("categorias")
+            .select("*")
+            .eq("empresa_id", empresaId)
+            .eq("ativo", true)
+            .order("ordem");
+
+          if (!catError && catData) {
+            setCategorias(catData || []);
+            const catsSync = catData.map((c: any) => ({ ...c, sincronizado: 1 }));
+            await db.categorias.bulkPut(catsSync).catch(() => { });
+          }
+
+          const { data: prodData, error: prodError } = await supabase
+            .from("produtos")
+            .select("*")
+            .eq("empresa_id", empresaId)
+            .eq("ativo", true)
+            .order("nome");
+
+          if (!prodError && prodData) {
+            setProdutos(prodData || []);
+            const prodsSync = prodData.map((p: any) => ({ ...p, sincronizado: 1 }));
+            await db.produtos.bulkPut(prodsSync).catch(() => { });
+          }
+        } catch (err) {
+          console.warn("[Cache-First] Supabase inacessível, dados locais mantidos:", err);
+          if (!temDadosLocais) {
+            setError("Sem conexão e sem dados salvos localmente.");
+          }
+        }
+      } else if (!temDadosLocais) {
+        setError("Sem conexão e sem dados salvos localmente. Conecte-se à internet pelo menos uma vez para carregar o cardápio.");
+      }
+    } catch (globalErr) {
+      console.error('[Emergency] Erro global no fetchMenuData:', globalErr);
+      try {
+        if (navigator.onLine) {
+          const [empRes, catRes, prodRes] = await Promise.all([
+            supabase.from("empresas").select("id, nome_fantasia, logo_url, chave_pix, endereco_completo").eq("id", empresaId).maybeSingle(),
+            supabase.from("categorias").select("*").eq("empresa_id", empresaId).eq("ativo", true).order("ordem"),
+            supabase.from("produtos").select("*").eq("empresa_id", empresaId).eq("ativo", true).order("nome"),
+          ]);
+          if (empRes.data) setEmpresa(empRes.data as Empresa);
+          if (catRes.data) setCategorias(catRes.data || []);
+          if (prodRes.data) setProdutos(prodRes.data || []);
+          if (mesaId) {
+            const { data: mesaData } = await supabase.from("mesas").select("numero_mesa").eq("id", mesaId).maybeSingle();
+            if (mesaData) setMesaNumero(mesaData.numero_mesa);
+          }
+        } else {
+          setError("Sistema indisponível. Tente novamente com conexão à internet.");
+        }
+      } catch (finalErr) {
+        console.error('[Emergency] Fallback final também falhou:', finalErr);
+        setError("Erro ao carregar cardápio. Tente recarregar a página.");
+      }
+    }
+
+    setIsLoading(false);
+  };
+
+  // Buscar pedidos - Offline-First
+  const fetchMeusPedidos = async (cmdId: string) => {
+    let pedidosLocais: Pedido[] = [];
+    try {
+      const locais = await db.pedidos.where('comanda_id').equals(cmdId).toArray();
+      pedidosLocais = locais.map((p: any) => ({
+        id: p.id,
+        produto_id: p.produto_id,
+        quantidade: p.quantidade,
+        status_cozinha: p.status_cozinha || 'pendente',
+        notas_cliente: p.notas_cliente,
+        created_at: p.criado_em || p.created_at || new Date().toISOString(),
+      }));
+    } catch (e) {
+      console.warn('[Offline-First] Erro ao buscar pedidos locais:', e);
+    }
+
+    if (navigator.onLine) {
+      try {
+        const { data, error } = await supabase
+          .from("pedidos")
+          .select("*")
+          .eq("comanda_id", cmdId)
+          .order("created_at", { ascending: false });
+
+        if (!error && data) {
+          const idsSupabase = new Set(data.map((p: any) => p.id));
+          const pedidosNaoSincronizados = pedidosLocais.filter(p => !idsSupabase.has(p.id));
+
+          const todosPedidos = [...data, ...pedidosNaoSincronizados]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+          setMeusPedidos(todosPedidos);
+          return;
+        }
+      } catch (e) {
+        console.warn('[Offline-First] Supabase inacessível, usando dados locais:', e);
+      }
+    }
+
+    setMeusPedidos(pedidosLocais.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ));
+  };
+
+  const handleCallWaiter = async () => {
+    if (!empresaId || !mesaId) {
+      toast.error("Erro ao identificar mesa");
+      return;
+    }
+
+    if (waiterCallPending) {
+      toast.info("Já existe uma chamada pendente");
+      return;
+    }
+
+    setIsCallingWaiter(true);
+
+    try {
+      const chamadaId = crypto.randomUUID();
+      const novaChamada = {
+        id: chamadaId,
+        empresa_id: empresaId,
+        mesa_id: mesaId,
+        comanda_id: comandaId,
+        status: 'pendente',
+        created_at: new Date().toISOString(),
+        sincronizado: 0,
+      };
+
+      // 1. DEXIE PRIMEIRO - Salva localmente (nunca falha)
+      await db.chamadas_garcom.put(novaChamada);
+      setWaiterCallPending(true);
+
+      // 2. SUPABASE em background
+      if (navigator.onLine) {
+        try {
+          const { error } = await supabase
+            .from('chamadas_garcom')
+            .insert({ id: chamadaId, empresa_id: empresaId, mesa_id: mesaId, comanda_id: comandaId, status: 'pendente' })
+            .select().single();
+          if (!error) {
+            await db.chamadas_garcom.update(chamadaId, { sincronizado: 1 }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[Offline-First] Chamada salva localmente, sera sincronizada:', e);
+        }
+      }
+
+      toast.success("Garcom chamado! Aguarde um momento.");
+    } catch (err) {
+      console.error('[handleCallWaiter]', err);
+      toast.error("Erro ao chamar garcom. Tente novamente.");
+    } finally {
+      setIsCallingWaiter(false);
+    }
+  };
+
+  const handleSolicitarFechamento = async () => {
+    if (!mesaId || !empresaId) {
+      toast.error("Erro ao identificar mesa");
+      return;
+    }
+
+    setIsRequestingFechamento(true);
+
+    try {
+      // 1. DEXIE PRIMEIRO - Marca mesa como solicitou_fechamento localmente
+      await db.mesas.update(mesaId, {
+        status: 'solicitou_fechamento',
+        sincronizado: 0,
+        atualizado_em: new Date().toISOString()
+      }).catch(() => {});
+
+      setFechamentoSolicitado(true);
+      setIsFecharContaDialogOpen(false);
+
+      // 2. SUPABASE em background (RPC)
+      if (navigator.onLine) {
+        try {
+          const { error } = await supabase.rpc('solicitar_fechamento_mesa', { p_mesa_id: mesaId });
+          if (!error) {
+            await db.mesas.update(mesaId, { sincronizado: 1 }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[Offline-First] Fechamento salvo localmente, sera sincronizado:', e);
+        }
+      }
+
+      toast.success("Fechamento de conta solicitado! O garcom vira ate sua mesa.");
+    } catch (err) {
+      console.error('[handleSolicitarFechamento]', err);
+      toast.error("Erro ao solicitar fechamento. Tente novamente.");
+    } finally {
+      setIsRequestingFechamento(false);
+    }
+  };
+
+  // --- Lógica de Carrinho ---
+
+  const filteredProducts = produtos.filter((p) => {
+    const matchesCategory = activeCategory === "all" || p.categoria_id === activeCategory;
+    const matchesSearch =
+      searchQuery === "" ||
+      p.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.descricao && p.descricao.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesCategory && matchesSearch;
+  });
+
+  const gerarCartKey = (produtoId: string, tamanho?: string | null): string => {
+    return tamanho ? `${produtoId}__${tamanho}` : produtoId;
+  };
+
+  const addToCart = (produto: Produto, tamanhoSelecionado?: string | null, precoVariacao?: number) => {
+    const precoUnitario = precoVariacao ?? produto.preco;
+    const cartKey = gerarCartKey(produto.id, tamanhoSelecionado);
+
+    setCart((prev) => {
+      const existing = prev.find((item) => item.cartKey === cartKey);
+      if (existing) {
+        return prev.map((item) =>
+          item.cartKey === cartKey ? { ...item, quantidade: item.quantidade + 1 } : item,
+        );
+      }
+      return [...prev, {
+        produto,
+        quantidade: 1,
+        notas: "",
+        tamanhoSelecionado,
+        precoUnitario,
+        cartKey
+      }];
+    });
+
+    const nomeExibicao = tamanhoSelecionado ? `${produto.nome} - ${tamanhoSelecionado}` : produto.nome;
+    toast.success(`${nomeExibicao} adicionado ao carrinho`);
+  };
+
+  const updateCartItem = (cartKey: string, quantidade: number) => {
+    if (quantidade <= 0) {
+      setCart((prev) => prev.filter((item) => item.cartKey !== cartKey));
+    } else {
+      setCart((prev) => prev.map((item) => (item.cartKey === cartKey ? { ...item, quantidade } : item)));
+    }
+  };
+
+  const updateCartNotes = (cartKey: string, notas: string) => {
+    setCart((prev) => prev.map((item) => (item.cartKey === cartKey ? { ...item, notas } : item)));
+  };
+
+  const cartTotal = cart.reduce((sum, item) => sum + item.precoUnitario * item.quantidade, 0);
+  const cartItemCount = cart.reduce((sum, item) => sum + item.quantidade, 0);
+
+  // #################################################################
+  // # FUNÇÃO handleSendOrder - VERSÃO ÚNICA E CONSOLIDADA           #
+  // #################################################################
+
+  const handleSendOrder = async () => {
+    if (cart.length === 0) { toast.error("Adicione itens ao carrinho"); return; }
+    if (!empresaId || !mesaId) { toast.error("Erro ao identificar mesa"); return; }
+
+    setIsSendingOrder(true);
+
+    try {
+      let currentComandaId = comandaId;
+      const agora = new Date().toISOString();
+
+      // 1. Criar comanda se não existir
+      if (!currentComandaId) {
+        const clientKey = `client_info_${empresaId}_${mesaId}`;
+        const saved = localStorage.getItem(clientKey);
+        if (!saved) { setShowClientModal(true); setIsSendingOrder(false); return; }
+
+        const parsed = JSON.parse(saved);
+        const nomeCliente = `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim();
+        currentComandaId = crypto.randomUUID();
+
+        // Avisa o Servidor Local para mudar status da mesa no monitor do caixa
+        try {
+          await apiLocal.abrirComanda({ id: currentComandaId, mesa_id: mesaId, empresa_id: empresaId, nome_cliente: nomeCliente });
+        } catch (e) { console.warn("Erro ao sincronizar abertura de mesa local."); }
+
+        // Salva no navegador (Segurança)
+        await db.comandas.put({ id: currentComandaId, empresa_id: empresaId, mesa_id: mesaId, status: "aberta", nome_cliente: nomeCliente, sincronizado: 0 });
+        setComandaId(currentComandaId);
+        localStorage.setItem(`comanda_${empresaId}_${mesaId}`, currentComandaId);
+      }
+
+      // 2. Preparar os itens
+      const pedidosParaSalvar = cart.map((item) => ({
+        id: crypto.randomUUID(),
+        comanda_id: currentComandaId!,
+        produto_id: item.produto.id,
+        quantidade: item.quantidade,
+        preco_unitario: item.precoUnitario,
+        subtotal: item.precoUnitario * item.quantidade,
+        notas_cliente: item.tamanhoSelecionado ? `[${item.tamanhoSelecionado}] ${item.notas}` : item.notas,
+        status_cozinha: "pendente",
+        sincronizado: 0
+      }));
+
+      // 3. Salva no celular e tenta enviar para o Servidor Local do Caixa
+      await db.pedidos.bulkPut(pedidosParaSalvar);
+
+      try {
+        const res = await apiLocal.realizarPedido(pedidosParaSalvar);
+        if (res.success) {
+          toast.success("Pedido enviado para o caixa!");
+          setCart([]);
+          setIsCartOpen(false);
+          fetchMeusPedidos(currentComandaId!);
+        }
+      } catch (fetchErr) {
+        toast.warning("Caixa offline. O pedido está salvo no seu celular.");
+        setCart([]);
+        setIsCartOpen(false);
+      }
+    } catch (error) {
+      toast.error("Erro ao processar pedido.");
+    } finally {
+      setIsSendingOrder(false);
+    }
+  };
+
+  // #################################################################
+
+  // --- Renderização de UI ---
+
+  if (isLoading) {
+    return <MenuSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <UtensilsCrossed className="w-16 h-16 text-muted-foreground mb-4" />
+        <h1 className="text-xl font-semibold text-foreground">{error}</h1>
+        <p className="text-muted-foreground mt-2">Verifique o link e tente novamente</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background pb-24">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-primary text-primary-foreground shadow-lg">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center gap-4">
+            {empresa?.logo_url ? (
+              <img
+                src={empresa.logo_url}
+                alt={empresa.nome_fantasia}
+                className="w-12 h-12 rounded-full object-cover bg-white"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-primary-foreground/20 flex items-center justify-center">
+                <UtensilsCrossed className="w-6 h-6" />
+              </div>
+            )}
+            <div className="flex-1">
+              <h1 className="text-xl font-bold">{empresa?.nome_fantasia}</h1>
+              {mesaNumero && <p className="text-sm text-primary-foreground/80">Mesa {mesaNumero}</p>}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                title={soundEnabled ? "Som ativado" : "Som desativado"}
+              >
+                <Volume2 className={`w-4 h-4 ${!soundEnabled && "opacity-50"}`} />
+              </Button>
+              {meusPedidos.length > 0 && (
+                <Button variant="secondary" size="sm" onClick={() => setIsOrdersOpen(true)}>
+                  Pedidos
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Dialog para coletar nome/telefone do cliente quando abre comanda via QR */}
+      <Dialog open={showClientModal} onOpenChange={setShowClientModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Olá! Informe seus dados</DialogTitle>
+            <DialogDescription>
+              Para abrir a comanda precisamos do primeiro e segundo nome e telefone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Primeiro nome" value={clientFirstName} onChange={(e) => setClientFirstName(e.target.value)} />
+              <Input placeholder="Sobrenome" value={clientLastName} onChange={(e) => setClientLastName(e.target.value)} />
+            </div>
+            <Input placeholder="Telefone" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
+            <div className="flex gap-2">
+              <Button onClick={() => {
+                if (!clientFirstName || !clientPhone) { toast.error('Preencha primeiro nome e telefone'); return; }
+                const key = `client_info_${empresaId}_${mesaId}`;
+                localStorage.setItem(key, JSON.stringify({ firstName: clientFirstName, lastName: clientLastName, phone: clientPhone }));
+                toast.success('Dados salvos');
+                setShowClientModal(false);
+              }}>Confirmar</Button>
+              <Button variant="outline" onClick={() => setShowClientModal(false)}>Cancelar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* PIX Modal (Menu) */}
+      <Dialog open={showPixModal} onOpenChange={setShowPixModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">Pagamento PIX - R$ {pixValue.toFixed(2)}</DialogTitle>
+            <DialogDescription>Use o app do seu banco para ler o QR Code ou copie a chave PIX.</DialogDescription>
+          </DialogHeader>
+
+          <PixQRCode
+            chavePix={empresa?.chave_pix || ''}
+            valor={pixValue}
+            nomeRecebedor={empresa?.nome_fantasia || 'Restaurante'}
+            cidade={empresa?.endereco_completo?.split(',').pop()?.trim() || 'SAO PAULO'}
+          />
+
+          <Button onClick={() => { setShowPixModal(false); toast('Fechar'); }} className="w-full" disabled={!pixConfirmEnabled}>
+            Entendido / Fechar
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de seleção de tamanho */}
+      {sizeModalProduct && (
+        <ProductSizeModal
+          product={sizeModalProduct}
+          open={isSizeModalOpen}
+          onOpenChange={(open) => {
+            setIsSizeModalOpen(open);
+            if (!open) setSizeModalProduct(null);
+          }}
+          onAddToCart={(tamanho, preco) => {
+            addToCart(sizeModalProduct, tamanho, preco);
+          }}
+        />
+      )}
+
+      {/* Search Bar */}
+      <div className="sticky top-[72px] z-40 bg-card border-b border-border shadow-sm">
+        <div className="container mx-auto px-4 py-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar produtos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Categories Navigation */}
+      <div className="sticky top-[136px] z-30 bg-card border-b border-border shadow-sm">
+        <div className="container mx-auto px-4">
+          <div className="overflow-x-auto scrollbar-hide">
+            <div className="flex gap-2 py-3">
+              <button
+                onClick={() => setActiveCategory("all")}
+                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeCategory === "all"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+              >
+                Todos
+              </button>
+              {categorias.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeCategory === cat.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                >
+                  {cat.nome}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Products Grid */}
+      <main className="container mx-auto px-4 py-6">
+        {filteredProducts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <ChefHat className="w-16 h-16 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
+              {searchQuery ? "Nenhum produto encontrado" : "Nenhum produto disponível"}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredProducts.map((produto) => {
+              const hasVariacoes = produto.variacoes && Array.isArray(produto.variacoes) && produto.variacoes.length > 0;
+              const menorPreco = hasVariacoes
+                ? Math.min(...(produto.variacoes!.map(v => v.preco)))
+                : produto.preco;
+              const cartItemsSemVariacao = cart.filter((item) => item.produto.id === produto.id && !item.tamanhoSelecionado);
+              const cartItem = cartItemsSemVariacao[0];
+              const quantidadeTotal = cart
+                .filter((item) => item.produto.id === produto.id)
+                .reduce((sum, item) => sum + item.quantidade, 0);
+
+              return (
+                <Card key={produto.id} className="overflow-hidden border-0 shadow-fcd">
+                  <div className="aspect-video bg-muted relative">
+                    {produto.imagem_url ? (
+                      <img src={produto.imagem_url} alt={produto.nome} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <ChefHat className="w-12 h-12 text-muted-foreground/30" />
+                      </div>
+                    )}
+                    {hasVariacoes && quantidadeTotal > 0 && (
+                      <Badge className="absolute top-2 right-2 bg-primary">
+                        {quantidadeTotal} no carrinho
+                      </Badge>
+                    )}
+                  </div>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-foreground text-lg">{produto.nome}</h3>
+                    {produto.descricao && (
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{produto.descricao}</p>
+                    )}
+                    <div className="mt-3 flex items-center justify-between">
+                      <div>
+                        {hasVariacoes ? (
+                          <>
+                            <span className="text-xl font-bold text-primary">
+                              A partir de R$ {menorPreco.toFixed(2).replace(".", ",")}
+                            </span>
+                            <p className="text-xs text-muted-foreground">
+                              {produto.variacoes!.length} tamanho{produto.variacoes!.length > 1 ? 's' : ''}
+                            </p>
+                          </>
+                        ) : (
+                          <span className="text-xl font-bold text-primary">
+                            R$ {produto.preco.toFixed(2).replace(".", ",")}
+                          </span>
+                        )}
+                      </div>
+                      {hasVariacoes ? (
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => {
+                            setSizeModalProduct(produto);
+                            setIsSizeModalOpen(true);
+                          }}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Escolher
+                          </Button>
+                        </div>
+                      ) : cartItem ? (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8"
+                            onClick={() => updateCartItem(cartItem.cartKey, cartItem.quantidade - 1)}
+                          >
+                            <Minus className="w-4 h-4" />
+                          </Button>
+                          <span className="w-8 text-center font-semibold">{cartItem.quantidade}</span>
+                          <Button
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => updateCartItem(cartItem.cartKey, cartItem.quantidade + 1)}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => addToCart(produto)}>
+                            <Plus className="w-4 h-4 mr-1" />
+                            Adicionar
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setPixValue(produto.preco);
+                            setPixConfirmEnabled(false);
+                            setShowPixModal(true);
+                          }}>
+                            PIX
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </main>
+
+      {/* Call Waiter Button - Fixed */}
+      <Button
+        onClick={handleCallWaiter}
+        disabled={isCallingWaiter || waiterCallPending}
+        className={`fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full shadow-lg ${waiterCallPending ? "bg-yellow-500 hover:bg-yellow-600" : ""
+          }`}
+        size="icon"
+      >
+        {isCallingWaiter ? (
+          <Loader2 className="w-6 h-6 animate-spin" />
+        ) : (
+          <Bell className={`w-6 h-6 ${waiterCallPending && "animate-pulse"}`} />
+        )}
+      </Button>
+      {waiterCallPending && (
+        <span className="fixed bottom-20 right-4 z-50 text-xs text-yellow-600 font-medium bg-yellow-100 px-2 py-1 rounded">
+          Chamando...
+        </span>
+      )}
+
+      {/* Floating Cart Button */}
+      {cart.length > 0 && (
+        <div className="fixed bottom-4 left-4 right-20 z-50">
+          <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
+            <SheetTrigger asChild>
+              <Button className="w-full h-14 text-lg shadow-lg">
+                <ShoppingCart className="w-5 h-5 mr-2" />
+                Ver Carrinho ({cartItemCount})
+                <span className="ml-auto">R$ {cartTotal.toFixed(2).replace(".", ",")}</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-[85vh]">
+              <SheetHeader>
+                <SheetTitle>Seu Carrinho</SheetTitle>
+              </SheetHeader>
+
+              {/* Smart Upsell Section */}
+              {empresaId && cart.length > 0 && (
+                <div className="mt-4 mb-2">
+                  <SmartUpsellSection
+                    empresaId={empresaId}
+                    cartItems={cart.map(item => ({
+                      produto_id: item.produto.id,
+                      produto: { id: item.produto.id, nome: item.produto.nome },
+                      nome: item.produto.nome,
+                      categoria_id: item.produto.categoria_id || undefined,
+                    }))}
+                    cartProductIds={cart.map(item => item.produto.id)}
+                    onAddToCart={(product) => {
+                      const produtoParaAdicionar: Produto = {
+                        id: product.id,
+                        nome: product.nome,
+                        descricao: product.descricao,
+                        preco: product.preco,
+                        imagem_url: product.imagem_url,
+                        categoria_id: product.categoria_id,
+                        ativo: true,
+                      };
+                      addToCart(produtoParaAdicionar);
+                    }}
+                    title="Que tal adicionar?"
+                    maxItems={6}
+                  />
+                </div>
+              )}
+
+              <ScrollArea className="h-[calc(100%-140px)] mt-4">
+                <div className="space-y-4 pr-4">
+                  {cart.map((item) => (
+                    <div key={item.cartKey} className="flex gap-3 p-3 bg-muted rounded-lg">
+                      <div className="w-16 h-16 bg-background rounded-md overflow-hidden flex-shrink-0">
+                        {item.produto.imagem_url ? (
+                          <img
+                            src={item.produto.imagem_url}
+                            alt={item.produto.nome}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ChefHat className="w-6 h-6 text-muted-foreground/30" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-sm">
+                          {item.tamanhoSelecionado
+                            ? `${item.produto.nome} - ${item.tamanhoSelecionado}`
+                            : item.produto.nome
+                          }
+                        </h4>
+                        <p className="text-primary font-semibold text-sm">
+                          R$ {(item.precoUnitario * item.quantidade).toFixed(2).replace(".", ",")}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
+                            onClick={() => updateCartItem(item.cartKey, item.quantidade - 1)}
+                          >
+                            {item.quantidade === 1 ? <Trash2 className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                          </Button>
+                          <span className="w-6 text-center text-sm font-semibold">{item.quantidade}</span>
+                          <Button
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => updateCartItem(item.cartKey, item.quantidade + 1)}
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        </div>
+                        <Textarea
+                          placeholder="Observações (ex: sem cebola)"
+                          value={item.notas}
+                          onChange={(e) => updateCartNotes(item.cartKey, e.target.value)}
+                          className="mt-2 text-xs h-16 resize-none"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="font-medium">Total</span>
+                  <span className="text-xl font-bold text-primary">R$ {cartTotal.toFixed(2).replace(".", ",")}</span>
+                </div>
+                <Button className="w-full h-12 text-lg" onClick={() => {
+                  if (!upsellShown && empresaId) {
+                    setShowUpsellDialog(true);
+                    setUpsellShown(true);
+                  } else {
+                    handleSendOrder();
+                  }
+                }} disabled={isSendingOrder}>
+                  {isSendingOrder ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
+                  Enviar Pedido
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      )}
+
+      {/* Orders Sheet */}
+      <Sheet open={isOrdersOpen} onOpenChange={setIsOrdersOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Meus Pedidos</SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-3 pr-4">
+              {meusPedidos.map((pedido) => {
+                const produto = produtos.find((p) => p.id === pedido.produto_id);
+                const status = statusConfig[pedido.status_cozinha];
+                const StatusIcon = status.icon;
+                return (
+                  <div key={pedido.id} className="p-3 bg-muted rounded-lg">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-medium">{produto?.nome || "Produto"}</h4>
+                        <p className="text-sm text-muted-foreground">Qtd: {pedido.quantidade}</p>
+                        {pedido.notas_cliente && (
+                          <p className="text-xs text-muted-foreground mt-1">Obs: {pedido.notas_cliente}</p>
+                        )}
+                      </div>
+                      <Badge className={`${status.color} text-white flex items-center gap-1`}>
+                        <StatusIcon className="w-3 h-3" />
+                        {status.label}
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+              {meusPedidos.length === 0 && (
+                <p className="text-center text-muted-foreground py-8">Nenhum pedido ainda</p>
+              )}
+
+              {/* Botão Fechar Conta */}
+              {meusPedidos.length > 0 && (
+                <div className="pt-4 border-t mt-4">
+                  {fechamentoSolicitado ? (
+                    <div className="flex items-center justify-center gap-2 p-4 bg-green-50 text-green-700 rounded-lg">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="font-medium">Fechamento solicitado! Aguarde o garçom.</span>
+                    </div>
+                  ) : (
+                    (() => {
+                      const todosEntregues = meusPedidos.every(p => p.status_cozinha === 'entregue');
+                      const pedidosPendentes = meusPedidos.filter(p => p.status_cozinha !== 'entregue' && p.status_cozinha !== 'cancelado');
+
+                      return (
+                        <div className="space-y-2">
+                          <Button
+                            variant="outline"
+                            className={`w-full h-12 text-base ${todosEntregues
+                                ? 'border-orange-500 text-orange-600 hover:bg-orange-50'
+                                : 'border-gray-300 text-gray-400 cursor-not-allowed'
+                              }`}
+                            onClick={() => todosEntregues && setIsFecharContaDialogOpen(true)}
+                            disabled={!todosEntregues}
+                          >
+                            <Receipt className="w-5 h-5 mr-2" />
+                            Fechar Conta
+                          </Button>
+                          {!todosEntregues && pedidosPendentes.length > 0 && (
+                            <p className="text-xs text-center text-muted-foreground">
+                              Aguarde a entrega de {pedidosPendentes.length} pedido{pedidosPendentes.length > 1 ? 's' : ''} para fechar a conta
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* AlertDialog para confirmação de fechamento de conta */}
+      <AlertDialog open={isFecharContaDialogOpen} onOpenChange={setIsFecharContaDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fechar Conta</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja solicitar o fechamento da conta?
+              O garçom virá até sua mesa para efetuar o pagamento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRequestingFechamento}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSolicitarFechamento}
+              disabled={isRequestingFechamento}
+              className="bg-orange-500 hover:bg-orange-600"
+            >
+              {isRequestingFechamento ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Solicitando...
+                </>
+              ) : (
+                "Confirmar"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* UpsellDialog Popup */}
+      {empresaId && (
+        <UpsellDialog
+          open={showUpsellDialog}
+          onOpenChange={setShowUpsellDialog}
+          empresaId={empresaId}
+          cartProductIds={cart.map(item => item.produto.id)}
+          onAddToCart={(product) => {
+            addToCart({
+              id: product.id,
+              nome: product.nome,
+              descricao: product.descricao,
+              preco: product.preco,
+              imagem_url: product.imagem_url,
+              categoria_id: '',
+              ativo: true,
+            } as any);
+          }}
+          onContinue={() => {
+            handleSendOrder();
+          }}
+        />
+      )}
+
+      {/* Footer */}
+      <footer className="bg-muted py-6 mt-8">
+        <div className="container mx-auto px-4 text-center">
+          <p className="text-sm text-muted-foreground">Cardápio digital - {empresa?.nome_fantasia}</p>
+        </div>
+      </footer>
+    </div>
+  );
+}

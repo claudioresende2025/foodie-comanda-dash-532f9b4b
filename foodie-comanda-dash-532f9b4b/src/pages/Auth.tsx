@@ -1,0 +1,677 @@
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { toast } from 'sonner';
+import { Utensils, Loader2, Eye, EyeOff } from 'lucide-react';
+import { z } from 'zod';
+
+// Roles que pertencem a equipe (staff)
+const STAFF_ROLES = ['proprietario', 'gerente', 'garcom', 'caixa', 'motoboy'];
+
+const emailSchema = z.string().email('E-mail invalido');
+const passwordSchema = z.string().min(6, 'Senha deve ter no minimo 6 caracteres');
+const nomeSchema = z.string().min(2, 'Nome deve ter no minimo 2 caracteres');
+
+export default function Auth() {
+  const { empresaNome } = useParams<{ empresaNome?: string }>();
+  const [searchParams] = useSearchParams();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [nome, setNome] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('login');
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showEmailConfirmation, setShowEmailConfirmation] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const hasRedirected = useRef(false);
+  
+  const { signIn, signUp, user, profile, loading: authLoading, isOfflineSession } = useAuth();
+  const navigate = useNavigate();
+
+  // Ler tab da URL e mostrar mensagem de plano selecionado
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'signup') {
+      setActiveTab('signup');
+    }
+    
+    // Verificar se tem plano pendente no localStorage e exibir toast (apenas uma vez)
+    try {
+      const pending = localStorage.getItem('post_subscribe_plan');
+      if (pending) {
+        const parsed = JSON.parse(pending);
+        // Verificar se o plano foi selecionado hÃ¡ menos de 1 hora (timestamp vÃ¡lido)
+        const timestamp = parsed?.timestamp || 0;
+        const oneHourAgo = Date.now() - (60 * 60 * 1000);
+        
+        if (timestamp < oneHourAgo) {
+          // Plano pendente expirado, limpar
+          localStorage.removeItem('post_subscribe_plan');
+          sessionStorage.removeItem('plan_toast_shown');
+        } else if (parsed?.planoSlug && !sessionStorage.getItem('plan_toast_shown')) {
+          const planoNomes: Record<string, string> = {
+            'bronze': 'Bronze (Iniciante)',
+            'prata': 'Prata (Intermediario)',
+            'ouro': 'Ouro (Enterprise)',
+          };
+          const nomePlano = planoNomes[parsed.planoSlug] || parsed.planoSlug;
+          toast.success(`Plano ${nomePlano} selecionado! Complete seu cadastro.`);
+          sessionStorage.setItem('plan_toast_shown', '1');
+        }
+      }
+    } catch (e) {
+      // ignore - limpar se houver erro ao parsear
+      localStorage.removeItem('post_subscribe_plan');
+    }
+  }, [searchParams]);
+
+// Buscar empresa pelo nome na URL (HÃ­brido: Nuvem -> Local)
+  const { data: empresaUrl } = useQuery({
+    queryKey: ['empresa-auth', empresaNome],
+    queryFn: async () => {
+      if (!empresaNome) return null;
+      const decoded = decodeURIComponent(empresaNome);
+
+      // 1. TENTA BUSCAR NO SUPABASE (Online)
+      try {
+        const { data, error } = await supabase
+          .from('empresas')
+          .select('id, nome_fantasia, logo_url')
+          .ilike('nome_fantasia', decoded)
+          .maybeSingle();
+        
+        if (!error && data) return data;
+      } catch (onlineErr) {
+        console.warn("âš ï¸ Supabase inacessÃ­vel, tentando dados da empresa no servidor local...");
+      }
+
+      // 2. SE FALHAR (OFFLINE), BUSCA NO SERVIDOR LOCAL (PC DO CAIXA)
+      try {
+        const localRes = await fetch(`http://192.168.2.111:3000/api/local/empresa-auth/${encodeURIComponent(decoded)}`);
+        if (localRes.ok) {
+          return await localRes.json();
+        }
+      } catch (localErr) {
+        console.error("ðŸš¨ Servidor local tambÃ©m falhou ao retornar dados da empresa.");
+      }
+
+      // 3. FALLBACK FINAL: Se nada funcionar, retorna um objeto bÃ¡sico para nÃ£o quebrar a tela
+      return { id: null, nome_fantasia: "Food Comanda Pro (Offline)" };
+    },
+    enabled: !!empresaNome,
+    retry: false, // Importante: evita que o React fique tentando infinitamente sem rede
+  });
+
+  // FunÃ§Ã£o para verificar o role do usuÃ¡rio e redirecionar apropriadamente
+  const redirectBasedOnRole = useCallback(async (userId: string, empresaId: string | null) => {
+    console.log('[Auth] redirectBasedOnRole - userId:', userId, 'empresaId:', empresaId);
+    
+    // CURTO-CIRCUITO: Super Admin por email — redireciona IMEDIATAMENTE sem queries
+    const currentEmail = user?.email?.toLowerCase();
+    if (currentEmail === 'claudinhoresendemoura@gmail.com') {
+      console.log('[Auth] Super Admin detectado - redirecionando para /super-admin');
+      navigate('/super-admin');
+      return;
+    }
+
+    // Se OFFLINE, não fazer queries ao Supabase - usar dados locais
+    if (!navigator.onLine) {
+      console.log('[Auth] OFFLINE - redirecionando direto para /admin');
+      navigate('/admin');
+      return;
+    }
+
+    // Verificar primeiro se Ã© super admin (fallback por tabela)
+    try {
+      const { data: superAdmin } = await supabase
+        .from('super_admins')
+        .select('id, ativo')
+        .eq('user_id', userId)
+        .eq('ativo', true)
+        .maybeSingle();
+      
+      if (superAdmin?.ativo) {
+        navigate('/super-admin');
+        return;
+      }
+    } catch (e) {
+      console.warn('[Auth] Erro ao verificar super_admins:', e);
+    }
+
+    // Buscar todos os roles do usuÃ¡rio (pode ter em vÃ¡rias empresas)
+    let userRoles: { role: string; empresa_id: string }[] | null = null;
+    try {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role, empresa_id')
+        .eq('user_id', userId);
+      userRoles = data;
+    } catch (e) {
+      console.warn('[Auth] Erro ao buscar roles online:', e);
+    }
+
+    // Fallback offline: usar role salvo no localStorage
+    if (!userRoles || userRoles.length === 0) {
+      const savedRole = localStorage.getItem(`user_role_${userId}_${empresaId}`);
+      if (savedRole && empresaId) {
+        userRoles = [{ role: savedRole, empresa_id: empresaId }];
+      }
+    }
+
+    // Se nÃ£o tem empresa_id E nÃ£o tem nenhum role, Ã© um cliente de delivery
+    if (!empresaId && (!userRoles || userRoles.length === 0)) {
+      navigate('/delivery');
+      return;
+    }
+
+    // Se nÃ£o tem empresa_id mas tem role em alguma empresa, vai para onboarding
+    if (!empresaId) {
+      // Se tem role em alguma empresa, redireciona para admin dessa empresa
+      if (userRoles && userRoles.length > 0) {
+        const firstRole = userRoles[0];
+        if (firstRole.role && STAFF_ROLES.includes(firstRole.role)) {
+          // Se Ã© motoboy, redireciona para o painel do entregador
+          if (firstRole.role === 'motoboy') {
+            navigate('/admin/entregador');
+            return;
+          }
+          navigate('/admin');
+          return;
+        }
+      }
+      navigate('/admin/onboarding');
+      return;
+    }
+
+    const userRole = userRoles?.find(r => r.empresa_id === empresaId);
+    const role = userRole?.role;
+
+    // Se tem empresa_id mas não encontrou role, assumir staff e ir para admin
+    // (evita redirecionar para menu do cardápio)
+    if (!role) {
+      console.log('[Auth] Role não encontrado para empresa, assumindo acesso admin');
+      navigate('/admin');
+      return;
+    }
+
+    if (STAFF_ROLES.includes(role)) {
+      // Se Ã© motoboy, redireciona direto para o painel do entregador
+      if (role === 'motoboy') {
+        navigate('/admin/entregador');
+        return;
+      }
+      navigate('/admin');
+    } else {
+      navigate(`/menu/${empresaId}`);
+    }
+  }, [navigate, user]);
+
+  // Efeito para redirecionar quando jÃ¡ estÃ¡ logado (apenas uma vez)
+  useEffect(() => {
+    // SÃ³ redireciona se nÃ£o estiver carregando, tiver usuÃ¡rio autenticado e nÃ£o tiver redirecionado ainda
+    if (!authLoading && user && profile && !hasRedirected.current) {
+      console.log('[Auth] Verificando redirecionamento - user:', user.email, 'profile:', profile.empresa_id, 'isOffline:', isOfflineSession);
+      
+      // Se é sessão offline, o AuthContext já fez o redirecionamento correto
+      // Não interferir - apenas redirecionar para /admin se ainda estiver aqui
+      if (isOfflineSession) {
+        console.log('[Auth] Sessão offline detectada - redirecionando para /admin');
+        hasRedirected.current = true;
+        window.location.href = '/admin';
+        return;
+      }
+      
+      hasRedirected.current = true;
+      redirectBasedOnRole(user.id, profile.empresa_id);
+    }
+  }, [user, profile, redirectBasedOnRole, authLoading, isOfflineSession]);
+
+  const validateLogin = () => {
+    try {
+      emailSchema.parse(email);
+      passwordSchema.parse(password);
+      return true;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.errors[0].message);
+      }
+      return false;
+    }
+  };
+
+  const validateSignup = () => {
+    try {
+      nomeSchema.parse(nome);
+      emailSchema.parse(email);
+      passwordSchema.parse(password);
+      return true;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.errors[0].message);
+      }
+      return false;
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateLogin()) return;
+
+    // Resetar flag de redirecionamento
+    hasRedirected.current = false;
+    setIsLoading(true);
+
+    try {
+      console.log('[Auth] Iniciando login para:', email);
+      console.log('[Auth] navigator.onLine:', navigator.onLine);
+      
+      // Usar APENAS o signIn do AuthContext
+      // Ele internamente já trata offline/online e faz redirecionamento
+      const { error } = await signIn(email, password);
+      
+      if (error) {
+        setIsLoading(false);
+        console.log('[Auth] Erro no login:', error.message);
+        
+        // Mensagens de erro específicas
+        if (error.message.includes('Invalid login credentials')) {
+          toast.error('E-mail ou senha incorretos');
+        } else if (error.message.includes('Super Admin requer')) {
+          toast.error('Super Admin requer conexão com internet.');
+        } else if (error.message.includes('Usuário não encontrado')) {
+          toast.error('Usuário não encontrado. Faça login online pelo menos uma vez.');
+        } else {
+          toast.error(error.message || 'Erro ao conectar. Tente novamente.');
+        }
+        return;
+      }
+      
+      // Login bem-sucedido
+      console.log('[Auth] Login bem-sucedido!');
+      
+      // Se offline, o AuthContext já redirecionou via window.location.href
+      // Se online, o useEffect vai detectar user/profile e redirecionar
+      if (!navigator.onLine) {
+        toast.success('Login Offline realizado com sucesso!');
+        // AuthContext já fez o redirecionamento, mas garantir
+        setIsLoading(false);
+      } else {
+        toast.success('Login realizado com sucesso!');
+        setIsLoading(false);
+        // Aguardar o useEffect redirecionar via redirectBasedOnRole
+      }
+      
+    } catch (err: any) {
+      setIsLoading(false);
+      console.error('[Auth] Erro inesperado no login:', err);
+      toast.error('Erro inesperado. Tente novamente.');
+    }
+  };
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateSignup()) return;
+
+    setIsLoading(true);
+
+    const { error } = await signUp(email, password, nome);
+
+    if (error) {
+      setIsLoading(false);
+      if (error.message.includes('User already registered')) {
+        toast.error('Este e-mail ja esta cadastrado. Tente fazer login.');
+      } else {
+        toast.error('Erro ao criar conta: ' + error.message);
+      }
+    } else {
+      setIsLoading(false);
+      setRegisteredEmail(email);
+      setShowEmailConfirmation(true);
+      // Limpar campos
+      setEmail('');
+      setPassword('');
+      setNome('');
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail) {
+      toast.error('Digite seu e-mail');
+      return;
+    }
+    
+    try {
+      emailSchema.parse(forgotEmail);
+    } catch {
+      toast.error('E-mail invalido');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    // URL de reset fixa para o domÃ­nio de produÃ§Ã£o
+    const resetRedirectUrl = 'https://foodcomandapro.servicecoding.com.br/reset-password';
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: resetRedirectUrl,
+    });
+    
+    // TambÃ©m enviar email personalizado via Resend
+    if (!error) {
+      try {
+        await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'password_reset',
+            to: forgotEmail,
+            data: {
+              resetUrl: resetRedirectUrl,
+            },
+          },
+        });
+      } catch (emailError) {
+        console.warn('Erro ao enviar email personalizado de recuperaÃ§Ã£o:', emailError);
+      }
+    }
+    
+    setIsLoading(false);
+    
+    if (error) {
+      toast.error('Erro ao enviar e-mail de recuperacao');
+    } else {
+      toast.success('E-mail de recuperacao enviado! Verifique sua caixa de entrada.');
+      setShowForgotPassword(false);
+      setForgotEmail('');
+    }
+  };
+
+  // Tela de confirmaÃ§Ã£o de email apÃ³s cadastro
+  if (showEmailConfirmation) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-hidden" style={{ height: '100vh', maxHeight: '100vh' }}>
+        <div className="w-full max-w-md animate-fade-in">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4">
+              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Verifique seu e-mail
+            </h1>
+            <p className="text-muted-foreground">
+              Enviamos um link de confirmaÃ§Ã£o para:
+            </p>
+            <p className="text-primary font-semibold mt-2 text-lg">
+              {registeredEmail}
+            </p>
+          </div>
+
+          <Card className="shadow-fcd border-0">
+            <CardContent className="pt-6">
+              <div className="space-y-4 text-center">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <p className="text-amber-800 text-sm">
+                    <strong>ðŸ“§ Importante:</strong> Clique no link enviado para seu e-mail para confirmar sua conta. ApÃ³s a confirmaÃ§Ã£o, vocÃª serÃ¡ redirecionado para configurar seu restaurante.
+                  </p>
+                </div>
+                
+                <p className="text-muted-foreground text-sm">
+                  NÃ£o recebeu o e-mail? Verifique sua pasta de spam ou lixo eletrÃ´nico.
+                </p>
+
+                <div className="pt-4 space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setShowEmailConfirmation(false);
+                      setActiveTab('login');
+                    }}
+                  >
+                    Voltar para Login
+                  </Button>
+                  
+                  <p className="text-xs text-muted-foreground">
+                    Apos confirmar seu e-mail, faca login para continuar.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4 overflow-y-auto scrollbar-none">
+      <div className="w-full max-w-md animate-fade-in py-4">
+        {/* Logo */}
+        <div className="text-center mb-4">
+          {empresaUrl?.logo_url ? (
+            <img 
+              src={empresaUrl.logo_url} 
+              alt={empresaUrl.nome_fantasia} 
+              className="w-20 h-20 rounded-2xl shadow-fcd mb-4 mx-auto object-cover"
+            />
+          ) : (
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-fcd mb-4">
+              <Utensils className="w-8 h-8 text-primary-foreground" />
+            </div>
+          )}
+          <h1 className="text-3xl font-bold text-foreground">
+            {empresaUrl?.nome_fantasia || (<>Food <span className="text-accent">Comanda</span> Pro</>)}
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            {empresaUrl ? 'Acesse sua conta' : 'Sistema Digital de Comandas'}
+          </p>
+        </div>
+
+        <Card className="shadow-fcd border-0">
+          <CardHeader className="text-center pb-2">
+            <CardTitle className="text-2xl">Bem-vindo!</CardTitle>
+            <CardDescription>
+              Acesse sua conta ou crie uma nova para comecar
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="login">Entrar</TabsTrigger>
+                <TabsTrigger value="signup">Cadastrar</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="login">
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-email">E-mail</Label>
+                    <Input
+                      id="login-email"
+                      type="email"
+                      placeholder="seu@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="login-password">Senha</Label>
+                    <div className="relative">
+                      <Input
+                        id="login-password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="........"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-primary hover:bg-primary/90"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Entrando...
+                      </>
+                    ) : (
+                      'Entrar'
+                    )}
+                  </Button>
+                  <button
+                    type="button"
+                    className="w-full text-sm text-primary hover:underline mt-2"
+                    onClick={() => {
+                      setForgotEmail(email);
+                      setShowForgotPassword(true);
+                    }}
+                  >
+                    Esqueci minha senha
+                  </button>
+                </form>
+                
+                {/* Dialog Esqueci minha senha */}
+                <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Recuperar Senha</DialogTitle>
+                      <DialogDescription>
+                        Digite seu e-mail para receber o link de recuperacao
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="forgot-email">E-mail</Label>
+                        <Input
+                          id="forgot-email"
+                          type="email"
+                          placeholder="seu@email.com"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => setShowForgotPassword(false)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button 
+                          className="flex-1 bg-primary hover:bg-primary/90"
+                          onClick={handleForgotPassword}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Enviar'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </TabsContent>
+              
+              <TabsContent value="signup">
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-nome">Nome Completo</Label>
+                    <Input
+                      id="signup-nome"
+                      type="text"
+                      placeholder="Seu nome"
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email">E-mail</Label>
+                    <Input
+                      id="signup-email"
+                      type="email"
+                      placeholder="seu@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password">Senha</Label>
+                    <div className="relative">
+                      <Input
+                        id="signup-password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Minimo 6 caracteres"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-accent hover:bg-accent/90"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Criando conta...
+                      </>
+                    ) : (
+                      'Criar Conta'
+                    )}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+        {/* Link para clientes */}
+        <div className="mt-3 text-center">
+          <button
+            type="button"
+            className="text-sm text-muted-foreground hover:text-primary transition-colors"
+            onClick={() => navigate('/auth/cliente')}
+          >
+            {'É'} cliente? <span className="underline">{`Faça`} seus pedidos aqui</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

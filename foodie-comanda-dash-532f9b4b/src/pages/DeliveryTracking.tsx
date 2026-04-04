@@ -1,0 +1,734 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { 
+  Loader2, ArrowLeft, Clock, CheckCircle2, Truck, Package, 
+  XCircle, MapPin, Phone, User, Receipt, Store, CreditCard, QrCode, Check
+} from 'lucide-react';
+import { Database } from '@/integrations/supabase/types';
+import { DeliveryMap } from '@/components/delivery/DeliveryMap';
+import { useDeliveryTracking } from '@/hooks/useDeliveryTracking';
+import { PixQRCode } from '@/components/pix/PixQRCode';
+import { toast } from 'sonner';
+
+type DeliveryStatus = Database['public']['Enums']['delivery_status'];
+
+const statusConfig: Record<DeliveryStatus, { 
+  label: string; 
+  color: string; 
+  bgColor: string;
+  icon: any;
+  message: string;
+}> = {
+  pendente: { 
+    label: 'Aguardando Confirmação', 
+    color: 'text-yellow-600', 
+    bgColor: 'bg-yellow-100',
+    icon: Clock,
+    message: 'Seu pedido foi recebido e está aguardando confirmação do restaurante.'
+  },
+  pago: { 
+    label: 'Pagamento Confirmado', 
+    color: 'text-emerald-600', 
+    bgColor: 'bg-emerald-100',
+    icon: CreditCard,
+    message: 'Pagamento confirmado! Aguardando o restaurante aceitar seu pedido.'
+  },
+  confirmado: { 
+    label: 'Confirmado', 
+    color: 'text-blue-600', 
+    bgColor: 'bg-blue-100',
+    icon: CheckCircle2,
+    message: 'O restaurante confirmou seu pedido e em breve começará o preparo.'
+  },
+  em_preparo: { 
+    label: 'Em Preparo', 
+    color: 'text-orange-600', 
+    bgColor: 'bg-orange-100',
+    icon: Package,
+    message: 'Seu pedido está sendo preparado com carinho!'
+  },
+  saiu_entrega: { 
+    label: 'Saiu para Entrega', 
+    color: 'text-purple-600', 
+    bgColor: 'bg-purple-100',
+    icon: Truck,
+    message: 'Seu pedido saiu para entrega! Em breve chegará até você.'
+  },
+  entregue: { 
+    label: 'Entregue', 
+    color: 'text-green-600', 
+    bgColor: 'bg-green-100',
+    icon: CheckCircle2,
+    message: 'Pedido entregue! Bom apetite!'
+  },
+  cancelado: { 
+    label: 'Cancelado', 
+    color: 'text-red-600', 
+    bgColor: 'bg-red-100',
+    icon: XCircle,
+    message: 'Este pedido foi cancelado.'
+  },
+};
+
+const statusOrder: DeliveryStatus[] = ['pendente', 'pago', 'confirmado', 'em_preparo', 'saiu_entrega', 'entregue'];
+
+export default function DeliveryTracking() {
+  const { pedidoId } = useParams<{ pedidoId: string }>();
+  const navigate = useNavigate();
+  const [pedido, setPedido] = useState<any>(null);
+  const [empresa, setEmpresa] = useState<any>(null);
+  const [configDelivery, setConfigDelivery] = useState<{ tempo_estimado_min: number; tempo_estimado_max: number } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [customerCoords, setCustomerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [restaurantCoords, setRestaurantCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [showPixModal, setShowPixModal] = useState(false);
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
+  
+  // Hook para rastreamento em tempo real do MOTOBOY
+  const { location: deliveryLocation, hasLocation } = useDeliveryTracking(pedidoId);
+
+  // Função para informar que realizou o pagamento (não confirma automaticamente)
+  const handleInformPayment = async () => {
+    if (!pedidoId || isConfirmingPayment) return;
+    
+    setIsConfirmingPayment(true);
+    try {
+      // Buscar notas atuais do pedido
+      const { data: pedidoAtual } = await supabase
+        .from('pedidos_delivery')
+        .select('notas')
+        .eq('id', pedidoId)
+        .single();
+      
+      // Marca que o cliente informou o pagamento, mas NÃO muda o status para "pago"
+      // O restaurante precisa verificar e confirmar manualmente
+      const notasAtuais = pedidoAtual?.notas || '';
+      const novasMensagens = `${notasAtuais}\n[PIX] Cliente informou pagamento às ${new Date().toLocaleString('pt-BR')}`;
+      
+      const { error: updateError } = await supabase
+        .from('pedidos_delivery')
+        .update({ 
+          notas: novasMensagens.trim(),
+        })
+        .eq('id', pedidoId);
+
+      if (updateError) throw updateError;
+
+      setShowPixModal(false);
+      
+      toast.success('Pagamento informado!', {
+        description: 'O restaurante irá verificar o recebimento e confirmar seu pedido.'
+      });
+    } catch (err) {
+      console.error('Erro ao informar pagamento:', err);
+      toast.error('Erro ao informar pagamento', {
+        description: 'Tente novamente ou entre em contato com o restaurante.'
+      });
+    } finally {
+      setIsConfirmingPayment(false);
+    }
+  };
+
+  // Geocoding do endereço do cliente
+  const geocodeCustomerAddress = useCallback(async (endereco: any) => {
+    if (!endereco) return;
+    
+    // Se já tem coordenadas salvas, usa elas
+    if (endereco.latitude && endereco.longitude) {
+      setCustomerCoords({
+        latitude: Number(endereco.latitude),
+        longitude: Number(endereco.longitude),
+      });
+      return;
+    }
+
+    // Senão, faz geocoding
+    try {
+      const address = `${endereco.rua}, ${endereco.numero}, ${endereco.bairro}, ${endereco.cidade}, ${endereco.estado}, Brasil`;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        { headers: { 'User-Agent': 'FoodieComanda/1.0' } }
+      );
+      const data = await response.json();
+      if (data && data.length > 0) {
+        const coords = {
+          latitude: parseFloat(data[0].lat),
+          longitude: parseFloat(data[0].lon),
+        };
+        setCustomerCoords(coords);
+        
+        // Salvar coordenadas no banco para próximas vezes
+        await supabase
+          .from('enderecos_cliente')
+          .update({ latitude: coords.latitude, longitude: coords.longitude })
+          .eq('id', endereco.id);
+      }
+    } catch (err) {
+      console.error('Erro no geocoding do cliente:', err);
+    }
+  }, []);
+
+  // Geocoding do restaurante
+  const geocodeRestaurant = useCallback(async (empresaData: any) => {
+    if (!empresaData) return;
+    
+    // Se já tem coordenadas salvas
+    if (empresaData.latitude && empresaData.longitude) {
+      setRestaurantCoords({
+        latitude: Number(empresaData.latitude),
+        longitude: Number(empresaData.longitude),
+      });
+      return;
+    }
+
+    // Senão, tenta geocoding com endereço_completo
+    if (empresaData.endereco_completo) {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(empresaData.endereco_completo + ', Brasil')}&limit=1`,
+          { headers: { 'User-Agent': 'FoodieComanda/1.0' } }
+        );
+        const data = await response.json();
+        if (data && data.length > 0) {
+          setRestaurantCoords({
+            latitude: parseFloat(data[0].lat),
+            longitude: parseFloat(data[0].lon),
+          });
+        }
+      } catch (err) {
+        console.error('Erro no geocoding do restaurante:', err);
+      }
+    }
+  }, []);
+
+  const fetchPedido = useCallback(async () => {
+    if (!pedidoId) return;
+    try {
+      const { data, error } = await supabase
+        .from('pedidos_delivery')
+        .select(`
+          *,
+          endereco:enderecos_cliente(*),
+          itens:itens_delivery(*)
+        `)
+        .eq('id', pedidoId)
+        .single();
+
+      if (error) throw error;
+      if (!data) {
+        setError('Pedido não encontrado');
+        setIsLoading(false);
+        return;
+      }
+
+      setPedido(data);
+      
+      // Geocoding do endereço do cliente
+      if (data.endereco) {
+        geocodeCustomerAddress(data.endereco);
+      }
+
+      // Fetch empresa com todos os dados (incluindo chave_pix)
+      const { data: empresaData, error: empresaError } = await supabase
+        .from('empresas')
+        .select('*')
+        .eq('id', data.empresa_id)
+        .single();
+
+      console.log('[DeliveryTracking] Empresa data:', { 
+        empresa_id: data.empresa_id, 
+        empresaData, 
+        empresaError,
+        chave_pix: empresaData?.chave_pix 
+      });
+
+      setEmpresa(empresaData);
+      
+      // Fetch config_delivery para tempo estimado
+      const { data: configData } = await supabase
+        .from('config_delivery')
+        .select('tempo_estimado_min, tempo_estimado_max')
+        .eq('empresa_id', data.empresa_id)
+        .single();
+      
+      if (configData) {
+        setConfigDelivery(configData);
+      }
+      
+      // Geocoding do restaurante
+      if (empresaData) {
+        geocodeRestaurant(empresaData);
+      }
+    } catch (err) {
+      console.error('Error fetching pedido:', err);
+      setError('Erro ao carregar pedido');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pedidoId, geocodeCustomerAddress, geocodeRestaurant]);
+
+  useEffect(() => {
+    fetchPedido();
+  }, [fetchPedido]);
+
+  // Realtime subscription para atualização de status em tempo real
+  useEffect(() => {
+    if (!pedidoId) return;
+
+    console.log('[DeliveryTracking] Iniciando subscription realtime para pedido:', pedidoId);
+
+    const channel = supabase
+      .channel(`pedido-tracking-${pedidoId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Escutar todos os eventos (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'pedidos_delivery',
+          filter: `id=eq.${pedidoId}`,
+        },
+        (payload) => {
+          console.log('[DeliveryTracking] Recebeu atualização realtime:', payload);
+          if (payload.new && typeof payload.new === 'object') {
+            setPedido((prev: any) => {
+              if (!prev) return payload.new;
+              return { ...prev, ...payload.new };
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[DeliveryTracking] Status subscription:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('[DeliveryTracking] ✅ Subscription realtime ativa');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[DeliveryTracking] ❌ Erro no canal realtime');
+          // Tentar refetch como fallback
+          setTimeout(() => fetchPedido(), 5000);
+        }
+      });
+
+    return () => {
+      console.log('[DeliveryTracking] Removendo subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [pedidoId, fetchPedido]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error || !pedido) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <Receipt className="w-16 h-16 text-muted-foreground mb-4" />
+        <h1 className="text-xl font-semibold text-foreground">{error || 'Pedido não encontrado'}</h1>
+        <Button onClick={() => navigate('/delivery/orders')} className="mt-4">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Voltar aos Pedidos
+        </Button>
+      </div>
+    );
+  }
+
+  const currentStatus = pedido.status as DeliveryStatus;
+  const StatusIcon = statusConfig[currentStatus]?.icon || Clock;
+  const currentIndex = statusOrder.indexOf(currentStatus);
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-primary text-primary-foreground shadow-lg">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/delivery/orders')}
+              className="text-primary-foreground hover:bg-primary-foreground/20"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex-1">
+              <h1 className="text-xl font-bold">Acompanhar Pedido</h1>
+              <p className="text-sm text-primary-foreground/80">
+                #{pedido.id.slice(0, 8).toUpperCase()}
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Map Card - Show when status is 'saiu_entrega' */}
+        {currentStatus === 'saiu_entrega' && (
+          <Card className="overflow-hidden" style={{ zIndex: 0 }}>
+            <CardContent className="p-0">
+              {/* Header do mapa */}
+              <div className={`${hasLocation ? 'bg-gradient-to-r from-purple-500 to-purple-600' : 'bg-gradient-to-r from-gray-500 to-gray-600'} text-white p-4`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                      <Truck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">Entrega em Andamento</h3>
+                      <p className="text-sm text-white/80">
+                        {hasLocation 
+                          ? 'Acompanhe o entregador em tempo real' 
+                          : 'Aguardando entregador ativar GPS...'}
+                      </p>
+                    </div>
+                  </div>
+                  {hasLocation && (
+                    <div className="flex items-center gap-1 bg-green-500 px-3 py-1 rounded-full text-xs font-bold">
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                      AO VIVO
+                    </div>
+                  )}
+                  {!hasLocation && (
+                    <div className="flex items-center gap-1 bg-yellow-500 px-3 py-1 rounded-full text-xs font-bold">
+                      <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                      AGUARDANDO
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Mapa */}
+              <div className="p-4" style={{ position: 'relative', zIndex: 0 }}>
+                <DeliveryMap
+                  deliveryLocation={
+                    deliveryLocation
+                      ? {
+                          latitude: Number(deliveryLocation.latitude),
+                          longitude: Number(deliveryLocation.longitude),
+                        }
+                      : null
+                  }
+                  customerLocation={customerCoords}
+                  restaurantLocation={restaurantCoords}
+                  restaurantName={empresa?.nome_fantasia}
+                  customerAddress={
+                    pedido.endereco
+                      ? `${pedido.endereco.rua}, ${pedido.endereco.numero} - ${pedido.endereco.bairro}`
+                      : undefined
+                  }
+                  showRoute={true}
+                />
+              </div>
+              
+              {/* Info de atualização e previsão */}
+              {hasLocation && deliveryLocation && (
+                <div className="px-4 pb-4">
+                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg text-sm">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Última atualização:</span>
+                      <span className="font-medium">
+                        {new Date(deliveryLocation.updated_at).toLocaleTimeString('pt-BR')}
+                      </span>
+                    </div>
+                    {configDelivery && (
+                      <div className="flex items-center gap-2 text-primary">
+                        <span className="text-muted-foreground">Previsão:</span>
+                        <span className="font-semibold">
+                          {configDelivery.tempo_estimado_min}-{configDelivery.tempo_estimado_max}min
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Previsão quando não tem GPS ativo ainda */}
+              {!hasLocation && configDelivery && pedido?.status !== 'entregue' && pedido?.status !== 'cancelado' && (
+                <div className="px-4 pb-4">
+                  <div className="flex items-center justify-center p-3 bg-muted rounded-lg text-sm">
+                    <div className="flex items-center gap-2 text-primary">
+                      <Clock className="w-4 h-4" />
+                      <span className="text-muted-foreground">Tempo estimado:</span>
+                      <span className="font-semibold">
+                        {configDelivery.tempo_estimado_min}-{configDelivery.tempo_estimado_max}min
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Status Card */}
+        <Card>
+          <CardContent className="p-6">
+            <div className={`flex items-center gap-4 p-4 rounded-lg ${statusConfig[currentStatus]?.bgColor}`}>
+              <div className={`p-3 rounded-full bg-white ${statusConfig[currentStatus]?.color}`}>
+                <StatusIcon className="w-8 h-8" />
+              </div>
+              <div>
+                <h2 className={`text-xl font-bold ${statusConfig[currentStatus]?.color}`}>
+                  {statusConfig[currentStatus]?.label}
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {statusConfig[currentStatus]?.message}
+                </p>
+              </div>
+            </div>
+
+            {/* Progress Steps */}
+            {currentStatus !== 'cancelado' && (
+              <div className="mt-6">
+                <div className="flex items-center justify-between relative">
+                  {statusOrder.map((status, index) => {
+                    const isActive = index <= currentIndex;
+                    const Icon = statusConfig[status].icon;
+                    
+                    return (
+                      <div key={status} className="flex flex-col items-center z-10">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <span className={`text-xs mt-2 text-center max-w-[60px] ${
+                          isActive ? 'text-foreground font-medium' : 'text-muted-foreground'
+                        }`}>
+                          {statusConfig[status].label.split(' ')[0]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Progress line */}
+                  <div className="absolute top-5 left-0 right-0 h-0.5 bg-muted -z-0 mx-5">
+                    <div 
+                      className="h-full bg-primary transition-all duration-500"
+                      style={{ width: `${(currentIndex / (statusOrder.length - 1)) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Botão de Pagamento PIX para pedidos pendentes */}
+        {currentStatus === 'pendente' && pedido.forma_pagamento === 'pix' && (
+          <Card className="border-yellow-400 bg-yellow-50">
+            <CardContent className="p-4">
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex items-center gap-2 text-yellow-700">
+                  <QrCode className="w-6 h-6" />
+                  <span className="font-semibold">Pagamento Pendente</span>
+                </div>
+                <p className="text-sm text-yellow-600 text-center">
+                  Seu pedido está aguardando confirmação do pagamento PIX. Clique no botão abaixo para visualizar o QR Code e finalizar o pagamento.
+                </p>
+                <Button 
+                  onClick={() => setShowPixModal(true)}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white w-full"
+                >
+                  <QrCode className="w-4 h-4 mr-2" />
+                  Pagar com PIX
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Restaurant Info */}
+        {empresa && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                {empresa.logo_url ? (
+                  <img
+                    src={empresa.logo_url}
+                    alt={empresa.nome_fantasia}
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Store className="w-6 h-6 text-primary" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-semibold">{empresa.nome_fantasia}</h3>
+                  {empresa.endereco_completo && (
+                    <p className="text-sm text-muted-foreground">{empresa.endereco_completo}</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Delivery Address */}
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-primary" />
+              Endereço de Entrega
+            </h3>
+            <div className="space-y-1 text-sm">
+              <p className="flex items-center gap-2">
+                <User className="w-4 h-4 text-muted-foreground" />
+                {pedido.endereco?.nome_cliente}
+              </p>
+              <p className="flex items-center gap-2">
+                <Phone className="w-4 h-4 text-muted-foreground" />
+                {pedido.endereco?.telefone}
+              </p>
+              <p className="mt-2">
+                {pedido.endereco?.rua}, {pedido.endereco?.numero}
+                {pedido.endereco?.complemento && ` - ${pedido.endereco.complemento}`}
+              </p>
+              <p>{pedido.endereco?.bairro} - {pedido.endereco?.cidade}/{pedido.endereco?.estado}</p>
+              {pedido.endereco?.referencia && (
+                <p className="text-muted-foreground">Ref: {pedido.endereco.referencia}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Order Items */}
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-primary" />
+              Itens do Pedido
+            </h3>
+            <div className="space-y-2">
+              {pedido.itens?.map((item: any) => (
+                <div key={item.id} className="flex justify-between text-sm">
+                  <span>{item.quantidade}x {item.nome_produto}</span>
+                  <span>R$ {item.subtotal?.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            
+            <Separator className="my-3" />
+            
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>R$ {pedido.subtotal?.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Taxa de Entrega</span>
+                <span>{pedido.taxa_entrega > 0 ? `R$ ${pedido.taxa_entrega?.toFixed(2)}` : 'Grátis'}</span>
+              </div>
+              <div className="flex justify-between font-bold text-lg pt-2">
+                <span>Total</span>
+                <span className="text-primary">R$ {pedido.total?.toFixed(2)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Order Time */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Pedido realizado em</span>
+              <span>{new Date(pedido.created_at).toLocaleString('pt-BR')}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+
+      {/* Modal de Pagamento PIX */}
+      <Sheet open={showPixModal} onOpenChange={(open) => {
+        if (open) {
+          console.log('[PIX Modal] Opening modal with empresa:', empresa);
+        }
+        setShowPixModal(open);
+      }}>
+        <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2 text-lg">
+              <QrCode className="w-5 h-5 text-primary" />
+              Pagamento PIX
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="w-full max-w-md mx-auto pb-6">
+            {empresa?.chave_pix ? (
+              <>
+                <PixQRCode
+                  chavePix={empresa.chave_pix}
+                  valor={pedido?.total || 0}
+                  nomeRecebedor={empresa.nome_fantasia || "RESTAURANTE"}
+                  cidade={empresa.endereco_completo?.split(",").pop()?.trim() || "SAO PAULO"}
+                  expiracaoMinutos={10}
+                  onExpired={() => {
+                    console.log('[PIX] QR Code expirado');
+                  }}
+                  onRefresh={() => {
+                    console.log('[PIX] Novo código gerado');
+                  }}
+                />
+
+                {/* Instruções de pagamento */}
+                <div className="text-center text-xs text-muted-foreground space-y-1 mt-4">
+                  <p>1. Abra o app do seu banco</p>
+                  <p>2. Escaneie o QR Code ou copie o código</p>
+                  <p>3. Confirme o pagamento no banco</p>
+                  <p>4. Clique no botão abaixo para notificar o restaurante</p>
+                </div>
+
+                {/* Botão de informar pagamento */}
+                <Button
+                  onClick={handleInformPayment}
+                  disabled={isConfirmingPayment}
+                  className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white"
+                  size="lg"
+                >
+                  {isConfirmingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-2" />
+                      Já Paguei - Notificar Restaurante
+                    </>
+                  )}
+                </Button>
+
+                {/* Aviso importante */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-center">
+                  <p className="text-amber-700 text-sm font-medium">
+                    ⚠️ O restaurante irá verificar o recebimento
+                  </p>
+                  <p className="text-amber-600 text-xs mt-1">
+                    Seu pedido será confirmado após a verificação do pagamento no extrato
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="bg-destructive/10 p-4 rounded-lg border border-destructive/20 mb-6 text-center">
+                <p className="text-destructive font-semibold">⚠️ Chave PIX não configurada</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Entre em contato com o restaurante para concluir o pagamento.
+                </p>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}

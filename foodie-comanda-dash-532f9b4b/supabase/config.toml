@@ -1,0 +1,43 @@
+project_id = "zlwpxflqtyhdwanmupgy"
+
+[functions.create-delivery-checkout]
+verify_jwt = false
+
+[functions.verify-delivery-payment]
+verify_jwt = false
+
+[functions.create-subscription-checkout]
+verify_jwt = false
+
+[functions.stripe-subscription-webhook]
+verify_jwt = false
+
+[functions.request-refund]
+verify_jwt = false
+
+[functions.verify-subscription-payment]
+verify_jwt = false
+
+[functions.process-subscription]
+verify_jwt = false
+
+[functions.complete-delivery-order]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.cancel-subscription]
+verify_jwt = false
+
+[functions.trial-email-sequence]
+verify_jwt = false
+
+[functions.emit-nfce]
+verify_jwt = false
+
+[functions.search-product-images]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false

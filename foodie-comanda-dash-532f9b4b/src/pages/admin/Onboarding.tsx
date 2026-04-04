@@ -1,0 +1,435 @@
+import { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
+import { Building2, Upload, Loader2, CheckCircle2 } from 'lucide-react';
+
+export default function Onboarding() {
+  const { user, refreshProfile } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [isLoading, setIsLoading] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  
+  const [formData, setFormData] = useState({
+    nome_fantasia: '',
+    cnpj: '',
+    endereco_completo: '',
+    inscricao_estadual: '',
+  });
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    if (!formData.nome_fantasia.trim()) {
+      toast.error('Nome fantasia é obrigatório');
+      return;
+    }
+
+    if (!formData.cnpj || formData.cnpj.trim().length < 14) {
+      toast.error('CNPJ é obrigatório');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      let logo_url = null;
+
+      // Upload logo if provided
+      if (logoFile) {
+        const fileExt = logoFile.name.split('.').pop();
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        
+        const { error: uploadError, data } = await supabase.storage
+          .from('logos')
+          .upload(fileName, logoFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('logos')
+          .getPublicUrl(fileName);
+        
+        logo_url = publicUrl;
+      }
+
+      // Create empresa
+      const { data: empresa, error: empresaError } = await supabase
+        .from('empresas')
+        .insert({
+          nome_fantasia: formData.nome_fantasia,
+          cnpj: formData.cnpj || null,
+          endereco_completo: formData.endereco_completo || null,
+          inscricao_estadual: formData.inscricao_estadual || null,
+          logo_url,
+          usuario_proprietario_id: user.id,
+        })
+        .select()
+        .single();
+
+      if (empresaError) throw empresaError;
+
+      // Update profile with empresa_id
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ empresa_id: empresa.id })
+        .eq('id', user.id);
+
+      if (profileError) throw profileError;
+
+      // Add user role as proprietario
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: user.id,
+          empresa_id: empresa.id,
+          role: 'proprietario',
+        });
+
+      // Criar assinatura trial automática ou usar plano pendente
+      try {
+        // Verificar plano na URL primeiro (vindo do checkout Stripe)
+        const urlPlanoId = searchParams.get('planoId');
+        const urlPeriodo = searchParams.get('periodo');
+        
+        // Depois verificar localStorage
+        const pending = localStorage.getItem('post_subscribe_plan');
+        const now = new Date();
+        const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // 14 dias de trial
+        const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 dias
+        
+        console.log('[Onboarding] URL params:', { urlPlanoId, urlPeriodo });
+        console.log('[Onboarding] localStorage:', pending);
+        
+        // Prioridade: URL > localStorage > Bronze padrão
+        let planoIdToUse = urlPlanoId;
+        let planoSlugToUse: string | null = null;
+        let periodoToUse = urlPeriodo || 'mensal';
+        let isUpgrade = false;
+        
+        if (!planoIdToUse && pending) {
+          const parsed = JSON.parse(pending);
+          planoIdToUse = parsed?.planoId;
+          planoSlugToUse = parsed?.planoSlug;
+          periodoToUse = parsed?.periodo || 'mensal';
+          isUpgrade = !!parsed?.isUpgrade;
+        }
+        
+        console.log('[Onboarding] Plano a usar:', { planoIdToUse, planoSlugToUse, periodoToUse, isUpgrade });
+        
+        if (planoIdToUse || planoSlugToUse) {
+          // Tentar buscar plano por ID primeiro, depois por slug
+          let planoExists = null;
+          
+          if (planoIdToUse) {
+            // Tentar buscar por UUID
+            const { data } = await (supabase as any)
+              .from('planos')
+              .select('id, nome, slug')
+              .eq('id', planoIdToUse)
+              .maybeSingle();
+            planoExists = data;
+            
+            // Se não encontrou por UUID, pode ser que o ID seja um slug (fallback)
+            if (!planoExists && planoIdToUse.length < 50) {
+              const { data: dataBySlug } = await (supabase as any)
+                .from('planos')
+                .select('id, nome, slug')
+                .eq('slug', planoIdToUse.toLowerCase())
+                .maybeSingle();
+              planoExists = dataBySlug;
+            }
+          }
+          
+          // Se não encontrou por ID, tenta por slug explícito
+          if (!planoExists && planoSlugToUse) {
+            console.log('[Onboarding] Buscando por slug:', planoSlugToUse);
+            const { data } = await (supabase as any)
+              .from('planos')
+              .select('id, nome, slug')
+              .eq('slug', planoSlugToUse.toLowerCase())
+              .maybeSingle();
+            planoExists = data;
+          }
+          
+          // Último fallback: tentar por ILIKE no slug
+          if (!planoExists && planoSlugToUse) {
+            console.log('[Onboarding] Buscando por ilike slug:', planoSlugToUse);
+            const { data } = await (supabase as any)
+              .from('planos')
+              .select('id, nome, slug')
+              .ilike('slug', `%${planoSlugToUse}%`)
+              .limit(1)
+              .maybeSingle();
+            planoExists = data;
+          }
+          
+          if (planoExists) {
+            console.log('[Onboarding] Criando assinatura com plano:', planoExists.nome);
+            
+            // Usar o ID do plano encontrado (pode ter vindo via ID ou slug)
+            const { error: assinaturaError } = await (supabase as any).from('assinaturas').insert({
+              empresa_id: empresa.id,
+              plano_id: planoExists.id,
+              status: isUpgrade ? 'active' : 'trialing',
+              periodo: periodoToUse,
+              data_inicio: now.toISOString(),
+              data_fim: isUpgrade ? periodEnd.toISOString() : trialEnd.toISOString(),
+              trial_fim: isUpgrade ? null : trialEnd.toISOString(),
+              created_at: now.toISOString(),
+              updated_at: now.toISOString(),
+            });
+            
+            if (assinaturaError) {
+              console.error('[Onboarding] Erro ao criar assinatura:', assinaturaError);
+            } else {
+              console.log('[Onboarding] Assinatura criada com sucesso!');
+              toast.success(`Plano ${planoExists.nome} ativado!`);
+            }
+            
+            localStorage.removeItem('post_subscribe_plan');
+          } else {
+            console.warn('[Onboarding] Plano não encontrado:', planoIdToUse);
+            // Fallback para Bronze
+            await criarAssinaturaBronze(empresa.id, now, trialEnd);
+          }
+        } else {
+          // Criar trial automático com plano Bronze
+          await criarAssinaturaBronze(empresa.id, now, trialEnd);
+        }
+      } catch (e) {
+        console.warn('Não foi possível criar assinatura automaticamente:', e);
+      }
+
+      // Enviar e-mail de boas-vindas (não bloqueia o fluxo)
+      try {
+        const userName = user.user_metadata?.nome || formData.nome_fantasia || 'Proprietário';
+        console.log('[Onboarding] Enviando e-mail de boas-vindas para:', user.email);
+        
+        const { error: emailError } = await supabase.functions.invoke('send-email', {
+          body: {
+            type: 'trial_welcome',
+            to: user.email,
+            data: {
+              nome: userName,
+              restaurante: formData.nome_fantasia,
+              trialDays: 14,
+              loginUrl: window.location.origin + '/admin',
+            },
+          },
+        });
+        
+        if (emailError) {
+          console.warn('[Onboarding] Falha ao enviar e-mail de boas-vindas:', emailError);
+        } else {
+          console.log('[Onboarding] E-mail de boas-vindas enviado com sucesso!');
+        }
+      } catch (emailErr) {
+        console.warn('[Onboarding] Erro ao enviar e-mail (não fatal):', emailErr);
+      }
+
+      if (roleError) throw roleError;
+
+      // IMPORTANTE: Atualizar o estado global do perfil antes de navegar
+      // Isso garante que o menu lateral e outros componentes carreguem corretamente
+      await refreshProfile();
+      
+      // Pequeno delay para garantir que o estado foi propagado
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      toast.success('Empresa cadastrada com sucesso!');
+      navigate('/admin', { replace: true });
+    } catch (error: any) {
+      console.error('[Onboarding] Error creating empresa:', error);
+      console.error('[Onboarding] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+      });
+      
+      // Mostrar erro mais específico quando possível
+      const errorMsg = error?.message || 'Erro desconhecido';
+      if (errorMsg.includes('violates row-level security')) {
+        toast.error('Erro de permissão. Tente fazer logout e login novamente.');
+      } else if (errorMsg.includes('duplicate key')) {
+        toast.error('Já existe uma empresa com esses dados.');
+      } else {
+        toast.error(`Erro ao cadastrar empresa: ${errorMsg}`);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Função auxiliar para criar assinatura Bronze
+  const criarAssinaturaBronze = async (empresaId: string, now: Date, trialEnd: Date) => {
+    console.log('[Onboarding] Criando trial Bronze padrão');
+    
+    const { data: planoBronze } = await (supabase as any)
+      .from('planos')
+      .select('id, nome')
+      .or('slug.eq.bronze,nome.ilike.%bronze%,nome.ilike.%iniciante%')
+      .limit(1)
+      .single();
+
+    if (planoBronze?.id) {
+      console.log('[Onboarding] Criando trial com plano:', planoBronze.nome);
+      
+      await (supabase as any).from('assinaturas').insert({
+        empresa_id: empresaId,
+        plano_id: planoBronze.id,
+        status: 'trialing',
+        periodo: 'mensal',
+        data_inicio: now.toISOString(),
+        data_fim: trialEnd.toISOString(),
+        trial_fim: trialEnd.toISOString(),
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      });
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-secondary via-background to-fcd-orange-light p-4">
+      <div className="w-full max-w-2xl animate-fade-in">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-fcd mb-4">
+            <Building2 className="w-8 h-8 text-primary-foreground" />
+          </div>
+          <h1 className="text-3xl font-bold text-foreground">Cadastre sua Empresa</h1>
+          <p className="text-muted-foreground mt-2">
+            Preencha os dados do seu estabelecimento para começar
+          </p>
+        </div>
+
+        <Card className="shadow-fcd border-0">
+          <CardHeader>
+            <CardTitle>Informações da Empresa</CardTitle>
+            <CardDescription>
+              Estes dados serão exibidos nos comprovantes e notas fiscais
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Logo Upload */}
+              <div className="space-y-2">
+                <Label>Logo da Empresa</Label>
+                <div className="flex items-center gap-4">
+                  <div className="relative w-24 h-24 rounded-xl border-2 border-dashed border-border bg-muted/50 flex items-center justify-center overflow-hidden">
+                    {logoPreview ? (
+                      <img 
+                        src={logoPreview} 
+                        alt="Logo preview" 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Upload className="w-8 h-8 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="cursor-pointer"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      PNG, JPG ou SVG. Máximo 2MB.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nome Fantasia */}
+              <div className="space-y-2">
+                <Label htmlFor="nome_fantasia">Nome Fantasia *</Label>
+                <Input
+                  id="nome_fantasia"
+                  placeholder="Ex: Restaurante Sabor & Arte"
+                  value={formData.nome_fantasia}
+                  onChange={(e) => setFormData({ ...formData, nome_fantasia: e.target.value })}
+                  required
+                />
+              </div>
+
+              {/* CNPJ */}
+              <div className="space-y-2">
+                <Label htmlFor="cnpj">CNPJ</Label>
+                <Input
+                  id="cnpj"
+                  placeholder="00.000.000/0000-00"
+                  value={formData.cnpj}
+                  onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
+                  required
+                />
+              </div>
+
+              {/* Endereço */}
+              <div className="space-y-2">
+                <Label htmlFor="endereco">Endereço Completo</Label>
+                <Textarea
+                  id="endereco"
+                  placeholder="Rua, número, bairro, cidade - UF"
+                  value={formData.endereco_completo}
+                  onChange={(e) => setFormData({ ...formData, endereco_completo: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              {/* Inscrição Estadual */}
+              <div className="space-y-2">
+                <Label htmlFor="inscricao_estadual">Inscrição Estadual</Label>
+                <Input
+                  id="inscricao_estadual"
+                  placeholder="Número da IE"
+                  value={formData.inscricao_estadual}
+                  onChange={(e) => setFormData({ ...formData, inscricao_estadual: e.target.value })}
+                />
+              </div>
+
+              <Button 
+                type="submit" 
+                className="w-full bg-primary hover:bg-primary/90"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Cadastrar Empresa
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

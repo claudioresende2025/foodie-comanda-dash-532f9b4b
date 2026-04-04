@@ -1,0 +1,612 @@
+/// <reference lib="webworker" />
+
+// ============================================
+// SERVICE WORKER - FOOD COMANDA PRO
+// ============================================
+// VERSÃO: 2.6.0 - Fix loop infinito no setCatchHandler
+// 
+// Changelog:
+// - v2.6.0: Fix loop infinito - fallback offline não faz mais redirect
+// - v2.5.0: Registro forçado, ativação imediata agressiva
+// - v2.4.0: Fix install event
+// - v2.3.0: setCatchHandler para fallback offline
+// - v2.2.0: Remove listener fetch duplicado
+// - v2.1.0: StaleWhileRevalidate para JS/CSS
+// - v2.0.0: skipWaiting() forçado, Dexie.js
+
+import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching';
+import { clientsClaim } from 'workbox-core';
+import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
+import { CacheFirst, NetworkFirst, NetworkOnly } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
+import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+
+declare const self: ServiceWorkerGlobalScope;
+
+// Versão do Service Worker
+const SW_VERSION = '2.6.0';
+const SW_BUILD_DATE = new Date().toISOString();
+
+// Extended notification options for service worker
+interface ExtendedNotificationOptions extends NotificationOptions {
+  actions?: { action: string; title: string; icon?: string }[];
+  vibrate?: number[];
+  renotify?: boolean;
+}
+
+// ============================================
+// ATIVAÇÃO IMEDIATA - CRÍTICO
+// ============================================
+// Executar skipWaiting e clientsClaim ANTES de qualquer outra coisa
+self.skipWaiting();
+clientsClaim();
+
+console.log(`[SW] 🚀 Food Comanda Pro v${SW_VERSION}`);
+console.log(`[SW] 📅 Build: ${SW_BUILD_DATE}`);
+
+// ============================================
+// EVENTO INSTALL - FORÇAR ATIVAÇÃO
+// ============================================
+self.addEventListener('install', (event) => {
+  console.log(`[SW] ⚙️ INSTALANDO v${SW_VERSION}...`);
+  
+  event.waitUntil(
+    (async () => {
+      // Forçar skipWaiting imediatamente
+      await self.skipWaiting();
+      console.log('[SW] ✅ skipWaiting executado no install');
+    })()
+  );
+});
+
+// ============================================
+// BYPASS SUPER ADMIN: 100% ONLINE
+// ============================================
+registerRoute(
+  ({ request, url }) => {
+    const isSuperAdminRequest = 
+      request.headers.get('X-Super-Admin') === 'true' ||
+      url.searchParams.get('_superadmin') === 'true';
+    
+    if (isSuperAdminRequest && (
+      url.hostname.includes('supabase.co') ||
+      url.pathname.includes('/rest/v1/') ||
+      url.pathname.includes('/auth/v1/')
+    )) {
+      console.log('[SW] 🛡️ Super Admin bypass: NetworkOnly para', url.pathname);
+      return true;
+    }
+    return false;
+  },
+  new NetworkOnly()
+);
+
+// ============================================
+// LIMPEZA AGRESSIVA DE CACHES ANTIGOS
+// ============================================
+// Remove caches de versões anteriores que não conhecem o Dexie
+
+// Lista de nomes de cache antigos para remover
+const DEPRECATED_CACHES = [
+  'workbox-precache-v1',
+  'runtime-cache',
+  'api-cache-old',
+  'images-cache-old',
+  'food-comanda-v1',
+  'food-comanda-v2',
+];
+
+// Função para limpar caches antigos
+async function cleanupLegacyCaches(): Promise<void> {
+  try {
+    const cacheNames = await caches.keys();
+    
+    const deletePromises = cacheNames
+      .filter(cacheName => {
+        // Deletar caches na lista de deprecados
+        if (DEPRECATED_CACHES.includes(cacheName)) return true;
+        
+        // Deletar caches com versão antiga no nome
+        if (cacheName.includes('-v1-') || cacheName.includes('-v2-')) return true;
+        
+        // Manter caches atuais do workbox
+        if (cacheName.startsWith('workbox-precache')) return false;
+        
+        return false;
+      })
+      .map(cacheName => {
+        console.log(`[SW] Removendo cache antigo: ${cacheName}`);
+        return caches.delete(cacheName);
+      });
+    
+    await Promise.all(deletePromises);
+    console.log('[SW] Limpeza de caches antigos concluída');
+  } catch (error) {
+    console.error('[SW] Erro ao limpar caches antigos:', error);
+  }
+}
+
+// Executar limpeza na ativação
+self.addEventListener('activate', (event) => {
+  console.log(`[SW] ⚡ Ativando v${SW_VERSION}...`);
+  
+  event.waitUntil(
+    Promise.all([
+      // Assumir controle de TODAS as abas imediatamente
+      self.clients.claim(),
+      cleanupLegacyCaches(),
+      cleanupOutdatedCaches(),
+      // Notificar todas as abas sobre a atualização
+      notifyClientsOfUpdate()
+    ]).then(() => {
+      console.log(`[SW] ✅ v${SW_VERSION} ATIVO e controlando todas as abas`);
+    })
+  );
+});
+
+// Notifica clientes sobre nova versão
+async function notifyClientsOfUpdate(): Promise<void> {
+  const clients = await self.clients.matchAll({ type: 'window' });
+  
+  clients.forEach(client => {
+    client.postMessage({
+      type: 'SW_UPDATED',
+      version: SW_VERSION,
+      buildDate: SW_BUILD_DATE,
+      message: 'Nova versão do Food Comanda Pro disponível!'
+    });
+  });
+}
+
+// Precache all assets generated by Vite
+precacheAndRoute(self.__WB_MANIFEST);
+
+// Cleanup old caches do Workbox
+cleanupOutdatedCaches();
+
+// ============================================
+// NAVIGATION ROUTE - CRITICO PARA SPA OFFLINE
+// ============================================
+// createHandlerBoundToURL serve /index.html do PRECACHE (funciona 100% offline)
+// Isso permite navegar entre /admin/mesas, /admin/cardapio, etc sem network
+const navigationHandler = createHandlerBoundToURL('/index.html');
+const navigationRoute = new NavigationRoute(navigationHandler, {
+  // Apenas excluir chamadas de API - NAO excluir rotas da aplicacao
+  denylist: [
+    /^\/api\//,
+    /^\/__/,
+    /\/version\.json$/,
+  ],
+});
+registerRoute(navigationRoute);
+
+// ============================================
+// VERSION.JSON - SEMPRE DA REDE (nunca cachear)
+// ============================================
+registerRoute(
+  ({ url }) => url.pathname === '/version.json',
+  new NetworkOnly()
+);
+
+// ============================================
+// CATCH HANDLER - FALLBACK PARA QUALQUER FALHA
+// ============================================
+// setCatchHandler e chamado quando uma rota registrada lanca erro
+// Garante que navegacoes offline SEMPRE recebam index.html
+setCatchHandler(async ({ event }) => {
+  const req = (event as FetchEvent).request;
+  
+  // Para navegacoes: tentar todos os caches em ordem
+  if (req.mode === 'navigate') {
+    console.log('[SW] setCatchHandler: navegacao falhou, buscando index.html do cache');
+    
+    // 1. Tentar precache workbox
+    const precached = await caches.match('/index.html');
+    if (precached) return precached;
+    
+    // 2. Varrer todos os caches
+    const cacheNames = await caches.keys();
+    for (const cacheName of cacheNames) {
+      const cache = await caches.open(cacheName);
+      const keys = await cache.keys();
+      const indexKey = keys.find(k => k.url.includes('index.html'));
+      if (indexKey) {
+        const match = await cache.match(indexKey);
+        if (match) return match;
+      }
+    }
+    
+    // 3. SPA Fallback estático - NÃO fazer redirect para evitar loop infinito
+    // Mostrar página de erro offline com botão de retry manual
+    return new Response(
+      `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Offline - Food Comanda Pro</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+    .container { text-align: center; padding: 20px; }
+    h1 { color: #333; font-size: 1.5rem; }
+    p { color: #666; margin: 1rem 0; }
+    button { background: #22c55e; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+    button:hover { background: #16a34a; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📴 Modo Offline</h1>
+    <p>O aplicativo não está disponível no cache.<br>Conecte-se à internet para carregar.</p>
+    <button onclick="location.reload()">Tentar Novamente</button>
+  </div>
+</body>
+</html>`,
+      { headers: { 'Content-Type': 'text/html' }, status: 200 }
+    );
+  }
+  
+  return Response.error();
+});
+// ============================================
+
+// Cache Google Fonts
+registerRoute(
+  /^https:\/\/fonts\.googleapis\.com\/.*/i,
+  new CacheFirst({
+    cacheName: 'google-fonts-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 10,
+        maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+registerRoute(
+  /^https:\/\/fonts\.gstatic\.com\/.*/i,
+  new CacheFirst({
+    cacheName: 'gstatic-fonts-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 10,
+        maxAgeSeconds: 60 * 60 * 24 * 365
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+// Cache images
+registerRoute(
+  /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
+  new CacheFirst({
+    cacheName: 'images-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 100,
+        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+      })
+    ]
+  })
+);
+
+// ============================================
+// CACHE-FIRST para imagens do Supabase Storage (fotos de produtos)
+// DEVE vir ANTES do bypass NetworkOnly do Supabase API
+// ============================================
+registerRoute(
+  ({ url }) => {
+    return (
+      url.hostname.includes('supabase.co') &&
+      url.pathname.includes('/storage/v1/object/public/')
+    );
+  },
+  new CacheFirst({
+    cacheName: 'supabase-images-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 200,
+        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+// ============================================
+// SUPABASE API: NetworkFirst com timeout curto
+// Se offline, falha em 3s em vez de ~30s de timeout do browser
+// Isso permite que o Dexie assuma imediatamente
+// ============================================
+registerRoute(
+  ({ url }) => {
+    return (
+      url.hostname.includes('supabase.co') ||
+      url.pathname.includes('/rest/v1/') ||
+      url.pathname.includes('/auth/v1/') ||
+      url.pathname.includes('/functions/v1/') ||
+      url.hostname === 'localhost' ||
+      url.hostname === '127.0.0.1'
+    );
+  },
+  new NetworkFirst({
+    cacheName: 'supabase-api-cache',
+    networkTimeoutSeconds: 3,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 60 * 5 })
+    ]
+  })
+);
+
+// ============================================
+// STALE-WHILE-REVALIDATE PARA JS/CSS
+// ============================================
+// Serve do cache imediatamente enquanto busca atualizacao
+
+// ============================================
+// CACHE-FIRST PARA ARQUIVOS ESTÁTICOS (.js, .css)
+// Servidos instantaneamente do cache — sem ida à rede
+// O precache do Workbox já garante versões atualizadas no build
+// ============================================
+registerRoute(
+  /\.(?:js|css)$/,
+  new CacheFirst({
+    cacheName: 'static-resources',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 80,
+        maxAgeSeconds: 60 * 60 * 24 * 30 // 30 dias
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+// HTML files - CacheFirst para navegação offline instantânea
+registerRoute(
+  /\.html$/,
+  new CacheFirst({
+    cacheName: 'html-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 10,
+        maxAgeSeconds: 60 * 60 * 24 * 7 // 7 dias
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      })
+    ]
+  })
+);
+
+// ============================================
+// PRE-CACHING DAS ROTAS PRINCIPAIS
+// ============================================
+// Cache as rotas mais usadas no primeiro acesso
+
+const MAIN_ROUTES = [
+  '/',
+  '/admin',
+  '/admin/mesas',
+  '/admin/cardapio',
+  '/admin/pedidos',
+  '/admin/caixa',
+  '/admin/kds',
+  '/admin/entregas',
+  '/admin/relatorios',
+  '/delivery'
+];
+
+// Funcao para pre-cachear rotas apos primeiro login
+async function precacheMainRoutes(): Promise<void> {
+  const cache = await caches.open('routes-cache');
+  
+  try {
+    // Buscar index.html para cachear
+    const indexResponse = await fetch('/index.html');
+    if (indexResponse.ok) {
+      // Cachear o index.html para todas as rotas da SPA
+      for (const route of MAIN_ROUTES) {
+        const clonedResponse = indexResponse.clone();
+        await cache.put(route, clonedResponse);
+      }
+      console.log('[SW] Rotas principais pre-cacheadas:', MAIN_ROUTES.length);
+    }
+  } catch (error) {
+    console.warn('[SW] Erro ao pre-cachear rotas:', error);
+  }
+}
+
+// Escutar mensagem do cliente para iniciar pre-cache
+self.addEventListener('message', (event: ExtendableMessageEvent) => {  if (event.data && event.data.type === 'PRECACHE_ROUTES') {
+    console.log('[SW] Iniciando pre-cache de rotas...');
+    event.waitUntil(precacheMainRoutes());
+  }
+  
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  
+  if (event.data && event.data.type === 'GET_VERSION') {
+    event.ports[0]?.postMessage({
+      version: SW_VERSION,
+      buildDate: SW_BUILD_DATE
+    });
+  }
+});
+
+// ============================================
+// WEB PUSH NOTIFICATION HANDLERS
+// ============================================
+
+interface NotificationPayload {
+  title?: string;
+  body?: string;
+  icon?: string;
+  badge?: string;
+  tag?: string;
+  data?: { url?: string; [key: string]: unknown };
+  requireInteraction?: boolean;
+  actions?: { action: string; title: string }[];
+  vibrate?: number[];
+  renotify?: boolean;
+}
+
+/**
+ * Handle push events - triggered when server sends a push notification
+ * This runs even when the app is closed or in background
+ */
+self.addEventListener('push', (event: PushEvent) => {
+  console.log('[SW] Push event received:', event);
+
+  const defaultData: NotificationPayload = {
+    title: 'Food Comanda Pro',
+    body: 'Você tem uma nova notificação',
+    icon: '/pwa-icon-192.png',
+    badge: '/pwa-icon-192.png',
+    tag: 'default',
+    data: { url: '/admin' }
+  };
+
+  let notificationData: NotificationPayload = { ...defaultData };
+
+  // Try to parse the push data
+  if (event.data) {
+    try {
+      const payload = event.data.json() as NotificationPayload;
+      notificationData = {
+        title: payload.title || defaultData.title,
+        body: payload.body || defaultData.body,
+        icon: payload.icon || defaultData.icon,
+        badge: payload.badge || defaultData.badge,
+        tag: payload.tag || defaultData.tag,
+        data: payload.data || defaultData.data,
+        requireInteraction: payload.requireInteraction ?? true,
+        actions: payload.actions || [
+          { action: 'open', title: 'Abrir' },
+          { action: 'dismiss', title: 'Dispensar' }
+        ],
+        vibrate: [200, 100, 200],
+        renotify: true
+      };
+    } catch (e) {
+      console.error('[SW] Error parsing push data:', e);
+      notificationData.body = event.data.text();
+    }
+  }
+
+  console.log('[SW] Showing notification:', notificationData.title);
+
+  // Use type assertion for extended notification options
+  const options: ExtendedNotificationOptions = {
+    body: notificationData.body,
+    icon: notificationData.icon,
+    badge: notificationData.badge,
+    tag: notificationData.tag,
+    data: notificationData.data,
+    requireInteraction: notificationData.requireInteraction,
+    actions: notificationData.actions,
+    vibrate: notificationData.vibrate,
+    renotify: notificationData.renotify
+  };
+
+  const promiseChain = self.registration.showNotification(
+    notificationData.title!,
+    options as NotificationOptions
+  );
+
+  event.waitUntil(promiseChain);
+});
+
+/**
+ * Handle notification click - user clicked on the notification
+ */
+self.addEventListener('notificationclick', (event: NotificationEvent) => {
+  console.log('[SW] Notification click:', event.action);
+
+  event.notification.close();
+
+  // Handle dismiss action
+  if (event.action === 'dismiss') {
+    return;
+  }
+
+  // Get the URL to open
+  const urlToOpen = (event.notification.data as { url?: string })?.url || '/admin';
+  const fullUrl = new URL(urlToOpen, self.location.origin).href;
+
+  console.log('[SW] Opening URL:', fullUrl);
+
+  // Try to focus existing window or open new one
+  const promiseChain = self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  }).then((windowClients) => {
+    // Check if there's already a window/tab open with this URL
+    for (const client of windowClients) {
+      if (client.url === fullUrl && 'focus' in client) {
+        return client.focus();
+      }
+    }
+    
+    // Check if there's any window we can navigate
+    for (const client of windowClients) {
+      if ('navigate' in client && 'focus' in client) {
+        return (client as WindowClient).navigate(fullUrl).then(() => client.focus());
+      }
+    }
+    
+    // No existing window, open a new one
+    if (self.clients.openWindow) {
+      return self.clients.openWindow(fullUrl);
+    }
+  });
+
+  event.waitUntil(promiseChain);
+});
+
+/**
+ * Handle notification close - user dismissed the notification
+ */
+self.addEventListener('notificationclose', (event: NotificationEvent) => {
+  console.log('[SW] Notification closed:', event.notification.tag);
+  // Can be used for analytics
+});
+
+/**
+ * Handle push subscription change - subscription was invalidated
+ */
+self.addEventListener('pushsubscriptionchange', (event: Event) => {
+  console.log('[SW] Push subscription changed');
+  
+  // The subscription was invalidated, we need to resubscribe
+  // This is handled by the main app when it loads
+  // We can post a message to any open windows
+  const promiseChain = self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  }).then((windowClients) => {
+    for (const client of windowClients) {
+      client.postMessage({
+        type: 'PUSH_SUBSCRIPTION_CHANGED',
+        message: 'Push subscription needs to be renewed'
+      });
+    }
+  });
+
+  (event as ExtendableEvent).waitUntil(promiseChain);
+});
+
+console.log('[SW] Service Worker with Push support loaded');
